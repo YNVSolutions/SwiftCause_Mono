@@ -247,16 +247,16 @@ export function DonationManagement({
   const handleFilterChange = (key: string, value: string | Date | undefined) => {
     switch (key) {
       case 'statusFilter':
-        setStatusFilter(value);
+        setStatusFilter(typeof value === 'string' ? value : 'all');
         break;
       case 'campaignFilter':
-        setCampaignFilter(value);
+        setCampaignFilter(typeof value === 'string' ? value : 'all');
         break;
       case 'dateFilter':
-        setDateFilter(value);
+        setDateFilter(value instanceof Date ? value : undefined);
         break;
       case 'recurringFilter':
-        setRecurringFilter(value);
+        setRecurringFilter(typeof value === 'string' ? value : 'all');
         break;
     }
   };
@@ -285,10 +285,13 @@ export function DonationManagement({
         (recurringFilter === 'one_time' && !recurring);
       return matchesSearch && matchesDate && matchesRecurring;
     })
-    .map((donation: Donation) => ({
-      ...donation,
-      timestampTs: parseDonationDate((donation as FetchedDonation).timestamp)?.getTime() || 0,
-    }));
+    .map((donation: Donation) => {
+      const d = donation as FetchedDonation;
+      return {
+        ...d,
+        timestampTs: parseDonationDate(d.timestamp)?.getTime() || 0,
+      } as FetchedDonation;
+    });
 
   // Use sorting hook
   const {
@@ -592,7 +595,10 @@ export function DonationManagement({
                     </TableHeader>
                     <TableBody>
                       {filteredDonations.map((donation) => {
-                        const kiosk = donation.kioskId ? kioskMap[donation.kioskId] : null;
+                        const kiosk =
+                          donation.kioskId && kioskMap[donation.kioskId]
+                            ? kioskMap[donation.kioskId]
+                            : null;
                         return (
                           <TableRow
                             key={donation.id}
@@ -735,7 +741,10 @@ export function DonationManagement({
               </Card>
             ) : filteredDonations.length > 0 ? (
               filteredDonations.map((donation) => {
-                const kiosk = donation.kioskId ? kioskMap[donation.kioskId] : null;
+                const kiosk =
+                  donation.kioskId && kioskMap[donation.kioskId]
+                    ? kioskMap[donation.kioskId]
+                    : null;
                 return (
                   <Card
                     key={donation.id}
