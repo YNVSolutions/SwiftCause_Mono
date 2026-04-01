@@ -27,6 +27,8 @@
     <string name="enter_name">Your name (optional)</string>
     <string name="about_campaign">About this campaign</string>
     <string name="raised_of_goal">%1$s of %2$s</string>
+    <string name="watch_video">Watch Video</string>
+    <string name="play_video">Play video</string>
     
     <!-- Common -->
     <string name="loading">Loading…</string>

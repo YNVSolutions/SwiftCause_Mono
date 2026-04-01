@@ -1,5 +1,9 @@
 package com.example.swiftcause.presentation.screens
 
+import android.annotation.SuppressLint
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -17,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,12 +32,17 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.example.swiftcause.R
 import com.example.swiftcause.domain.models.Campaign
@@ -47,15 +57,17 @@ fun CampaignDetailsScreen(
     onBackClick: () -> Unit,
     onDonateClick: (amount: Long, isRecurring: Boolean, interval: String?) -> Unit
 ) {
+    android.util.Log.d("CampaignDetails", "Screen rendered for campaign: ${campaign.title}, videoUrl: '${campaign.videoUrl}'")
+
     var selectedAmount by remember { mutableLongStateOf(0L) }
     var customAmount by remember { mutableStateOf("") }
     var isRecurring by remember { mutableStateOf(false) }
     var selectedInterval by remember { mutableStateOf("monthly") }
     var currentImageIndex by remember { mutableIntStateOf(0) }
-    
+
     val images = campaign.getAllImages()
     val scrollState = rememberScrollState()
-    
+
     // Auto-rotate carousel
     LaunchedEffect(images.size) {
         if (images.size > 1) {
@@ -65,7 +77,7 @@ fun CampaignDetailsScreen(
             }
         }
     }
-    
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -105,7 +117,7 @@ fun CampaignDetailsScreen(
                     )
                 }
             }
-            
+
             // Image Carousel
             ImageCarousel(
                 images = images,
@@ -116,9 +128,9 @@ fun CampaignDetailsScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
             )
-            
+
             Spacer(modifier = Modifier.height(20.dp))
-            
+
             // Campaign Info Card
             Card(
                 modifier = Modifier
@@ -139,9 +151,9 @@ fun CampaignDetailsScreen(
                         color = Color(0xFF0F172A),
                         lineHeight = 31.sp
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     // Short Description
                     if (campaign.shortDescription.isNotEmpty()) {
                         Text(
@@ -152,14 +164,14 @@ fun CampaignDetailsScreen(
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                     }
-                    
+
                     // Progress Section
                     ProgressSection(campaign = campaign)
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Long Description Card
             if (campaign.longDescription.isNotEmpty()) {
                 Card(
@@ -180,17 +192,33 @@ fun CampaignDetailsScreen(
                             color = Color(0xFF0F172A)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = campaign.longDescription,
-                            fontSize = 15.sp,
-                            color = Color(0xFF334155),
-                            lineHeight = 23.sp
+
+                        // Render HTML content
+                        RichTextContent(
+                            htmlContent = campaign.longDescription,
+                            textColor = Color(0xFF334155)
                         )
                     }
                 }
             }
+
+            // YouTube Video Section
+            android.util.Log.d("CampaignDetails", "Video URL check: '${campaign.videoUrl}', isEmpty: ${campaign.videoUrl.isNullOrEmpty()}")
+            if (!campaign.videoUrl.isNullOrEmpty()) {
+                android.util.Log.d("CampaignDetails", "Rendering YouTube player for: ${campaign.videoUrl}")
+                Spacer(modifier = Modifier.height(16.dp))
+
+                YouTubeVideoPlayer(
+                    videoUrl = campaign.videoUrl!!,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
+            } else {
+                android.util.Log.d("CampaignDetails", "Video URL is null or empty, skipping video player")
+            }
         }
-        
+
         // Fixed Bottom Donation Panel
         DonationPanel(
             campaign = campaign,
@@ -198,7 +226,7 @@ fun CampaignDetailsScreen(
             customAmount = customAmount,
             isRecurring = isRecurring,
             selectedInterval = selectedInterval,
-            onAmountSelected = { 
+            onAmountSelected = {
                 selectedAmount = it
                 customAmount = ""
             },
@@ -242,7 +270,7 @@ private fun ImageCarousel(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
-                
+
                 // Gradient overlay at bottom
                 Box(
                     modifier = Modifier
@@ -255,12 +283,12 @@ private fun ImageCarousel(
                             )
                         )
                 )
-                
+
                 // Navigation arrows (only if multiple images)
                 if (images.size > 1) {
                     // Left arrow
                     IconButton(
-                        onClick = { 
+                        onClick = {
                             onIndexChange((currentIndex - 1 + images.size) % images.size)
                         },
                         modifier = Modifier
@@ -276,10 +304,10 @@ private fun ImageCarousel(
                             tint = PrimaryGreen
                         )
                     }
-                    
+
                     // Right arrow
                     IconButton(
-                        onClick = { 
+                        onClick = {
                             onIndexChange((currentIndex + 1) % images.size)
                         },
                         modifier = Modifier
@@ -295,7 +323,7 @@ private fun ImageCarousel(
                             tint = PrimaryGreen
                         )
                     }
-                    
+
                     // Dot indicators
                     Row(
                         modifier = Modifier
@@ -309,7 +337,7 @@ private fun ImageCarousel(
                                     .size(10.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (index == currentIndex) PrimaryGreen 
+                                        if (index == currentIndex) PrimaryGreen
                                         else Color.White.copy(alpha = 0.6f)
                                     )
                                     .clickable { onIndexChange(index) }
@@ -332,7 +360,7 @@ private fun ProgressSection(
         targetValue = progress / 100f,
         label = "progress"
     )
-    
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -357,9 +385,9 @@ private fun ProgressSection(
                 color = PrimaryGreen
             )
         }
-        
+
         Spacer(modifier = Modifier.height(6.dp))
-        
+
         // Progress bar
         Box(
             modifier = Modifier
@@ -376,9 +404,9 @@ private fun ProgressSection(
                     .background(PrimaryGreen)
             )
         }
-        
+
         Spacer(modifier = Modifier.height(6.dp))
-        
+
         Text(
             text = stringResource(
                 R.string.raised_of_goal,
@@ -408,7 +436,7 @@ private fun DonationPanel(
 ) {
     val amounts = campaign.predefinedAmounts.ifEmpty { listOf(10L, 25L, 50L, 100L, 250L, 500L) }
     val isDonateEnabled = selectedAmount > 0 || (customAmount.toLongOrNull() ?: 0) > 0
-    
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -434,34 +462,55 @@ private fun DonationPanel(
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFF64748B)
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
-            // Amount buttons grid (2 rows of 3)
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+
+            // Amount buttons - evenly distributed
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                itemsIndexed(amounts.take(6)) { _, amount ->
+                amounts.take(3).forEach { amount ->
                     AmountButton(
                         amount = amount,
                         currency = campaign.currency,
                         isSelected = selectedAmount == amount,
-                        onClick = { onAmountSelected(amount) }
+                        onClick = { onAmountSelected(amount) },
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
-            
+
+            if (amounts.size > 3) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    amounts.drop(3).take(3).forEach { amount ->
+                        AmountButton(
+                            amount = amount,
+                            currency = campaign.currency,
+                            isSelected = selectedAmount == amount,
+                            onClick = { onAmountSelected(amount) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             // Custom amount input
             OutlinedTextField(
                 value = customAmount,
-                onValueChange = { 
+                onValueChange = {
                     if (it.all { char -> char.isDigit() }) {
                         onCustomAmountChanged(it)
                     }
                 },
-                placeholder = { 
+                placeholder = {
                     Text(
                         text = stringResource(R.string.custom_amount),
                         color = Color(0xFF9CA3AF)
@@ -487,11 +536,11 @@ private fun DonationPanel(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true
             )
-            
+
             // Recurring toggle (if enabled)
             if (campaign.enableRecurring) {
                 Spacer(modifier = Modifier.height(12.dp))
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -514,7 +563,7 @@ private fun DonationPanel(
                         )
                     )
                 }
-                
+
                 // Interval selector
                 if (isRecurring) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -543,9 +592,9 @@ private fun DonationPanel(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Donate button
             Button(
                 onClick = onDonateClick,
@@ -570,17 +619,6 @@ private fun DonationPanel(
                     letterSpacing = 0.5.sp
                 )
             }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Secure payment text
-            Text(
-                text = stringResource(R.string.secure_payment),
-                fontSize = 12.sp,
-                color = Color(0xFF9CA3AF),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
 }
@@ -605,7 +643,7 @@ private fun AmountButton(
         targetValue = if (isSelected) 1.02f else 1f,
         label = "scale"
     )
-    
+
     Box(
         modifier = modifier
             .scale(scale)
@@ -646,7 +684,7 @@ private fun IntervalButton(
         targetValue = if (isSelected) Color.White else Color(0xFF334155),
         label = "text"
     )
-    
+
     Box(
         modifier = modifier
             .height(40.dp)
@@ -667,4 +705,388 @@ private fun IntervalButton(
             color = textColor
         )
     }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun YouTubeVideoPlayer(
+    videoUrl: String,
+    modifier: Modifier = Modifier
+) {
+    val videoId = extractYouTubeVideoId(videoUrl)
+    var isPlaying by remember { mutableStateOf(false) }
+
+    android.util.Log.d("YouTubePlayer", "Video URL: $videoUrl, Extracted ID: $videoId")
+
+    if (videoId != null) {
+        Card(
+            modifier = modifier,
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.watch_video),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF0F172A)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isPlaying) {
+                        val embedUrl = "https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0"
+                        android.util.Log.d("YouTubePlayer", "Loading embed URL: $embedUrl")
+
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { context ->
+                                android.util.Log.d("YouTubePlayer", "Creating WebView")
+                                WebView(context).apply {
+                                    setBackgroundColor(android.graphics.Color.BLACK)
+                                    setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+
+                                    settings.apply {
+                                        javaScriptEnabled = true
+                                        domStorageEnabled = true
+                                        databaseEnabled = true
+                                        mediaPlaybackRequiresUserGesture = false
+                                        loadWithOverviewMode = true
+                                        useWideViewPort = true
+                                        builtInZoomControls = false
+                                        displayZoomControls = false
+                                        mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                        cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                                        allowFileAccess = true
+                                        allowContentAccess = true
+                                        javaScriptCanOpenWindowsAutomatically = true
+                                        setSupportMultipleWindows(false)
+
+                                        // Set desktop User-Agent to bypass mobile restrictions
+                                        userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                    }
+
+                                    // JavaScript interface for debugging
+                                    addJavascriptInterface(object {
+                                        @android.webkit.JavascriptInterface
+                                        fun log(message: String) {
+                                            android.util.Log.d("YouTubePlayer", "JS: $message")
+                                        }
+
+                                        @android.webkit.JavascriptInterface
+                                        fun onReady() {
+                                            android.util.Log.d("YouTubePlayer", "Player ready")
+                                        }
+
+                                        @android.webkit.JavascriptInterface
+                                        fun onError(error: String) {
+                                            android.util.Log.e("YouTubePlayer", "Player error: $error")
+                                        }
+
+                                        @android.webkit.JavascriptInterface
+                                        fun onStateChange(state: String) {
+                                            android.util.Log.d("YouTubePlayer", "Player state: $state")
+                                        }
+                                    }, "Android")
+
+                                    webChromeClient = object : WebChromeClient() {
+                                        override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                                            android.util.Log.d("YouTubePlayer", "Console [${consoleMessage?.messageLevel()}]: ${consoleMessage?.message()}")
+                                            return true
+                                        }
+                                    }
+
+                                    webViewClient = object : WebViewClient() {
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            android.util.Log.d("YouTubePlayer", "Page finished: $url")
+                                        }
+
+                                        override fun onReceivedError(
+                                            view: WebView?,
+                                            request: android.webkit.WebResourceRequest?,
+                                            error: android.webkit.WebResourceError?
+                                        ) {
+                                            android.util.Log.e("YouTubePlayer", "Error: ${error?.description}, Code: ${error?.errorCode}, URL: ${request?.url}")
+                                        }
+
+                                        override fun onReceivedHttpError(
+                                            view: WebView?,
+                                            request: android.webkit.WebResourceRequest?,
+                                            errorResponse: android.webkit.WebResourceResponse?
+                                        ) {
+                                            android.util.Log.e("YouTubePlayer", "HTTP Error: ${errorResponse?.statusCode}, URL: ${request?.url}")
+                                        }
+                                    }
+
+                                    // Use YouTube IFrame Player API
+                                    val html = """
+                                        <!DOCTYPE html>
+                                        <html>
+                                        <head>
+                                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                            <style>
+                                                * { margin: 0; padding: 0; }
+                                                html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+                                                #player { width: 100%; height: 100%; }
+                                            </style>
+                                        </head>
+                                        <body>
+                                            <div id="player"></div>
+                                            <script>
+                                                var tag = document.createElement('script');
+                                                tag.src = "https://www.youtube.com/iframe_api";
+                                                var firstScriptTag = document.getElementsByTagName('script')[0];
+                                                firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+                                                var player;
+                                                function onYouTubeIframeAPIReady() {
+                                                    Android.log('YouTube API ready');
+                                                    player = new YT.Player('player', {
+                                                        videoId: '${videoId}',
+                                                        playerVars: {
+                                                            'autoplay': 0,
+                                                            'playsinline': 1,
+                                                            'controls': 1,
+                                                            'rel': 0,
+                                                            'modestbranding': 1,
+                                                            'origin': 'https://www.youtube.com'
+                                                        },
+                                                        events: {
+                                                            'onReady': function(event) {
+                                                                Android.onReady();
+                                                                Android.log('Player initialized, user can click play');
+                                                            },
+                                                            'onStateChange': function(event) {
+                                                                var states = {'-1': 'UNSTARTED', '0': 'ENDED', '1': 'PLAYING', '2': 'PAUSED', '3': 'BUFFERING', '5': 'CUED'};
+                                                                Android.onStateChange(states[event.data] || 'UNKNOWN');
+                                                            },
+                                                            'onError': function(event) {
+                                                                var errors = {2: 'Invalid ID', 5: 'HTML5 error', 100: 'Not found', 101: 'Not embeddable', 150: 'Not embeddable', 152: 'Cannot play in embedded players'};
+                                                                Android.onError(errors[event.data] || 'Error: ' + event.data);
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                            </script>
+                                        </body>
+                                        </html>
+                                    """.trimIndent()
+
+                                    android.util.Log.d("YouTubePlayer", "Loading YouTube IFrame API")
+                                    loadDataWithBaseURL("https://www.youtube.com", html, "text/html", "UTF-8", null)
+                                }
+                            }
+                        )
+                    } else {
+                        // Thumbnail with play button
+                        AsyncImage(
+                            model = "https://img.youtube.com/vi/$videoId/hqdefault.jpg",
+                            contentDescription = stringResource(R.string.watch_video),
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        // Play button
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.7f))
+                                .clickable { isPlaying = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = stringResource(R.string.play_video),
+                                tint = Color.White,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Renders HTML content with proper styling for rich text.
+ * Supports: HTML tags (<p>, <strong>, <em>, <br>, <hr>) and legacy format (**bold**, <br>, <hr>).
+ */
+@Composable
+private fun RichTextContent(
+    htmlContent: String,
+    textColor: Color,
+    modifier: Modifier = Modifier
+) {
+    // Sanitize HTML content (remove scripts, iframes, event handlers)
+    val sanitizedHtml = htmlContent
+        .replace(Regex("<script[^>]*>.*?</script>", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("<iframe[^>]*>.*?</iframe>", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("on\\w+=\"[^\"]*\"", RegexOption.IGNORE_CASE), "")
+        .trim()
+    
+    if (sanitizedHtml.isEmpty()) return
+    
+    // Check if it contains HTML tags
+    val containsHtml = Regex("<[^>]+>").containsMatchIn(sanitizedHtml)
+    
+    if (containsHtml) {
+        // Render as HTML using TextView
+        RenderHtmlContent(sanitizedHtml, textColor, modifier)
+    } else {
+        // Fallback: Handle legacy format (**bold**, <br>, <hr>)
+        RenderLegacyFormat(sanitizedHtml, textColor, modifier)
+    }
+}
+
+@Composable
+private fun RenderHtmlContent(
+    htmlContent: String,
+    textColor: Color,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        modifier = modifier.fillMaxWidth(),
+        factory = { ctx ->
+            android.widget.TextView(ctx).apply {
+                textSize = 15f
+                setTextColor(textColor.toArgb())
+                setLineSpacing(8f, 1f)
+                
+                // Parse and set HTML content
+                val spanned = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    android.text.Html.fromHtml(htmlContent, android.text.Html.FROM_HTML_MODE_LEGACY)
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.text.Html.fromHtml(htmlContent)
+                }
+                text = spanned
+                
+                setLinkTextColor(PrimaryGreen.toArgb())
+                movementMethod = android.text.method.LinkMovementMethod.getInstance()
+            }
+        },
+        update = { textView ->
+            val spanned = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                android.text.Html.fromHtml(htmlContent, android.text.Html.FROM_HTML_MODE_LEGACY)
+            } else {
+                @Suppress("DEPRECATION")
+                android.text.Html.fromHtml(htmlContent)
+            }
+            textView.text = spanned
+        }
+    )
+}
+
+@Composable
+private fun RenderLegacyFormat(
+    text: String,
+    textColor: Color,
+    modifier: Modifier = Modifier
+) {
+    // Split by <hr> tags first
+    val hrParts = text.split(Regex("<hr\\s*/?>", RegexOption.IGNORE_CASE))
+    
+    Column(modifier = modifier.fillMaxWidth()) {
+        hrParts.forEachIndexed { hrIndex, hrPart ->
+            if (hrIndex > 0) {
+                // Add horizontal divider
+                Spacer(modifier = Modifier.height(12.dp))
+                androidx.compose.material3.HorizontalDivider(
+                    thickness = 2.dp,
+                    color = Color(0xFFE5E7EB)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            
+            // Split by <br> tags
+            val brParts = hrPart.split(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE))
+            
+            brParts.forEachIndexed { brIndex, brPart ->
+                if (brIndex > 0) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+                
+                // Parse **bold** text
+                if (brPart.trim().isNotEmpty()) {
+                    RenderBoldText(brPart.trim(), textColor)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RenderBoldText(
+    text: String,
+    textColor: Color
+) {
+    // Split by **bold** pattern (matching web implementation)
+    // The pattern in parentheses creates a capturing group, so matches are included in results
+    val boldPattern = Regex("(\\*\\*.+?\\*\\*)")
+    val parts = text.split(boldPattern)
+    
+    Text(
+        text = buildAnnotatedString {
+            parts.forEach { part ->
+                when {
+                    part.startsWith("**") && part.endsWith("**") && part.length > 4 -> {
+                        // Bold text - remove the ** markers
+                        withStyle(style = SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                            append(part.substring(2, part.length - 2))
+                        }
+                    }
+                    part.isNotEmpty() -> {
+                        // Regular text
+                        append(part)
+                    }
+                }
+            }
+        },
+        fontSize = 15.sp,
+        color = textColor,
+        lineHeight = 23.sp
+    )
+}
+
+private fun Color.toArgb(): Int {
+    return android.graphics.Color.argb(
+        (alpha * 255).toInt(),
+        (red * 255).toInt(),
+        (green * 255).toInt(),
+        (blue * 255).toInt()
+    )
+}
+
+/**
+ * Extracts the video ID from various YouTube URL formats:
+ * - https://www.youtube.com/watch?v=VIDEO_ID
+ * - https://youtu.be/VIDEO_ID
+ * - https://www.youtube.com/embed/VIDEO_ID
+ */
+private fun extractYouTubeVideoId(url: String): String? {
+    val patterns = listOf(
+        "(?:youtube\\.com/watch\\?v=|youtu\\.be/|youtube\\.com/embed/)([a-zA-Z0-9_-]{11})".toRegex(),
+        "^([a-zA-Z0-9_-]{11})$".toRegex() // Direct video ID
+    )
+
+    for (pattern in patterns) {
+        val match = pattern.find(url)
+        if (match != null) {
+            return match.groupValues.getOrNull(1)
+        }
+    }
+    return null
 }
