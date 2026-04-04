@@ -3,12 +3,12 @@
  * Dynamically generates function URLs based on the current Firebase project
  */
 
+import { FIREBASE_REGION, getFunctionsBaseUrl } from './firebaseEmulators';
+
 const PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-const REGION = 'us-central1';
 
 export const getFunctionUrl = (functionName: string): string => {
-  // Cloud Run URL format: https://[function-name]-[hash].a.run.app
-  return `https://${REGION}-${PROJECT_ID}.cloudfunctions.net/${functionName}`;
+  return `${getFunctionsBaseUrl(PROJECT_ID || '', FIREBASE_REGION)}/${functionName}`;
 };
 
 export const FUNCTION_URLS = {
@@ -17,6 +17,8 @@ export const FUNCTION_URLS = {
   createExpressDashboardLink: getFunctionUrl('createExpressDashboardLink'),
   createOnboardingLink: getFunctionUrl('createOnboardingLink'),
   createPaymentIntent: getFunctionUrl('createPaymentIntent'),
+  exportGiftAidDeclarations: getFunctionUrl('exportGiftAidDeclarations'),
+  downloadGiftAidExportBatchFile: getFunctionUrl('downloadGiftAidExportBatchFile'),
   kioskLogin: getFunctionUrl('kioskLogin'),
   createUser: getFunctionUrl('createUser'),
   updateUser: getFunctionUrl('updateUser'),
