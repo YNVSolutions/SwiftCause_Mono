@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.swiftcause"
-        minSdk = 24
+        minSdk = 26  // Required by Stripe Terminal SDK for Tap to Pay
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -88,6 +88,11 @@ dependencies {
     
     // Stripe Payment SDK
     implementation(libs.stripe.android)
+    
+    // Stripe Terminal SDK (for Tap to Pay)
+    implementation(libs.stripe.terminal)
+    implementation(libs.stripe.terminal.ktx)
+    implementation(libs.stripe.terminal.taptopay)
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

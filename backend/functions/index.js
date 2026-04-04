@@ -41,6 +41,7 @@ const {verifySignupRecaptcha} = require("./handlers/signup");
 const {kioskLogin} = require("./handlers/kiosk");
 const {completeEmailVerification} = require("./handlers/verification");
 const {logAuthEvent} = require("./handlers/auth");
+const {createConnectionToken} = require("./handlers/terminal");
 
 // Export all functions (backwards compatible)
 exports.createUser = functions.https.onRequest(createUser);
@@ -101,6 +102,10 @@ exports.cancelRecurringSubscription = functions.https.onRequest(
 exports.updateSubscriptionPaymentMethod = functions.https.onRequest(
     {secrets: [stripeSecretKey]},
     updateSubscriptionPaymentMethod,
+);
+exports.createConnectionToken = functions.https.onRequest(
+    {secrets: [stripeSecretKey]},
+    createConnectionToken,
 );
 exports.createStripeAccountForNewOrg = createStripeAccountForNewOrg;
 exports.sendWelcomeEmailForNewOrg = sendWelcomeEmailForNewOrg;

@@ -207,11 +207,12 @@ const createKioskPaymentIntent = (req, res) => {
 
       if (!frequency || frequency === "once") {
         // One-time donation
+        // Support both card (manual entry via PaymentSheet) and card_present (Tap to Pay)
         const paymentIntent = await stripeClient.paymentIntents.create({
           amount,
           currency,
           customer: customer.id,
-          payment_method_types: ["card"],
+          payment_method_types: ["card", "card_present"],
           payment_method_options: {
             card: {
               request_three_d_secure: "automatic",

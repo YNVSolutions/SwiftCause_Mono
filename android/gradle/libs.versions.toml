@@ -17,6 +17,7 @@ lifecycleViewmodel = "2.10.0"
 datastorePreferences = "1.1.1"
 coil = "2.7.0"
 stripe = "20.49.0"
+stripeTerminal = "5.4.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -61,6 +62,11 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 
 # Stripe Payment SDK
 stripe-android = { group = "com.stripe", name = "stripe-android", version.ref = "stripe" }
+
+# Stripe Terminal SDK (for Tap to Pay)
+stripe-terminal = { group = "com.stripe", name = "stripeterminal", version.ref = "stripeTerminal" }
+stripe-terminal-ktx = { group = "com.stripe", name = "stripeterminal-ktx", version.ref = "stripeTerminal" }
+stripe-terminal-taptopay = { group = "com.stripe", name = "stripeterminal-taptopay", version.ref = "stripeTerminal" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
