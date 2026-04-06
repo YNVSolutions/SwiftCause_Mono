@@ -13,6 +13,7 @@ val ProgressGreen = Color(0xFF22c55e)
 val BackgroundWhite = Color(0xFFFFFFFF)
 val BackgroundGray = Color(0xFFF8FAF9)
 val CardBackground = Color(0xFFFFFFFF)
+val WarmWhite = Color(0xFFFFFBF7)
 
 // Text Colors
 val TextPrimary = Color(0xFF0A0A0A)

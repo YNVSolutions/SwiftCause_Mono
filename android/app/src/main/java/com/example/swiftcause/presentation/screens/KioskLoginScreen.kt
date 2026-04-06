@@ -6,16 +6,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -26,25 +21,20 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.swiftcause.domain.models.KioskSession
 import com.example.swiftcause.presentation.viewmodels.KioskLoginViewModel
 
 @Composable
 fun KioskLoginScreen(
     viewModel: KioskLoginViewModel = viewModel(),
-    onLoginSuccess: () -> Unit = {}
+    onLoginSuccess: (KioskSession) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
-    var showDebugScreen by remember { mutableStateOf(false) }
     
-    if (showDebugScreen) {
-        NetworkDebugScreen(onClose = { showDebugScreen = false })
-        return
-    }
-    
-    LaunchedEffect(uiState.isAuthenticated) {
-        if (uiState.isAuthenticated) {
-            onLoginSuccess()
+    LaunchedEffect(uiState.isAuthenticated, uiState.kioskSession) {
+        if (uiState.isAuthenticated && uiState.kioskSession != null) {
+            onLoginSuccess(uiState.kioskSession!!)
         }
     }
     
@@ -60,7 +50,7 @@ fun KioskLoginScreen(
                 // Success Screen
                 KioskSuccessScreen(
                     kioskName = uiState.kioskSession!!.kioskName,
-                    onContinue = onLoginSuccess
+                    onContinue = { onLoginSuccess(uiState.kioskSession!!) }
                 )
             } else {
                 // Login Form
@@ -86,37 +76,6 @@ fun KioskLoginScreen(
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // Network Status Indicator
-                    if (uiState.networkType.isNotEmpty()) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        ) {
-                            if (uiState.networkType == "None") {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = "No Network",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "No Internet Connection",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            } else {
-                                Text(
-                                    text = "Network: ${ uiState.networkType}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
@@ -223,18 +182,6 @@ fun KioskLoginScreen(
                         }
                     }
                     
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Debug Button (for troubleshooting)
-                    TextButton(
-                        onClick = { showDebugScreen = true },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "Network Diagnostics",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
                 }
             }
         }

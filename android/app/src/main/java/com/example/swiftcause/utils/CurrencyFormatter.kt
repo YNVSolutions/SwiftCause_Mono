@@ -45,4 +45,19 @@ object CurrencyFormatter {
             else -> "$currency $formattedAmount"
         }
     }
+    
+    /**
+     * Returns the currency symbol for a given currency code.
+     * 
+     * @param currency Currency code (USD, EUR, GBP)
+     * @return Currency symbol (e.g., "$", "€", "£")
+     */
+    fun getCurrencySymbol(currency: String): String {
+        return when (currency.uppercase()) {
+            "USD" -> "$"
+            "EUR" -> "€"
+            "GBP" -> "£"
+            else -> currency
+        }
+    }
 }

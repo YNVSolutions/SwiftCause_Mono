@@ -7,12 +7,10 @@ import com.example.swiftcause.data.api.RetrofitClient
 import com.example.swiftcause.data.repository.KioskRepository
 import com.example.swiftcause.domain.models.KioskSession
 import com.example.swiftcause.utils.FirebaseManager
-import com.example.swiftcause.utils.NetworkUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.net.UnknownHostException
 
 data class KioskLoginUiState(
     val kioskId: String = "",
@@ -20,8 +18,7 @@ data class KioskLoginUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val kioskSession: KioskSession? = null,
-    val isAuthenticated: Boolean = false,
-    val networkType: String = ""
+    val isAuthenticated: Boolean = false
 )
 
 class KioskLoginViewModel(application: Application) : AndroidViewModel(application) {
@@ -32,15 +29,6 @@ class KioskLoginViewModel(application: Application) : AndroidViewModel(applicati
     
     private val _uiState = MutableStateFlow(KioskLoginUiState())
     val uiState: StateFlow<KioskLoginUiState> = _uiState.asStateFlow()
-    
-    init {
-        checkNetworkStatus()
-    }
-    
-    private fun checkNetworkStatus() {
-        val networkType = NetworkUtils.getNetworkType(getApplication())
-        _uiState.value = _uiState.value.copy(networkType = networkType)
-    }
     
     fun updateKioskId(kioskId: String) {
         _uiState.value = _uiState.value.copy(
@@ -66,48 +54,36 @@ class KioskLoginViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
         
-        // Check network connectivity
-        if (!NetworkUtils.isNetworkAvailable(getApplication())) {
-            _uiState.value = currentState.copy(
-                error = "No internet connection. Please check your network settings and try again."
-            )
-            return
-        }
-        
         viewModelScope.launch {
-            _uiState.value = currentState.copy(isLoading = true, error = null)
-            
-            val result = repository.authenticateKiosk(
-                kioskId = currentState.kioskId.trim(),
-                accessCode = currentState.accessCode.trim()
-            )
-            
-            result.fold(
-                onSuccess = { kioskSession ->
-                    _uiState.value = KioskLoginUiState(
-                        kioskSession = kioskSession,
-                        isAuthenticated = true,
-                        isLoading = false,
-                        networkType = currentState.networkType
-                    )
-                },
-                onFailure = { exception ->
-                    val errorMessage = when (exception) {
-                        is UnknownHostException -> {
-                            "Cannot reach server. Please check:\n" +
-                            "• Internet connection is active\n" +
-                            "• Device can access external websites\n" +
-                            "• Emulator DNS is configured (see troubleshooting guide)"
-                        }
-                        else -> exception.message ?: "Authentication failed. Please try again."
+            try {
+                _uiState.value = currentState.copy(isLoading = true, error = null)
+                
+                val result = repository.authenticateKiosk(
+                    kioskId = currentState.kioskId.trim(),
+                    accessCode = currentState.accessCode.trim()
+                )
+                
+                result.fold(
+                    onSuccess = { kioskSession ->
+                        _uiState.value = KioskLoginUiState(
+                            kioskSession = kioskSession,
+                            isAuthenticated = true,
+                            isLoading = false
+                        )
+                    },
+                    onFailure = { exception ->
+                        _uiState.value = currentState.copy(
+                            isLoading = false,
+                            error = exception.message ?: "Authentication failed. Please try again."
+                        )
                     }
-                    
-                    _uiState.value = currentState.copy(
-                        isLoading = false,
-                        error = errorMessage
-                    )
-                }
-            )
+                )
+            } catch (e: Exception) {
+                _uiState.value = currentState.copy(
+                    isLoading = false,
+                    error = "Unexpected error: ${e.message}"
+                )
+            }
         }
     }
     

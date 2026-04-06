@@ -13,6 +13,23 @@
     <string name="donate">Donate</string>
     <string name="goal_amount">Goal %1$s</string>
     
+    <!-- Campaign Details Screen -->
+    <string name="back">Back</string>
+    <string name="community_support">Community support</string>
+    <string name="choose_amount">Choose an amount</string>
+    <string name="custom_amount">Custom</string>
+    <string name="secure_payment">Secure payment powered by Stripe</string>
+    <string name="make_recurring">Make this recurring</string>
+    <string name="monthly">Monthly</string>
+    <string name="quarterly">Quarterly</string>
+    <string name="yearly">Yearly</string>
+    <string name="enter_email">Enter your email</string>
+    <string name="enter_name">Your name (optional)</string>
+    <string name="about_campaign">About this campaign</string>
+    <string name="raised_of_goal">%1$s of %2$s</string>
+    <string name="watch_video">Watch Video</string>
+    <string name="play_video">Play video</string>
+    
     <!-- Common -->
     <string name="loading">Loading…</string>
     <string name="retry">Retry</string>
@@ -22,4 +39,8 @@
     <string name="content_description_campaign_image">Campaign cover image for %1$s</string>
     <string name="content_description_donate_button">Donate to %1$s</string>
     <string name="content_description_amount_button">Donate %1$s</string>
+    <string name="content_description_back_button">Go back to campaign list</string>
+    <string name="content_description_next_image">Show next image</string>
+    <string name="content_description_previous_image">Show previous image</string>
+    <string name="content_description_image_indicator">Image %1$d of %2$d</string>
 </resources>

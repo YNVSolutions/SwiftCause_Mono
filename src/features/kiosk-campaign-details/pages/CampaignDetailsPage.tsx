@@ -131,7 +131,7 @@ export const CampaignDetailsPage: React.FC<CampaignDetailsPageProps> = ({
     // If it contains HTML tags, render as HTML
     if (/<[^>]+>/.test(cleanHtml)) {
       return (
-        <div 
+        <div
           className="rich-text-content"
           dangerouslySetInnerHTML={{ __html: cleanHtml }}
         />
@@ -366,8 +366,8 @@ export const CampaignDetailsPage: React.FC<CampaignDetailsPageProps> = ({
       {/* Small screens: Natural page scroll with fixed donate controls */}
       <div className="lg:hidden">
         {/* Main content - scrolls naturally with the page */}
-        <div 
-          className="px-4 pt-14" 
+        <div
+          className="px-4 pt-14"
           style={{ paddingBottom: `${donationPanelHeight}px` }}
         >
           {/* Image Carousel */}
@@ -423,7 +423,7 @@ export const CampaignDetailsPage: React.FC<CampaignDetailsPageProps> = ({
       </div>
 
       {/* Fixed donate controls - only visible on mobile, positioned relative to viewport */}
-      <div 
+      <div
         ref={donationPanelRef}
         className="lg:hidden fixed bottom-0 left-0 right-0 z-20 bg-[#FFFBF7] backdrop-blur-md border-t border-gray-200 px-4 py-3 space-y-3 shadow-[0_-12px_32px_rgba(15,23,42,0.08)]"
       >

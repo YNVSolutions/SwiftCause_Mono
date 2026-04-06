@@ -24,9 +24,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.example.swiftcause.R
 import com.example.swiftcause.domain.models.Campaign
+import com.example.swiftcause.ui.components.SkeletonBox
 import com.example.swiftcause.ui.theme.*
 import com.example.swiftcause.utils.CurrencyFormatter
 
@@ -65,7 +69,7 @@ fun CampaignCard(
                     .height(245.dp)
                     .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
             ) {
-                AsyncImage(
+                SubcomposeAsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(campaign.coverImageUrl)
                         .crossfade(true)
@@ -75,10 +79,18 @@ fun CampaignCard(
                         campaign.title
                     ),
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    placeholder = painterResource(android.R.drawable.ic_menu_gallery),
-                    error = painterResource(android.R.drawable.ic_menu_gallery)
-                )
+                    contentScale = ContentScale.Crop
+                ) {
+                    val state = painter.state
+                    if (state is AsyncImagePainter.State.Loading || state is AsyncImagePainter.State.Empty) {
+                        SkeletonBox(
+                            modifier = Modifier.fillMaxSize(),
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                        )
+                    } else {
+                        SubcomposeAsyncImageContent()
+                    }
+                }
             }
             
             // Campaign Info

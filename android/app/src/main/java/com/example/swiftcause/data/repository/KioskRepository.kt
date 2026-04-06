@@ -13,19 +13,21 @@ class KioskRepository(
 ) {
     suspend fun authenticateKiosk(kioskId: String, accessCode: String): Result<KioskSession> {
         return try {
-            // Call the API
             val response = apiService.kioskLogin(
                 KioskLoginRequest(kioskId, accessCode)
             )
             
             if (!response.isSuccessful) {
-                val errorMsg = response.errorBody()?.string() ?: "Authentication failed"
+                val errorBody = response.errorBody()?.string()
+                val errorMsg = errorBody ?: "Authentication failed"
                 return Result.failure(Exception(errorMsg))
             }
             
             val loginResponse = response.body()
+            
             if (loginResponse == null || !loginResponse.success) {
-                return Result.failure(Exception(loginResponse?.error ?: "Invalid credentials"))
+                val error = loginResponse?.error ?: "Invalid credentials"
+                return Result.failure(Exception(error))
             }
             
             val token = loginResponse.token
@@ -36,7 +38,11 @@ class KioskRepository(
             }
             
             // Sign in with Firebase custom token
-            firebaseAuth.signInWithCustomToken(token).await()
+            try {
+                firebaseAuth.signInWithCustomToken(token).await()
+            } catch (e: Exception) {
+                return Result.failure(Exception("Firebase authentication failed: ${e.message}"))
+            }
             
             // Convert to domain model
             val kioskSession = kioskData.toDomainModel()
