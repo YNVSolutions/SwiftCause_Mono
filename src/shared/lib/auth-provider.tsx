@@ -14,6 +14,7 @@ import {
 import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { setDoc } from 'firebase/firestore'
 import { getFirestore } from 'firebase/firestore'
+import { isUsingFirebaseEmulators } from '@/shared/config/firebaseEmulators'
 
 const auth = getAuth()
 const firestore = getFirestore()
@@ -168,7 +169,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (firebaseUser) {
         try {
           // Get ID token result to check custom claims
-          await firebaseUser.getIdToken(true);
+          if (!isUsingFirebaseEmulators()) {
+            await firebaseUser.getIdToken(true);
+          }
           const decodedToken = await firebaseUser.getIdTokenResult();
         
         // Check if this is a kiosk user (UID starts with "kiosk:")
@@ -355,6 +358,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           'assign_campaigns',
           'view_donations',
           'export_donations',
+          'export_giftaid',
+          'download_giftaid_exports',
           'view_users',
           'create_user',
           'edit_user',

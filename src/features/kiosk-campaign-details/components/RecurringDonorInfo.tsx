@@ -22,17 +22,15 @@ export const RecurringDonorInfo: React.FC<RecurringDonorInfoProps> = ({
         <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
           <Mail className="w-3.5 h-3.5 text-white" />
         </div>
-        <p className="text-sm font-semibold text-blue-900">
-          Recurring donation details
-        </p>
+        <p className="text-sm font-semibold text-blue-900">Recurring donation details</p>
       </div>
       <p className="text-xs text-blue-800 mb-3">
         We need your email to manage your recurring donation and send receipts.
       </p>
-      
+
       <div className="space-y-2">
         <Label htmlFor="donor-email" className="text-sm font-medium text-slate-700">
-          Email address *
+          Email address <span className="text-red-500">*</span>
         </Label>
         <div className="relative">
           <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

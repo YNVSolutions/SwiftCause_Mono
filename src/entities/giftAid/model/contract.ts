@@ -14,23 +14,16 @@ export const GIFT_AID_DECLARATION_STATUS = [
 
 export type GiftAidDeclarationStatus = (typeof GIFT_AID_DECLARATION_STATUS)[number];
 
-export const GIFT_AID_HMRC_CLAIM_STATUS = [
-  'pending',
-  'included',
-  'submitted',
-  'paid',
-] as const;
+export const GIFT_AID_HMRC_CLAIM_STATUS = ['pending', 'included', 'submitted', 'paid'] as const;
 
 export type GiftAidHmrcClaimStatus = (typeof GIFT_AID_HMRC_CLAIM_STATUS)[number];
 
-export const GIFT_AID_OPERATIONAL_STATUS = [
-  'captured',
-  'exported',
-] as const;
+export const GIFT_AID_OPERATIONAL_STATUS = ['captured', 'exported'] as const;
 
 export type GiftAidOperationalStatus = (typeof GIFT_AID_OPERATIONAL_STATUS)[number];
 
 export interface GiftAidDetailsContractV2 {
+  donorTitle?: string;
   firstName: string;
   surname: string;
   houseNumber: string;
@@ -54,6 +47,7 @@ export interface GiftAidDetailsContractV2 {
 export interface GiftAidDeclarationContractV2 {
   id: string;
   donationId: string | null;
+  donorTitle?: string;
   donorFirstName: string;
   donorSurname: string;
   donorHouseNumber: string;

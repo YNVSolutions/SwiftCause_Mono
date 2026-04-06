@@ -6,7 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../shared/ui/car
 import { Checkbox } from '../../../shared/ui/checkbox';
 import { Textarea } from '../../../shared/ui/textarea';
 import { Switch } from '../../../shared/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../shared/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../shared/ui/select';
 import { Campaign } from '../../../entities/campaign';
 import { DonationFormData } from '../model';
 import { formatCurrencyFromMajor } from '../../../shared/lib/currencyFormatter';
@@ -21,10 +27,10 @@ interface DonationFormProps {
   maxCustomAmount?: number;
   suggestedAmounts?: number[];
   enableRecurring?: boolean;
-  recurringIntervals?: ("monthly" | "quarterly" | "yearly")[];
-  defaultRecurringInterval?: "monthly" | "quarterly" | "yearly";
-  requiredFields?: ("email" | "name" | "phone" | "address" | "message")[];
-  optionalFields?: ("email" | "name" | "phone" | "address" | "message")[];
+  recurringIntervals?: ('monthly' | 'quarterly' | 'yearly')[];
+  defaultRecurringInterval?: 'monthly' | 'quarterly' | 'yearly';
+  requiredFields?: ('email' | 'name' | 'phone' | 'address' | 'message')[];
+  optionalFields?: ('email' | 'name' | 'phone' | 'address' | 'message')[];
   enableAnonymousDonations?: boolean;
   enableGiftAid?: boolean;
 }
@@ -38,26 +44,26 @@ export function DonationForm({
   minCustomAmount = 1,
   maxCustomAmount = 10000,
   enableRecurring = false,
-  recurringIntervals = ["monthly", "yearly"],
-  defaultRecurringInterval = "monthly",
-  requiredFields = ["email"],
-  optionalFields = ["name", "message"],
+  recurringIntervals = ['monthly', 'yearly'],
+  defaultRecurringInterval = 'monthly',
+  requiredFields = ['email'],
+  optionalFields = ['name', 'message'],
   enableAnonymousDonations = true,
-  enableGiftAid = false
+  enableGiftAid = false,
 }: DonationFormProps) {
   const [formData, setFormData] = useState<DonationFormData>({
     amount: predefinedAmounts[0] || 10,
     isRecurring: false,
     recurringInterval: defaultRecurringInterval,
     isAnonymous: false,
-    isGiftAid: false
+    isGiftAid: false,
   });
 
   const [customAmount, setCustomAmount] = useState('');
   const [useCustomAmount, setUseCustomAmount] = useState(false);
 
   const handleAmountChange = (amount: number) => {
-    setFormData(prev => ({ ...prev, amount }));
+    setFormData((prev) => ({ ...prev, amount }));
     setUseCustomAmount(false);
   };
 
@@ -65,7 +71,7 @@ export function DonationForm({
     setCustomAmount(value);
     const amount = parseFloat(value);
     if (!isNaN(amount) && amount >= minCustomAmount && amount <= maxCustomAmount) {
-      setFormData(prev => ({ ...prev, amount }));
+      setFormData((prev) => ({ ...prev, amount }));
     }
   };
 
@@ -74,7 +80,7 @@ export function DonationForm({
     onSubmit(formData);
   };
 
-  type DonorField = "email" | "name" | "phone" | "address" | "message";
+  type DonorField = 'email' | 'name' | 'phone' | 'address' | 'message';
   const isFieldRequired = (field: DonorField) => requiredFields.includes(field);
   const isFieldOptional = (field: DonorField) => optionalFields.includes(field);
 
@@ -93,19 +99,19 @@ export function DonationForm({
                 <Button
                   key={amount}
                   type="button"
-                  variant={formData.amount === amount && !useCustomAmount ? "default" : "outline"}
+                  variant={formData.amount === amount && !useCustomAmount ? 'default' : 'outline'}
                   onClick={() => handleAmountChange(amount)}
                 >
                   {formatCurrencyFromMajor(amount)}
                 </Button>
               ))}
             </div>
-            
+
             {allowCustomAmount && (
               <div className="space-y-2">
                 <Button
                   type="button"
-                  variant={useCustomAmount ? "default" : "outline"}
+                  variant={useCustomAmount ? 'default' : 'outline'}
                   onClick={() => setUseCustomAmount(true)}
                 >
                   Custom Amount
@@ -131,20 +137,22 @@ export function DonationForm({
                 <Switch
                   id="recurring"
                   checked={formData.isRecurring}
-                  onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isRecurring: checked }))}
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({ ...prev, isRecurring: checked }))
+                  }
                 />
                 <Label htmlFor="recurring" className="cursor-pointer">
                   Make this a recurring donation
                 </Label>
               </div>
-              
+
               {formData.isRecurring && (
                 <div className="space-y-2">
                   <Label htmlFor="interval">Frequency</Label>
                   <Select
                     value={formData.recurringInterval}
-                    onValueChange={(value: "monthly" | "quarterly" | "yearly") => 
-                      setFormData(prev => ({ ...prev, recurringInterval: value }))
+                    onValueChange={(value: 'monthly' | 'quarterly' | 'yearly') =>
+                      setFormData((prev) => ({ ...prev, recurringInterval: value }))
                     }
                   >
                     <SelectTrigger id="interval">
@@ -159,11 +167,12 @@ export function DonationForm({
                     </SelectContent>
                   </Select>
                   <p className="text-sm text-muted-foreground">
-                    You will be charged {formatCurrencyFromMajor(formData.amount)} {
-                      formData.recurringInterval === "monthly" ? "every month" : 
-                      formData.recurringInterval === "yearly" ? "every year" : 
-                      "every quarter"
-                    }
+                    You will be charged {formatCurrencyFromMajor(formData.amount)}{' '}
+                    {formData.recurringInterval === 'monthly'
+                      ? 'every month'
+                      : formData.recurringInterval === 'yearly'
+                        ? 'every year'
+                        : 'every quarter'}
                   </p>
                 </div>
               )}
@@ -174,15 +183,19 @@ export function DonationForm({
           {!formData.isAnonymous && (
             <div className="space-y-4">
               <h3 className="text-lg font-medium">Donor Information</h3>
-              
+
               {isFieldRequired('email') && (
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
+                  <Label htmlFor="email">
+                    Email <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="email"
                     type="email"
                     value={formData.donorEmail || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, donorEmail: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, donorEmail: e.target.value }))
+                    }
                     required
                   />
                 </div>
@@ -194,7 +207,9 @@ export function DonationForm({
                   <Input
                     id="name"
                     value={formData.donorName || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, donorName: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, donorName: e.target.value }))
+                    }
                   />
                 </div>
               )}
@@ -206,7 +221,9 @@ export function DonationForm({
                     id="phone"
                     type="tel"
                     value={formData.donorPhone || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, donorPhone: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, donorPhone: e.target.value }))
+                    }
                   />
                 </div>
               )}
@@ -217,7 +234,9 @@ export function DonationForm({
                   <Textarea
                     id="message"
                     value={formData.donorMessage || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, donorMessage: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, donorMessage: e.target.value }))
+                    }
                     placeholder="Leave a message (optional)"
                   />
                 </div>
@@ -231,7 +250,9 @@ export function DonationForm({
               <Checkbox
                 id="anonymous"
                 checked={formData.isAnonymous}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isAnonymous: !!checked }))}
+                onCheckedChange={(checked) =>
+                  setFormData((prev) => ({ ...prev, isAnonymous: !!checked }))
+                }
               />
               <Label htmlFor="anonymous">Donate anonymously</Label>
             </div>
@@ -243,7 +264,9 @@ export function DonationForm({
               <Checkbox
                 id="giftAid"
                 checked={formData.isGiftAid}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isGiftAid: !!checked }))}
+                onCheckedChange={(checked) =>
+                  setFormData((prev) => ({ ...prev, isGiftAid: !!checked }))
+                }
               />
               <Label htmlFor="giftAid">I would like to add Gift Aid to my donation</Label>
             </div>

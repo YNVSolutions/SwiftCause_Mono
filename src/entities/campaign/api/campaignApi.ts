@@ -1,6 +1,91 @@
-import { collection, query, where, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
+import {
+  collection, query, where, getDocs, doc, getDoc,
+  addDoc, updateDoc, deleteDoc, orderBy,
+  limit, startAfter, DocumentSnapshot, QueryDocumentSnapshot,
+} from 'firebase/firestore';
 import { db } from '../../../shared/lib/firebase';
 import { Campaign } from '../model';
+import { PAGE_SIZE } from '../../../shared/lib/hooks/usePagination';
+
+export interface CampaignFilters {
+  status?: string;
+}
+
+export interface CampaignPage {
+  campaigns: Campaign[];
+  lastDoc: DocumentSnapshot | null;
+  hasNextPage: boolean;
+}
+
+/**
+ * Required Firestore composite indexes:
+ *
+ * Without filters:
+ *   Collection: campaigns
+ *   Fields: organizationId ASC, createdAt DESC, __name__ DESC
+ *
+ * With status filter:
+ *   Collection: campaigns
+ *   Fields: organizationId ASC, status ASC, createdAt DESC, __name__ DESC
+ */
+export async function fetchCampaignsPaginated(
+  organizationId: string,
+  cursor: DocumentSnapshot | null,
+  filters: CampaignFilters = {}
+): Promise<CampaignPage> {
+  const constraints: Parameters<typeof query>[1][] = [
+    where('organizationId', '==', organizationId),
+  ];
+
+  if (filters.status && filters.status !== 'all') {
+    constraints.push(where('status', '==', filters.status));
+  }
+
+  constraints.push(
+    orderBy('createdAt', 'desc'),
+    orderBy('__name__', 'desc'),
+    limit(PAGE_SIZE + 1),
+  );
+
+  if (cursor) {
+    constraints.push(startAfter(cursor));
+  }
+
+  const q = query(collection(db, 'campaigns'), ...constraints);
+
+  let snapshot;
+  try {
+    snapshot = await getDocs(q);
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    if (code !== 'failed-precondition') throw err;
+    if (filters.status && filters.status !== 'all') {
+      console.warn('fetchCampaignsPaginated: index not ready for filtered query, returning empty');
+      return { campaigns: [], lastDoc: null, hasNextPage: false };
+    }
+    const fallbackQ = query(
+      collection(db, 'campaigns'),
+      where('organizationId', '==', organizationId),
+      limit(PAGE_SIZE + 1),
+    );
+    snapshot = await getDocs(fallbackQ);
+  }
+
+  if (snapshot.empty) {
+    return { campaigns: [], lastDoc: null, hasNextPage: false };
+  }
+
+  const hasNextPage = snapshot.docs.length > PAGE_SIZE;
+  const docs: QueryDocumentSnapshot[] = hasNextPage
+    ? snapshot.docs.slice(0, PAGE_SIZE)
+    : snapshot.docs;
+
+  return {
+    campaigns: docs.map(d => ({ ...d.data(), id: d.id } as Campaign)),
+    lastDoc: docs[docs.length - 1] ?? null,
+    hasNextPage,
+  };
+}
 
 export const campaignApi = {
   // Get all campaigns

@@ -3,6 +3,8 @@ import { Screen, AdminSession, Permission, Kiosk } from "../../shared/types";
 import { DEFAULT_CAMPAIGN_CONFIG } from "../../shared/config";
 import { DocumentData, Timestamp } from "firebase/firestore";
 import { useCampaignManagement } from "../../shared/lib/hooks/useCampaignManagement";
+import { useCampaignsPaginated } from "../../shared/lib/hooks/useCampaignsPaginated";
+import { PaginationControls } from "../../shared/ui/PaginationControls";
 import { useOrganizationTags } from "../../shared/lib/hooks/useOrganizationTags";
 import { formatCurrency, formatCurrencyFromMajor } from "../../shared/lib/currencyFormatter";
 import { kioskApi } from "../../entities/kiosk/api";
@@ -1301,8 +1303,27 @@ const CampaignManagement = ({
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [errorDialogMessage, setErrorDialogMessage] = useState("");
 
-  const { campaigns, updateWithImage, createWithImage, remove, loading, uploadFile, refresh } =
+  const { campaigns: allCampaigns, updateWithImage, createWithImage, remove, loading, uploadFile, refresh } =
     useCampaignManagement(userSession.user.organizationId || "");
+
+  const {
+    campaigns,
+    loading: pagedLoading,
+    fetching,
+    pageNumber,
+    canGoNext,
+    canGoPrev,
+    goNext,
+    goPrev,
+    pageSize,
+    refresh: refreshPaged,
+  } = useCampaignsPaginated(userSession.user.organizationId || "");
+
+  // Invalidates both the management hook cache and the paginated query cache
+  const refreshAll = useCallback(() => {
+    refresh();
+    refreshPaged();
+  }, [refresh, refreshPaged]);
 
   const { organization, loading: orgLoading } = useOrganization(
     userSession.user.organizationId ?? null
@@ -1322,6 +1343,7 @@ const CampaignManagement = ({
         await remove(campaignToDelete.id);
         setIsDeleteDialogOpen(false);
         setCampaignToDelete(null);
+        refreshPaged();
         // Optionally, show a success toast or message
       } catch (error) {
         console.error("Error deleting campaign:", error);
@@ -1617,7 +1639,7 @@ const CampaignManagement = ({
       }
       
       // Upload gallery images if any were selected
-      let galleryImageUrls = [...newCampaignFormData.galleryImages];
+      const galleryImageUrls = [...newCampaignFormData.galleryImages];
       if (selectedNewCampaignGalleryFiles.length > 0) {
         for (const file of selectedNewCampaignGalleryFiles) {
           const uploadedUrl = await uploadFile(
@@ -1670,7 +1692,7 @@ const CampaignManagement = ({
       }
       
       // Reset form and close
-      refresh();
+      refreshAll();
       setIsNewCampaignFormOpen(false);
       setSelectedNewCampaignImageFile(null);
       setSelectedNewCampaignGalleryFiles([]);
@@ -1766,7 +1788,7 @@ const CampaignManagement = ({
       }
       
       // Upload gallery images if any were selected
-      let galleryImageUrls = [...newCampaignFormData.galleryImages];
+      const galleryImageUrls = [...newCampaignFormData.galleryImages];
       if (selectedNewCampaignGalleryFiles.length > 0) {
         for (const file of selectedNewCampaignGalleryFiles) {
           const uploadedUrl = await uploadFile(
@@ -1819,7 +1841,7 @@ const CampaignManagement = ({
       }
       
       // Reset form and close
-      refresh();
+      refreshAll();
       setIsNewCampaignFormOpen(false);
       setSelectedNewCampaignImageFile(null);
       setSelectedNewCampaignGalleryFiles([]);
@@ -1877,7 +1899,7 @@ const CampaignManagement = ({
       }
       
       // Upload gallery images if any were selected
-      let galleryImageUrls = [...editCampaignFormData.galleryImages];
+      const galleryImageUrls = [...editCampaignFormData.galleryImages];
       if (selectedEditCampaignGalleryFiles.length > 0) {
         for (const file of selectedEditCampaignGalleryFiles) {
           const uploadedUrl = await uploadFile(
@@ -1934,7 +1956,7 @@ const CampaignManagement = ({
       }
       
       // Reset form and close
-      refresh();
+      refreshAll();
       setIsEditCampaignFormOpen(false);
       setEditingCampaignForNewForm(null);
       setSelectedEditCampaignImageFile(null);
@@ -2007,7 +2029,7 @@ const CampaignManagement = ({
       }
       
       // Upload gallery images if any were selected
-      let galleryImageUrls = [...editCampaignFormData.galleryImages];
+      const galleryImageUrls = [...editCampaignFormData.galleryImages];
       if (selectedEditCampaignGalleryFiles.length > 0) {
         for (const file of selectedEditCampaignGalleryFiles) {
           const uploadedUrl = await uploadFile(
@@ -2064,7 +2086,7 @@ const CampaignManagement = ({
       }
   
       // Reset form and close
-      refresh();
+      refreshAll();
       setIsEditCampaignFormOpen(false);
       setEditingCampaignForNewForm(null);
       setSelectedEditCampaignImageFile(null);
@@ -2254,9 +2276,10 @@ const CampaignManagement = ({
     }
   };
 
-  // Filter campaigns first
+  // Client-side search, status, category, and date filters on current page
   const filteredCampaigns = campaigns.filter((campaign: any) => {
-    const matchesSearch = campaign.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = !searchTerm ||
+      campaign.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       campaign.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (Array.isArray(campaign.tags) && campaign.tags.some((tag: string) => tag.toLowerCase().includes(searchTerm.toLowerCase())));
     const matchesStatus = statusFilter === "all" || campaign.status === statusFilter;
@@ -2728,6 +2751,20 @@ const CampaignManagement = ({
                   <Ghost className="mx-auto h-12 w-12 text-gray-400 mb-3" />
                   <p className="text-lg font-medium mb-2">No Campaigns Found</p>
                   <p className="text-sm mb-4">No campaigns have been added to your organization yet.</p>
+                </div>
+              )}
+              {(filteredAndSortedCampaigns.length > 0 || canGoPrev) && (
+                <div className="border-t border-gray-100 px-4">
+                  <PaginationControls
+                    pageNumber={pageNumber}
+                    pageSize={pageSize}
+                    totalOnPage={filteredAndSortedCampaigns.length}
+                    canGoNext={canGoNext}
+                    canGoPrev={canGoPrev}
+                    onNext={goNext}
+                    onPrev={goPrev}
+                    loading={fetching}
+                  />
                 </div>
               )}
             </CardContent>

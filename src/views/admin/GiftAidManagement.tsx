@@ -1,68 +1,61 @@
-import { useState, useEffect, useCallback } from "react";
-import { Screen, AdminSession, Permission } from "../../shared/types";
-import { GiftAidDeclaration } from "../../entities/giftAid/model/types";
-import { giftAidApi } from "../../entities/giftAid/api";
-import { AdminLayout } from "./AdminLayout";
-import { db } from "../../shared/lib/firebase";
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Screen, AdminSession, Permission } from '../../shared/types';
+import { GiftAidDeclaration } from '../../entities/giftAid/model/types';
 import {
-  collection,
-  query,
-  where,
-  orderBy,
-  getDocs,
-} from "firebase/firestore";
-import { generateGiftAidCSV } from "../../entities/giftAid/lib/giftAidCsv";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../shared/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../../shared/ui/table";
-import { Badge } from "../../shared/ui/badge";
-import { Button } from "../../shared/ui/button";
-import { Input } from "../../shared/ui/input";
-import { Label } from "../../shared/ui/label";
-import { Skeleton } from "../../shared/ui/skeleton";
+  downloadGiftAidExportFile,
+  exportGiftAidDeclarations,
+  fetchGiftAidExportBatches,
+  giftAidApi,
+  type GiftAidExportBatch,
+  type GiftAidExportFile,
+} from '../../entities/giftAid/api';
+import { AdminLayout } from './AdminLayout';
+import { db } from '../../shared/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { Card, CardContent } from '../../shared/ui/card';
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '../../shared/ui/table';
+import { Badge } from '../../shared/ui/badge';
+import { Button } from '../../shared/ui/button';
+import { Input } from '../../shared/ui/input';
+import { Label } from '../../shared/ui/label';
+import { Skeleton } from '../../shared/ui/skeleton';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "../../shared/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../shared/ui/select";
+} from '../../shared/ui/dialog';
 import {
   Gift,
-  Search,
   Download,
   RefreshCw,
   Eye,
   CheckCircle,
   AlertCircle,
   Clock,
-  Target,
-  Banknote,
   Building2,
-} from "lucide-react";
-import { AdminSearchFilterHeader, AdminSearchFilterConfig } from "./components/AdminSearchFilterHeader";
-import { SortableTableHeader } from "./components/SortableTableHeader";
-import { useTableSort } from "../../shared/lib/hooks/useTableSort";
-import { formatCurrency } from "../../shared/lib/currencyFormatter";
+} from 'lucide-react';
+import {
+  AdminSearchFilterHeader,
+  AdminSearchFilterConfig,
+} from './components/AdminSearchFilterHeader';
+import { SortableTableHeader } from './components/SortableTableHeader';
+import { useTableSort } from '../../shared/lib/hooks/useTableSort';
+import { formatCurrency } from '../../shared/lib/currencyFormatter';
+import { useGiftAid } from '../../shared/lib/hooks/useGiftAid';
+import { PaginationControls } from '../../shared/ui/PaginationControls';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '../../shared/ui/pagination';
+import { useToast } from '../../shared/ui/ToastProvider';
+
+const EXPORT_HISTORY_PAGE_SIZE = 8;
 
 interface GiftAidManagementProps {
   onNavigate: (screen: Screen) => void;
@@ -71,270 +64,281 @@ interface GiftAidManagementProps {
   hasPermission: (permission: Permission) => boolean;
 }
 
-type GiftAidDocSnapshot = {
-  id: string;
-  data: () => Record<string, unknown>;
-};
-
-const mapGiftAidDeclaration = (doc: GiftAidDocSnapshot): GiftAidDeclaration => {
-  const data = doc.data();
-  return {
-    id: doc.id,
-    donationId: data.donationId,
-    donorFirstName: data.donorFirstName,
-    donorSurname: data.donorSurname,
-    donorHouseNumber: data.donorHouseNumber,
-    donorAddressLine1: data.donorAddressLine1,
-    donorAddressLine2: data.donorAddressLine2,
-    donorTown: data.donorTown,
-    donorPostcode: data.donorPostcode,
-    declarationText: data.declarationText,
-    declarationDate: data.declarationDate,
-    ukTaxpayerConfirmation: data.ukTaxpayerConfirmation,
-    donationAmount: data.donationAmount,
-    giftAidAmount: data.giftAidAmount,
-    campaignId: data.campaignId,
-    campaignTitle: data.campaignTitle,
-    organizationId: data.organizationId,
-    donationDate: data.donationDate,
-    taxYear: data.taxYear,
-    giftAidStatus: data.giftAidStatus,
-    operationalStatus: data.operationalStatus || "captured",
-    exportedAt: data.exportedAt || null,
-    exportBatchId: data.exportBatchId || null,
-    exportActorId: data.exportActorId || null,
-    charitySubmittedReference: data.charitySubmittedReference || null,
-    paidConfirmed: data.paidConfirmed || false,
-    paidConfirmedAt: data.paidConfirmedAt || null,
-    createdAt: data.createdAt,
-    updatedAt: data.updatedAt,
-  } as GiftAidDeclaration;
-};
-
-
-
 export function GiftAidManagement({
   onNavigate,
   onLogout,
   userSession,
   hasPermission,
 }: GiftAidManagementProps) {
-  const [giftAidDonations, setGiftAidDonations] = useState<GiftAidDeclaration[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { showToast } = useToast();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedDonation, setSelectedDonation] = useState<GiftAidDeclaration | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isUpdatingPaid, setIsUpdatingPaid] = useState(false);
-  const [charitySubmittedReference, setCharitySubmittedReference] = useState("");
+  const [exportBatches, setExportBatches] = useState<GiftAidExportBatch[]>([]);
+  const [exportHistoryLoading, setExportHistoryLoading] = useState(true);
+  const [exportHistoryPage, setExportHistoryPage] = useState(1);
+  const [activeDownloadKey, setActiveDownloadKey] = useState<string | null>(null);
+  const [charitySubmittedReference, setCharitySubmittedReference] = useState('');
   const [unresolvedReconciliationCount, setUnresolvedReconciliationCount] = useState(0);
+  const exportHistoryRef = useRef<HTMLDivElement | null>(null);
 
-  const getGiftAidSnapshot = useCallback(async (organizationId: string) => {
-    const giftAidRef = collection(db, "giftAidDeclarations");
-    const orderedQuery = query(
-      giftAidRef,
-      where("organizationId", "==", organizationId),
-      orderBy("donationDate", "desc")
-    );
-    const fallbackQuery = query(
-      giftAidRef,
-      where("organizationId", "==", organizationId)
-    );
+  const {
+    declarations: pagedDeclarations,
+    loading,
+    fetching,
+    error: hookError,
+    pageNumber,
+    canGoNext,
+    canGoPrev,
+    goNext,
+    goPrev,
+    pageSize,
+    refresh,
+  } = useGiftAid(userSession.user.organizationId, {
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+  });
 
-    try {
-      return await getDocs(orderedQuery);
-    } catch (err: any) {
-      if (err?.code !== "failed-precondition") throw err;
-      return await getDocs(fallbackQuery);
+  // Local error state for mutation errors (export, mark paid)
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const error = hookError ?? mutationError;
+
+  // Keep a local copy so mutations (export, mark paid) can update UI optimistically
+  const [localOverrides, setLocalOverrides] = useState<Record<string, Partial<GiftAidDeclaration>>>(
+    {},
+  );
+
+  const giftAidDonations: GiftAidDeclaration[] = pagedDeclarations.map((d) => ({
+    ...d,
+    ...(localOverrides[d.id] ?? {}),
+  }));
+  const canExportGiftAid = hasPermission('export_giftaid');
+  const canDownloadGiftAidBatchHistory = hasPermission('download_giftaid_exports');
+
+  const loadExportBatches = useCallback(
+    async (organizationId: string) => {
+      setExportHistoryLoading(true);
+      try {
+        const batches = await fetchGiftAidExportBatches(organizationId);
+        setExportBatches(batches);
+      } catch (batchError) {
+        console.error('Failed to load Gift Aid export batches:', batchError);
+        showToast('Failed to load Gift Aid export history.', 'warning');
+      } finally {
+        setExportHistoryLoading(false);
+      }
+    },
+    [showToast],
+  );
+
+  const syncExportHistory = useCallback(() => {
+    const organizationId = userSession.user.organizationId;
+    if (!organizationId || !canDownloadGiftAidBatchHistory) {
+      setExportBatches([]);
+      setExportHistoryPage(1);
+      setExportHistoryLoading(false);
+      return;
     }
-  }, []);
+
+    void loadExportBatches(organizationId);
+  }, [canDownloadGiftAidBatchHistory, loadExportBatches, userSession.user.organizationId]);
 
   const getUnresolvedReconciliationCount = useCallback(async (organizationId: string) => {
-    const issuesRef = collection(db, "giftAidReconciliationIssues");
+    const issuesRef = collection(db, 'giftAidReconciliationIssues');
     const issuesQuery = query(
       issuesRef,
-      where("organizationId", "==", organizationId),
-      where("resolved", "==", false)
+      where('organizationId', '==', organizationId),
+      where('resolved', '==', false),
     );
     const snapshot = await getDocs(issuesQuery);
     return snapshot.size;
   }, []);
 
-  // Fetch Gift Aid declarations from Firebase
+  // Fetch unresolved reconciliation count on mount
   useEffect(() => {
     const organizationId = userSession.user.organizationId;
-    if (!organizationId) {
-      setError("No organization ID found");
-      setLoading(false);
-      return;
-    }
+    if (!organizationId) return;
+    getUnresolvedReconciliationCount(organizationId)
+      .then(setUnresolvedReconciliationCount)
+      .catch(console.error);
+  }, [getUnresolvedReconciliationCount, userSession.user.organizationId]);
 
-    const fetchGiftAidDeclarations = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  useEffect(() => {
+    syncExportHistory();
+  }, [syncExportHistory]);
 
-        const querySnapshot = await getGiftAidSnapshot(organizationId);
-        const declarations: GiftAidDeclaration[] = querySnapshot.docs
-          .map(mapGiftAidDeclaration)
-          .sort((a, b) => {
-            // Sort by donation date, newest first
-            const dateA = a.donationDate ? new Date(a.donationDate).getTime() : 0;
-            const dateB = b.donationDate ? new Date(b.donationDate).getTime() : 0;
-            return dateB - dateA;
-          });
-
-        setGiftAidDonations(declarations);
-        const unresolvedCount = await getUnresolvedReconciliationCount(organizationId);
-        setUnresolvedReconciliationCount(unresolvedCount);
-        setError(null);
-      } catch (err: any) {
-        console.error("Error fetching Gift Aid declarations:", err);
-        // Handle different types of errors gracefully
-        if (err.code === 'permission-denied') {
-          setError("Permission denied. Please check your access rights.");
-        } else if (err.code === 'failed-precondition') {
-          setError("Database index required. Please contact your administrator.");
-        } else if (err.code === 'not-found') {
-          // Collection doesn't exist yet, which is fine
-          setGiftAidDonations([]);
-          setError(null);
-        } else {
-          // For development, show a more helpful error message
-          console.log("Full error details:", err);
-          setError(`Failed to load Gift Aid declarations: ${err.message || 'Unknown error'}`);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchGiftAidDeclarations();
-  }, [getGiftAidSnapshot, getUnresolvedReconciliationCount, userSession.user.organizationId]);
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(exportBatches.length / EXPORT_HISTORY_PAGE_SIZE));
+    setExportHistoryPage((currentPage) => Math.min(currentPage, totalPages));
+  }, [exportBatches]);
 
   // Configuration for AdminSearchFilterHeader
   const searchFilterConfig: AdminSearchFilterConfig = {
     filters: [
       {
-        key: "statusFilter",
-        label: "Status",
-        type: "select",
+        key: 'statusFilter',
+        label: 'Status',
+        type: 'select',
         options: [
-          { label: "Captured", value: "captured" },
-          { label: "Exported", value: "exported" }
-        ]
-      }
-    ]
+          { label: 'Captured', value: 'captured' },
+          { label: 'Exported', value: 'exported' },
+        ],
+      },
+    ],
   };
 
   const filterValues = {
-    statusFilter
+    statusFilter,
   };
 
-  const handleFilterChange = (key: string, value: any) => {
-    if (key === "statusFilter") {
+  const handleFilterChange = (key: string, value: string) => {
+    if (key === 'statusFilter') {
       setStatusFilter(value);
     }
   };
 
-  // Filter donations first
-  const filteredDonationsData = giftAidDonations.filter((donation) => {
-    const donorName = `${donation.donorFirstName} ${donation.donorSurname}`.trim();
-    const matchesSearch = 
-      donorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (donation.campaignTitle || "").toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || donation.operationalStatus === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  }).map((donation) => ({
-    ...donation,
-    donationDateTs: donation.donationDate ? new Date(donation.donationDate).getTime() || 0 : 0,
-  }));
+  // Client-side search on current page — status filter is server-side via useGiftAid
+  const filteredDonationsData = giftAidDonations
+    .filter((donation) => {
+      const donorName = `${donation.donorFirstName} ${donation.donorSurname}`.trim();
+      return (
+        !searchTerm ||
+        donorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (donation.campaignTitle || '').toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    })
+    .map((donation) => ({
+      ...donation,
+      donationDateTs: donation.donationDate ? new Date(donation.donationDate).getTime() || 0 : 0,
+    }));
 
   // Use sorting hook
-  const { sortedData: filteredDonations, sortKey, sortDirection, handleSort } = useTableSort({
+  const {
+    sortedData: filteredDonations,
+    sortKey,
+    sortDirection,
+    handleSort,
+  } = useTableSort({
     data: filteredDonationsData,
     defaultSortKey: 'donationDateTs',
     defaultSortDirection: 'desc',
   });
 
+  const paginatedExportBatches = exportBatches.slice(
+    (exportHistoryPage - 1) * EXPORT_HISTORY_PAGE_SIZE,
+    exportHistoryPage * EXPORT_HISTORY_PAGE_SIZE,
+  );
+  const canGoExportHistoryNext =
+    exportHistoryPage * EXPORT_HISTORY_PAGE_SIZE < exportBatches.length;
+  const canGoExportHistoryPrev = exportHistoryPage > 1;
+
+  const goToNextExportHistoryPage = () => {
+    if (!canGoExportHistoryNext) return;
+    setExportHistoryPage((currentPage) => currentPage + 1);
+  };
+
+  const goToPrevExportHistoryPage = () => {
+    if (!canGoExportHistoryPrev) return;
+    setExportHistoryPage((currentPage) => Math.max(1, currentPage - 1));
+  };
+
   const getStatusBadge = (status: string, paidConfirmed?: boolean) => {
     if (paidConfirmed) {
-      return <Badge variant="outline" className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20"><CheckCircle className="w-3 h-3 mr-1" />Paid Confirmed</Badge>;
+      return (
+        <Badge variant="outline" className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20">
+          <CheckCircle className="w-3 h-3 mr-1" />
+          Paid Confirmed
+        </Badge>
+      );
     }
     switch (status) {
-      case "captured":
-        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200"><Clock className="w-3 h-3 mr-1" />Captured</Badge>;
-      case "exported":
-        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><Download className="w-3 h-3 mr-1" />Exported</Badge>;
+      case 'captured':
+        return (
+          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+            <Clock className="w-3 h-3 mr-1" />
+            Captured
+          </Badge>
+        );
+      case 'exported':
+        return (
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+            <Download className="w-3 h-3 mr-1" />
+            Exported
+          </Badge>
+        );
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
   // Total gift aid amount for donations shown in the table (filtered donations)
-  const totalGiftAidPending = filteredDonations
-    .reduce((sum, d) => sum + (d.giftAidAmount || 0), 0);
+  const totalGiftAidPending = filteredDonations.reduce((sum, d) => sum + (d.giftAidAmount || 0), 0);
 
   // Total gift aid amount for all donations (regardless of status)
-  const totalGiftAidClaimed = giftAidDonations
-    .reduce((sum, d) => sum + (d.giftAidAmount || 0), 0);
+  const totalGiftAidClaimed = giftAidDonations.reduce((sum, d) => sum + (d.giftAidAmount || 0), 0);
 
   const handleViewDetails = (donation: GiftAidDeclaration) => {
     setSelectedDonation(donation);
-    setCharitySubmittedReference(donation.charitySubmittedReference || "");
+    setCharitySubmittedReference(donation.charitySubmittedReference || '');
     setShowDetailsDialog(true);
   };
 
   const handleExportData = async () => {
-    if (filteredDonations.length === 0) return;
+    if (!userSession.user.organizationId || !canExportGiftAid) return;
 
     setIsExporting(true);
-    setError(null);
-
-    // Use HMRC-compliant CSV generation
-    const csvContent = generateGiftAidCSV(filteredDonations);
-    
-    // Create and download the CSV file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'gift-aid-declarations.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    const exportBatchId = `exp_${Date.now()}`;
-    const exportActorId = userSession.user.id;
+    setMutationError(null);
 
     try {
-      await Promise.all(
-        filteredDonations.map((donation) =>
-          giftAidApi.markDeclarationExported(donation.id, exportBatchId, exportActorId)
-        )
-      );
-      setGiftAidDonations((prev) =>
-        prev.map((donation) =>
-          filteredDonations.some((d) => d.id === donation.id)
-            ? {
-                ...donation,
-                operationalStatus: "exported",
-                exportedAt: new Date().toISOString(),
-                exportBatchId,
-                exportActorId,
-              }
-            : donation
-        )
+      const exportResult = await exportGiftAidDeclarations(userSession.user.organizationId);
+
+      if (exportResult.empty) {
+        showToast(
+          exportResult.message || 'No captured Gift Aid declarations were available to export.',
+          'info',
+        );
+        return;
+      }
+
+      if (!exportResult.batchId) {
+        throw new Error('Export completed but no batch id was returned.');
+      }
+
+      if (exportResult.hmrcFile) {
+        await downloadGiftAidExportFile(exportResult.batchId, 'hmrc', exportResult.hmrcFile);
+      }
+
+      if (exportResult.internalFile) {
+        try {
+          await downloadGiftAidExportFile(
+            exportResult.batchId,
+            'internal',
+            exportResult.internalFile,
+          );
+        } catch (downloadError) {
+          console.error('Failed to download internal Gift Aid export:', downloadError);
+          showToast('Export succeeded, but the internal CSV download failed.', 'warning');
+        }
+      }
+
+      setLocalOverrides({});
+      refresh();
+      setExportHistoryPage(1);
+      await loadExportBatches(userSession.user.organizationId);
+      showToast(
+        `Exported ${exportResult.rowCount} Gift Aid declarations in batch ${exportResult.batchId}.`,
+        'success',
       );
     } catch (exportError) {
-      console.error("Failed to mark declarations as exported:", exportError);
-      setError("CSV downloaded, but failed to update export tracking on some declarations.");
+      console.error('Failed to export Gift Aid declarations:', exportError);
+      const message =
+        exportError instanceof Error
+          ? exportError.message
+          : 'Failed to export Gift Aid declarations.';
+      setMutationError(message);
+      showToast(message, 'error');
     } finally {
       setIsExporting(false);
     }
@@ -344,79 +348,100 @@ export function GiftAidManagement({
     if (!selectedDonation) return;
 
     setIsUpdatingPaid(true);
-    setError(null);
+    setMutationError(null);
     try {
       await giftAidApi.markDeclarationPaidConfirmed(
         selectedDonation.id,
-        charitySubmittedReference.trim() || undefined
+        charitySubmittedReference.trim() || undefined,
       );
       const paidConfirmedAt = new Date().toISOString();
-      setGiftAidDonations((prev) =>
-        prev.map((donation) =>
-          donation.id === selectedDonation.id
-            ? {
-                ...donation,
-                paidConfirmed: true,
-                paidConfirmedAt,
-                charitySubmittedReference: charitySubmittedReference.trim() || null,
-              }
-            : donation
-        )
-      );
-      setSelectedDonation((prev) =>
-        prev
-          ? {
-              ...prev,
-              paidConfirmed: true,
-              paidConfirmedAt,
-              charitySubmittedReference: charitySubmittedReference.trim() || null,
-            }
-          : prev
-      );
+      const override = {
+        paidConfirmed: true,
+        paidConfirmedAt,
+        charitySubmittedReference: charitySubmittedReference.trim() || null,
+      };
+      setLocalOverrides((prev) => ({
+        ...prev,
+        [selectedDonation.id]: { ...prev[selectedDonation.id], ...override },
+      }));
+      setSelectedDonation((prev) => (prev ? { ...prev, ...override } : prev));
     } catch (markError) {
-      console.error("Failed to mark declaration as paid confirmed:", markError);
-      setError("Failed to mark declaration as paid confirmed.");
+      console.error('Failed to mark declaration as paid confirmed:', markError);
+      setMutationError('Failed to mark declaration as paid confirmed.');
     } finally {
       setIsUpdatingPaid(false);
     }
   };
 
-  const handleRefresh = async () => {
-    const organizationId = userSession.user.organizationId;
-    if (!organizationId) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const querySnapshot = await getGiftAidSnapshot(organizationId);
-      const declarations: GiftAidDeclaration[] = querySnapshot.docs
-        .map(mapGiftAidDeclaration)
-        .sort((a, b) => {
-          // Sort by donation date, newest first
-          const dateA = a.donationDate ? new Date(a.donationDate).getTime() : 0;
-          const dateB = b.donationDate ? new Date(b.donationDate).getTime() : 0;
-          return dateB - dateA;
-        });
-
-      setGiftAidDonations(declarations);
-      const unresolvedCount = await getUnresolvedReconciliationCount(organizationId);
-      setUnresolvedReconciliationCount(unresolvedCount);
-    } catch (err) {
-      console.error("Error refreshing Gift Aid declarations:", err);
-      setError("Failed to refresh Gift Aid declarations");
-    } finally {
-      setLoading(false);
+  const handleRefresh = () => {
+    setMutationError(null);
+    setLocalOverrides({});
+    refresh();
+    if (userSession.user.organizationId && canDownloadGiftAidBatchHistory) {
+      setExportHistoryPage(1);
+      void loadExportBatches(userSession.user.organizationId);
     }
   };
 
+  const handleDownloadBatchFile = async (
+    batchId: string,
+    fileKind: 'hmrc' | 'internal',
+    file: GiftAidExportFile | null | undefined,
+  ) => {
+    if (!canDownloadGiftAidBatchHistory) {
+      showToast('You do not have permission to download Gift Aid export batches.', 'warning');
+      return;
+    }
+
+    if (!file) {
+      showToast('This export file is unavailable for download.', 'warning');
+      return;
+    }
+
+    const downloadKey = `${batchId}:${fileKind}`;
+    setActiveDownloadKey(downloadKey);
+    try {
+      await downloadGiftAidExportFile(batchId, fileKind, file);
+    } catch (downloadError) {
+      console.error(`Failed to download ${fileKind} Gift Aid export:`, downloadError);
+      showToast(
+        'The stored export file could not be downloaded. It may have been removed from storage.',
+        'error',
+      );
+    } finally {
+      setActiveDownloadKey(null);
+    }
+  };
+
+  const formatBatchTimestamp = (value?: string) => {
+    if (!value) return 'N/A';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handleViewExportHistory = () => {
+    if (!canDownloadGiftAidBatchHistory) return;
+    exportHistoryRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+    exportHistoryRef.current?.focus({ preventScroll: true });
+  };
+
   // Check permissions
-  if (!hasPermission("view_donations")) {
+  if (!hasPermission('view_donations')) {
     return (
-      <AdminLayout 
-        onNavigate={onNavigate} 
-        onLogout={onLogout} 
-        userSession={userSession} 
+      <AdminLayout
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        userSession={userSession}
         hasPermission={hasPermission}
         activeScreen="admin-gift-aid"
       >
@@ -428,7 +453,8 @@ export function GiftAidManagement({
                 <p className="font-medium">Access Denied</p>
               </div>
               <p className="text-red-700 mt-2">
-                You don't have permission to view Gift Aid donations. Please contact your administrator.
+                You don't have permission to view Gift Aid donations. Please contact your
+                administrator.
               </p>
             </CardContent>
           </Card>
@@ -444,7 +470,7 @@ export function GiftAidManagement({
       userSession={userSession}
       hasPermission={hasPermission}
       activeScreen="admin-gift-aid"
-      headerTitle={(
+      headerTitle={
         <div className="flex flex-col">
           {userSession.user.organizationName && (
             <div className="flex items-center gap-1.5 mb-1">
@@ -454,27 +480,44 @@ export function GiftAidManagement({
               </span>
             </div>
           )}
-          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">
-            Gift Aid
-          </h1>
+          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">Gift Aid</h1>
         </div>
-      )}
+      }
       headerSubtitle="Manage and track Gift Aid eligible donations for tax reclaim"
       headerSearchPlaceholder="Search by donor name or campaign..."
       headerSearchValue={searchTerm}
       onHeaderSearchChange={setSearchTerm}
-      headerTopRightActions={(
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-2xl border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-5"
-          onClick={handleExportData}
-          disabled={isExporting || filteredDonations.length === 0}
-        >
-          <Download className="h-4 w-4 sm:hidden" />
-          <span className="hidden sm:inline">{isExporting ? "Exporting..." : "Export & Track"}</span>
-        </Button>
-      )}
+      headerTopRightActions={
+        canExportGiftAid || canDownloadGiftAidBatchHistory ? (
+          <div className="flex items-center gap-2">
+            {canDownloadGiftAidBatchHistory ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-2xl border-[#064e3b]/20 bg-white/70 text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-5"
+                onClick={handleViewExportHistory}
+              >
+                <Clock className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">View History</span>
+              </Button>
+            ) : null}
+            {canExportGiftAid ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-2xl border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-5"
+                onClick={handleExportData}
+                disabled={isExporting || !userSession.user.organizationId}
+              >
+                <Download className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">
+                  {isExporting ? 'Exporting...' : 'Export & Track'}
+                </span>
+              </Button>
+            ) : null}
+          </div>
+        ) : null
+      }
     >
       <div className="px-6 lg:px-8 pt-12 pb-8 space-y-6 sm:space-y-8">
         {/* Error Alert */}
@@ -497,7 +540,7 @@ export function GiftAidManagement({
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Gift Aid (Shown)</p>
                   <p className="text-xl sm:text-2xl font-bold text-yellow-600">
-                    {loading ? "..." : formatCurrency(totalGiftAidPending)}
+                    {loading ? '...' : formatCurrency(totalGiftAidPending)}
                   </p>
                 </div>
                 <div className="h-10 w-10 sm:h-12 sm:w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
@@ -513,7 +556,7 @@ export function GiftAidManagement({
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Gift Aid</p>
                   <p className="text-xl sm:text-2xl font-bold text-[#064e3b]">
-                    {loading ? "..." : formatCurrency(totalGiftAidClaimed)}
+                    {loading ? '...' : formatCurrency(totalGiftAidClaimed)}
                   </p>
                 </div>
                 <div className="h-10 w-10 sm:h-12 sm:w-12 bg-[#064e3b]/10 rounded-lg flex items-center justify-center">
@@ -529,7 +572,7 @@ export function GiftAidManagement({
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Donations</p>
                   <p className="text-xl sm:text-2xl font-bold text-indigo-600">
-                    {loading ? "..." : giftAidDonations.length}
+                    {loading ? '...' : giftAidDonations.length}
                   </p>
                 </div>
                 <div className="h-10 w-10 sm:h-12 sm:w-12 bg-indigo-100 rounded-lg flex items-center justify-center">
@@ -545,7 +588,7 @@ export function GiftAidManagement({
                 <div>
                   <p className="text-sm font-medium text-gray-600">Reconciliation Issues</p>
                   <p className="text-xl sm:text-2xl font-bold text-red-600">
-                    {loading ? "..." : unresolvedReconciliationCount}
+                    {loading ? '...' : unresolvedReconciliationCount}
                   </p>
                 </div>
                 <div className="h-10 w-10 sm:h-12 sm:w-12 bg-red-100 rounded-lg flex items-center justify-center">
@@ -569,162 +612,577 @@ export function GiftAidManagement({
               aria-label="Refresh"
               className="border-[#064e3b]/20 text-[#064e3b] hover:bg-[#064e3b]/10 hover:text-[#064e3b] hover:border-[#064e3b]/30"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""} sm:mr-2`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''} sm:mr-2`} />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
           }
         />
 
+        {canDownloadGiftAidBatchHistory ? (
+          <div
+            ref={exportHistoryRef}
+            tabIndex={-1}
+            className="scroll-mt-24 rounded-2xl focus:outline-none"
+          >
+            <Card className="overflow-hidden">
+              <CardContent className="p-0">
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4 sm:px-6">
+                  <div>
+                    <h2 className="text-base font-semibold text-slate-900">Export History</h2>
+                    <p className="text-sm text-gray-500">
+                      Re-download previous HMRC and internal Gift Aid export batches.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="batch"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3"
+                        >
+                          Batch
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="created"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3"
+                        >
+                          Created
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="rows"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3"
+                        >
+                          Rows
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="actor"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3"
+                        >
+                          Exported By
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="status"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3"
+                        >
+                          Status
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="downloads"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3"
+                        >
+                          Downloads
+                        </SortableTableHeader>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {exportHistoryLoading ? (
+                        Array.from({ length: 3 }).map((_, index) => (
+                          <TableRow key={`export-history-skeleton-${index}`}>
+                            <TableCell className="p-3">
+                              <Skeleton className="h-5 w-32" />
+                            </TableCell>
+                            <TableCell className="p-3">
+                              <Skeleton className="h-5 w-36" />
+                            </TableCell>
+                            <TableCell className="p-3">
+                              <Skeleton className="h-5 w-12" />
+                            </TableCell>
+                            <TableCell className="p-3">
+                              <Skeleton className="h-5 w-32" />
+                            </TableCell>
+                            <TableCell className="p-3">
+                              <Skeleton className="h-5 w-20" />
+                            </TableCell>
+                            <TableCell className="p-3">
+                              <Skeleton className="h-9 w-40" />
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : exportBatches.length > 0 ? (
+                        paginatedExportBatches.map((batch) => (
+                          <TableRow key={batch.id}>
+                            <TableCell className="p-3">
+                              <div className="font-medium text-slate-900">
+                                {batch.batchId || batch.id}
+                              </div>
+                            </TableCell>
+                            <TableCell className="p-3 text-sm text-gray-700">
+                              {formatBatchTimestamp(batch.completedAt || batch.createdAt)}
+                            </TableCell>
+                            <TableCell className="p-3 text-sm text-gray-700">
+                              {batch.rowCount ?? 0}
+                            </TableCell>
+                            <TableCell className="p-3 text-sm text-gray-700">
+                              {batch.createdByName || batch.createdByEmail || 'Unknown'}
+                            </TableCell>
+                            <TableCell className="p-3">
+                              {batch.status === 'completed' ? (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20"
+                                >
+                                  <CheckCircle className="mr-1 h-3 w-3" />
+                                  Completed
+                                </Badge>
+                              ) : batch.status === 'failed' ? (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-red-50 text-red-700 border-red-200"
+                                >
+                                  <AlertCircle className="mr-1 h-3 w-3" />
+                                  Failed
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-yellow-50 text-yellow-700 border-yellow-200"
+                                >
+                                  <Clock className="mr-1 h-3 w-3" />
+                                  {batch.status || 'Pending'}
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="p-3">
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={
+                                    !canDownloadGiftAidBatchHistory ||
+                                    !batch.hmrcFile ||
+                                    activeDownloadKey === `${batch.id}:hmrc`
+                                  }
+                                  onClick={() =>
+                                    void handleDownloadBatchFile(batch.id, 'hmrc', batch.hmrcFile)
+                                  }
+                                >
+                                  <Download className="mr-2 h-4 w-4" />
+                                  {activeDownloadKey === `${batch.id}:hmrc`
+                                    ? 'Downloading...'
+                                    : 'HMRC CSV'}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={
+                                    !canDownloadGiftAidBatchHistory ||
+                                    !batch.internalFile ||
+                                    activeDownloadKey === `${batch.id}:internal`
+                                  }
+                                  onClick={() =>
+                                    void handleDownloadBatchFile(
+                                      batch.id,
+                                      'internal',
+                                      batch.internalFile,
+                                    )
+                                  }
+                                >
+                                  <Download className="mr-2 h-4 w-4" />
+                                  {activeDownloadKey === `${batch.id}:internal`
+                                    ? 'Downloading...'
+                                    : 'Internal CSV'}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="p-6 text-center text-sm text-gray-500">
+                            No Gift Aid export batches yet.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="space-y-3 p-4 md:hidden">
+                  {exportHistoryLoading ? (
+                    Array.from({ length: 2 }).map((_, index) => (
+                      <Card
+                        key={`export-history-mobile-skeleton-${index}`}
+                        className="border border-gray-100 shadow-sm"
+                      >
+                        <CardContent className="space-y-3 p-4">
+                          <Skeleton className="h-5 w-28" />
+                          <Skeleton className="h-4 w-40" />
+                          <Skeleton className="h-9 w-full" />
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : exportBatches.length > 0 ? (
+                    paginatedExportBatches.map((batch) => (
+                      <Card key={batch.id} className="border border-gray-100 shadow-sm">
+                        <CardContent className="space-y-3 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold text-slate-900">
+                                {batch.batchId || batch.id}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {formatBatchTimestamp(batch.completedAt || batch.createdAt)}
+                              </div>
+                            </div>
+                            <div>
+                              {batch.status === 'completed' ? (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20"
+                                >
+                                  Completed
+                                </Badge>
+                              ) : batch.status === 'failed' ? (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-red-50 text-red-700 border-red-200"
+                                >
+                                  Failed
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-yellow-50 text-yellow-700 border-yellow-200"
+                                >
+                                  {batch.status || 'Pending'}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <p className="text-gray-500">Rows</p>
+                              <p className="font-medium text-slate-900">{batch.rowCount ?? 0}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Exported By</p>
+                              <p className="font-medium text-slate-900">
+                                {batch.createdByName || batch.createdByEmail || 'Unknown'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={
+                                !canDownloadGiftAidBatchHistory ||
+                                !batch.hmrcFile ||
+                                activeDownloadKey === `${batch.id}:hmrc`
+                              }
+                              onClick={() =>
+                                void handleDownloadBatchFile(batch.id, 'hmrc', batch.hmrcFile)
+                              }
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              {activeDownloadKey === `${batch.id}:hmrc`
+                                ? 'Downloading...'
+                                : 'HMRC CSV'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={
+                                !canDownloadGiftAidBatchHistory ||
+                                !batch.internalFile ||
+                                activeDownloadKey === `${batch.id}:internal`
+                              }
+                              onClick={() =>
+                                void handleDownloadBatchFile(
+                                  batch.id,
+                                  'internal',
+                                  batch.internalFile,
+                                )
+                              }
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              {activeDownloadKey === `${batch.id}:internal`
+                                ? 'Downloading...'
+                                : 'Internal CSV'}
+                            </Button>
+                          </div>
+
+                          {batch.status === 'failed' && batch.failureMessage ? (
+                            <p className="text-sm text-red-600">{batch.failureMessage}</p>
+                          ) : null}
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                      No Gift Aid export batches yet.
+                    </div>
+                  )}
+                </div>
+
+                {!exportHistoryLoading && exportBatches.length > EXPORT_HISTORY_PAGE_SIZE ? (
+                  <div className="border-t border-gray-100 px-4 py-4 sm:px-6">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            href="#"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              goToPrevExportHistoryPage();
+                            }}
+                            className={
+                              !canGoExportHistoryPrev ? 'pointer-events-none opacity-50' : ''
+                            }
+                          />
+                        </PaginationItem>
+                        <PaginationItem>
+                          <PaginationLink
+                            href="#"
+                            isActive
+                            size="default"
+                            onClick={(event) => event.preventDefault()}
+                          >
+                            Page {exportHistoryPage}
+                          </PaginationLink>
+                        </PaginationItem>
+                        <PaginationItem>
+                          <PaginationNext
+                            href="#"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              goToNextExportHistoryPage();
+                            }}
+                            className={
+                              !canGoExportHistoryNext ? 'pointer-events-none opacity-50' : ''
+                            }
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
+        ) : null}
+
         {/* Donations Table - Desktop */}
         <Card className="overflow-hidden hidden md:block">
           <CardContent className="p-0">
             <Table className="table-fixed">
-                <TableHeader>
-                  <TableRow>
-                    <SortableTableHeader 
-                      sortKey="donorName" 
-                      currentSortKey={sortKey} 
-                      currentSortDirection={sortDirection} 
-                      onSort={handleSort}
-                      className="p-3 w-[22%]"
-                    >
-                      Donor
-                    </SortableTableHeader>
-                    <SortableTableHeader 
-                      sortKey="campaignTitle" 
-                      currentSortKey={sortKey} 
-                      currentSortDirection={sortDirection} 
-                      onSort={handleSort}
-                      className="p-3 w-[22%]"
-                    >
-                      Campaign
-                    </SortableTableHeader>
-                    <SortableTableHeader 
-                      sortKey="amount" 
-                      currentSortKey={sortKey} 
-                      currentSortDirection={sortDirection} 
-                      onSort={handleSort}
-                      className="p-3 w-[14%]"
-                    >
-                      Donation
-                    </SortableTableHeader>
-                    <SortableTableHeader 
-                      sortKey="giftAidAmount" 
-                      currentSortKey={sortKey} 
-                      currentSortDirection={sortDirection} 
-                      onSort={handleSort}
-                      className="p-3 w-[14%]"
-                    >
-                      Gift Aid
-                    </SortableTableHeader>
-                    <SortableTableHeader
-                      sortKey="donationDateTs" 
-                      currentSortKey={sortKey}
-                      currentSortDirection={sortDirection}
-                      onSort={handleSort}
-                      className="p-3 w-[14%]"
-                    >
-                      Date
-                    </SortableTableHeader>
-                    <SortableTableHeader 
-                      sortable={false}
-                      sortKey="actions" 
-                      currentSortKey={sortKey} 
-                      currentSortDirection={sortDirection} 
-                      onSort={handleSort}
-                      className="p-3 w-[14%]"
-                    >
-                      Actions
-                    </SortableTableHeader>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i} className="h-16">
-                        <TableCell className="py-4"><Skeleton className="h-5 w-32" /></TableCell>
-                        <TableCell className="py-4"><Skeleton className="h-5 w-24" /></TableCell>
-                        <TableCell className="py-4"><Skeleton className="h-5 w-16" /></TableCell>
-                        <TableCell className="py-4"><Skeleton className="h-5 w-16" /></TableCell>
-                        <TableCell className="py-4"><Skeleton className="h-5 w-20" /></TableCell>
-                        <TableCell className="py-4"><Skeleton className="h-8 w-8 rounded" /></TableCell>
-                      </TableRow>
-                    ))
-                  ) : filteredDonations.length > 0 ? (
-                    filteredDonations.map((donation) => (
-                      <TableRow 
-                        key={donation.id}
-                        className="hover:bg-gray-50 transition-colors"
-                      >
-                        <TableCell className="p-3">
-                          <p className="text-base text-gray-900 truncate max-w-[220px]" title={`${donation.donorFirstName} ${donation.donorSurname}`.trim()}>
-                            {`${donation.donorFirstName} ${donation.donorSurname}`.trim()}
-                          </p>
-                        </TableCell>
-                        <TableCell className="p-3">
-                          <p className="text-base text-gray-800 truncate max-w-[220px]" title={donation.campaignTitle}>
-                            {donation.campaignTitle}
-                          </p>
-                        </TableCell>
-                        <TableCell className="p-3">
-                          <p className="text-base font-bold text-gray-900">{formatCurrency(donation.donationAmount || 0)}</p>
-                        </TableCell>
-                        <TableCell className="p-3">
-                          <p className="text-base font-bold text-[#064e3b]">{formatCurrency(donation.giftAidAmount || 0)}</p>
-                        </TableCell>
-                        <TableCell className="p-3">
-                          <p className="text-base text-gray-700">{donation.donationDate ? (() => {
-                            const date = new Date(donation.donationDate);
-                            return isNaN(date.getTime())
-                              ? "Invalid Date"
-                              : date.toLocaleDateString('en-GB', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  year: 'numeric',
-                                });
-                          })() : "N/A"}</p>
-                        </TableCell>
-                        <TableCell className="p-3">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewDetails(donation);
-                            }}
-                            className="mx-auto"
-                            title="View donation details"
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 p-6">
-                        <div className="flex flex-col items-center gap-2">
-                          <Gift className="h-12 w-12 text-gray-400" />
-                          <p className="text-xl font-bold text-gray-600">No Gift Aid donations found</p>
-                          <p className="text-base text-gray-500 mt-2">
-                            {searchTerm || statusFilter !== "all" 
-                              ? "Try adjusting your search or filters" 
-                              : "Gift Aid eligible donations will appear here when donors opt-in for Gift Aid"}
-                          </p>
-                          {!searchTerm && statusFilter === "all" && (
-                            <p className="text-sm text-gray-400 mt-2">
-                              Gift Aid declarations are created automatically when donors opt-in during the donation process.
-                            </p>
-                          )}
-                        </div>
+              <TableHeader>
+                <TableRow>
+                  <SortableTableHeader
+                    sortKey="donorName"
+                    currentSortKey={sortKey}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    className="p-3 w-[22%]"
+                  >
+                    Donor
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    sortKey="campaignTitle"
+                    currentSortKey={sortKey}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    className="p-3 w-[22%]"
+                  >
+                    Campaign
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    sortKey="amount"
+                    currentSortKey={sortKey}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    className="p-3 w-[14%]"
+                  >
+                    Donation
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    sortKey="giftAidAmount"
+                    currentSortKey={sortKey}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    className="p-3 w-[14%]"
+                  >
+                    Gift Aid
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    sortKey="donationDateTs"
+                    currentSortKey={sortKey}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    className="p-3 w-[14%]"
+                  >
+                    Date
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    sortable={false}
+                    sortKey="actions"
+                    currentSortKey={sortKey}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    className="p-3 w-[14%]"
+                  >
+                    Actions
+                  </SortableTableHeader>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i} className="h-16">
+                      <TableCell className="py-4">
+                        <Skeleton className="h-5 w-32" />
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Skeleton className="h-5 w-24" />
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Skeleton className="h-5 w-16" />
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Skeleton className="h-5 w-16" />
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Skeleton className="h-5 w-20" />
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Skeleton className="h-8 w-8 rounded" />
                       </TableCell>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  ))
+                ) : filteredDonations.length > 0 ? (
+                  filteredDonations.map((donation) => (
+                    <TableRow key={donation.id} className="hover:bg-gray-50 transition-colors">
+                      <TableCell className="p-3">
+                        <p
+                          className="text-base text-gray-900 truncate max-w-[220px]"
+                          title={`${donation.donorFirstName} ${donation.donorSurname}`.trim()}
+                        >
+                          {`${donation.donorFirstName} ${donation.donorSurname}`.trim()}
+                        </p>
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <p
+                          className="text-base text-gray-800 truncate max-w-[220px]"
+                          title={donation.campaignTitle}
+                        >
+                          {donation.campaignTitle}
+                        </p>
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <p className="text-base font-bold text-gray-900">
+                          {formatCurrency(donation.donationAmount || 0)}
+                        </p>
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <p className="text-base font-bold text-[#064e3b]">
+                          {formatCurrency(donation.giftAidAmount || 0)}
+                        </p>
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <p className="text-base text-gray-700">
+                          {donation.donationDate
+                            ? (() => {
+                                const date = new Date(donation.donationDate);
+                                return isNaN(date.getTime())
+                                  ? 'Invalid Date'
+                                  : date.toLocaleDateString('en-GB', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric',
+                                    });
+                              })()
+                            : 'N/A'}
+                        </p>
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewDetails(donation);
+                          }}
+                          className="mx-auto"
+                          title="View donation details"
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 p-6">
+                      <div className="flex flex-col items-center gap-2">
+                        <Gift className="h-12 w-12 text-gray-400" />
+                        <p className="text-xl font-bold text-gray-600">
+                          No Gift Aid donations found
+                        </p>
+                        <p className="text-base text-gray-500 mt-2">
+                          {searchTerm || statusFilter !== 'all'
+                            ? 'Try adjusting your search or filters'
+                            : 'Gift Aid eligible donations will appear here when donors opt-in for Gift Aid'}
+                        </p>
+                        {!searchTerm && statusFilter === 'all' && (
+                          <p className="text-sm text-gray-400 mt-2">
+                            Gift Aid declarations are created automatically when donors opt-in
+                            during the donation process.
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
+
+        {/* Pagination — desktop */}
+        {(filteredDonations.length > 0 || canGoPrev) && (
+          <div className="hidden md:block border border-gray-100 rounded-lg px-4 bg-white">
+            <PaginationControls
+              pageNumber={pageNumber}
+              pageSize={pageSize}
+              totalOnPage={filteredDonations.length}
+              canGoNext={canGoNext}
+              canGoPrev={canGoPrev}
+              onNext={goNext}
+              onPrev={goPrev}
+              loading={fetching}
+            />
+          </div>
+        )}
 
         {/* Donations Cards - Mobile */}
         <div className="md:hidden space-y-4">
@@ -738,49 +1196,63 @@ export function GiftAidManagement({
             ))
           ) : filteredDonations.length > 0 ? (
             filteredDonations.map((donation) => (
-              <Card 
-                key={donation.id} 
+              <Card
+                key={donation.id}
                 className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
               >
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold text-slate-900">
-                        {`${donation.donorFirstName} ${donation.donorSurname}`.trim() || "N/A"}
+                        {`${donation.donorFirstName} ${donation.donorSurname}`.trim() || 'N/A'}
                       </div>
-                      <div className="text-sm text-gray-500">
-                        {donation.campaignTitle || "N/A"}
-                      </div>
+                      <div className="text-sm text-gray-500">{donation.campaignTitle || 'N/A'}</div>
                       <div className="mt-2">
-                        <Badge variant="outline" className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20">
+                        <Badge
+                          variant="outline"
+                          className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20"
+                        >
                           <Gift className="w-3 h-3 mr-1" />
                           Gift Aid
                         </Badge>
                       </div>
                     </div>
-                    <div>{getStatusBadge(donation.operationalStatus || "captured", donation.paidConfirmed)}</div>
+                    <div>
+                      {getStatusBadge(
+                        donation.operationalStatus || 'captured',
+                        donation.paidConfirmed,
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <p className="text-gray-500">Donation</p>
-                      <p className="font-semibold text-slate-900">{formatCurrency(donation.donationAmount || 0)}</p>
+                      <p className="font-semibold text-slate-900">
+                        {formatCurrency(donation.donationAmount || 0)}
+                      </p>
                     </div>
                     <div>
                       <p className="text-gray-500">Gift Aid</p>
-                      <p className="font-semibold text-[#064e3b]">{formatCurrency(donation.giftAidAmount || 0)}</p>
+                      <p className="font-semibold text-[#064e3b]">
+                        {formatCurrency(donation.giftAidAmount || 0)}
+                      </p>
                     </div>
                     <div>
                       <p className="text-gray-500">Date</p>
                       <p className="text-slate-900">
-                        {donation.donationDate && donation.donationDate !== "Unknown Date" 
-                          ? new Date(donation.donationDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                          : "N/A"}
+                        {donation.donationDate && donation.donationDate !== 'Unknown Date'
+                          ? new Date(donation.donationDate).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'N/A'}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-500">Tax Year</p>
-                      <p className="text-slate-900">{donation.taxYear || "N/A"}</p>
+                      <p className="text-slate-900">{donation.taxYear || 'N/A'}</p>
                     </div>
                   </div>
 
@@ -805,9 +1277,9 @@ export function GiftAidManagement({
                   <Gift className="h-12 w-12 text-gray-400" />
                   <p className="text-xl font-bold text-gray-600">No Gift Aid donations found</p>
                   <p className="text-base text-gray-500 mt-2">
-                    {searchTerm || statusFilter !== "all" 
-                      ? "Try adjusting your search or filters" 
-                      : "Gift Aid eligible donations will appear here when donors opt-in for Gift Aid"}
+                    {searchTerm || statusFilter !== 'all'
+                      ? 'Try adjusting your search or filters'
+                      : 'Gift Aid eligible donations will appear here when donors opt-in for Gift Aid'}
                   </p>
                 </div>
               </CardContent>
@@ -827,90 +1299,129 @@ export function GiftAidManagement({
                 Complete information about this Gift Aid eligible donation
               </DialogDescription>
             </DialogHeader>
-            
+
             {selectedDonation && (
               <div className="grid gap-4 py-4">
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Donor Name</Label>
-                  <p className="text-sm text-gray-900 mt-1">{`${selectedDonation.donorFirstName} ${selectedDonation.donorSurname}`.trim()}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {`${selectedDonation.donorFirstName} ${selectedDonation.donorSurname}`.trim()}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-gray-700">Donation Amount</Label>
-                    <p className="text-sm font-semibold text-gray-900 mt-1">{formatCurrency(selectedDonation.donationAmount || 0)}</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-1">
+                      {formatCurrency(selectedDonation.donationAmount || 0)}
+                    </p>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-700">Status</Label>
-                    <div className="mt-1">{getStatusBadge(selectedDonation.operationalStatus || "captured", selectedDonation.paidConfirmed)}</div>
+                    <div className="mt-1">
+                      {getStatusBadge(
+                        selectedDonation.operationalStatus || 'captured',
+                        selectedDonation.paidConfirmed,
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-gray-700">Gift Aid Amount</Label>
-                    <p className="text-sm font-semibold text-[#064e3b] mt-1">{formatCurrency(selectedDonation.giftAidAmount || 0)}</p>
+                    <p className="text-sm font-semibold text-[#064e3b] mt-1">
+                      {formatCurrency(selectedDonation.giftAidAmount || 0)}
+                    </p>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-700">Tax Year</Label>
-                    <p className="text-sm text-gray-900 mt-1">{selectedDonation.taxYear || "N/A"}</p>
+                    <p className="text-sm text-gray-900 mt-1">
+                      {selectedDonation.taxYear || 'N/A'}
+                    </p>
                   </div>
                 </div>
 
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Campaign</Label>
-                  <p className="text-sm text-gray-900 mt-1">{selectedDonation.campaignTitle || "N/A"}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {selectedDonation.campaignTitle || 'N/A'}
+                  </p>
                 </div>
 
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Donation Date</Label>
-                  <p className="text-sm text-gray-900 mt-1">{selectedDonation.donationDate ? (() => {
-                    const date = new Date(selectedDonation.donationDate);
-                    return isNaN(date.getTime())
-                      ? "Invalid Date"
-                      : date.toLocaleDateString("en-GB", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        });
-                  })() : "N/A"}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {selectedDonation.donationDate
+                      ? (() => {
+                          const date = new Date(selectedDonation.donationDate);
+                          return isNaN(date.getTime())
+                            ? 'Invalid Date'
+                            : date.toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              });
+                        })()
+                      : 'N/A'}
+                  </p>
                 </div>
 
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Address</Label>
-                  <p className="text-sm text-gray-900 mt-1">{`${selectedDonation.donorHouseNumber || ""}, ${selectedDonation.donorAddressLine1 || ""}, ${selectedDonation.donorAddressLine2 || ""}, ${selectedDonation.donorTown || ""}, ${selectedDonation.donorPostcode || ""}`.replace(/^,\s*|,\s*$/g, "")}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {`${selectedDonation.donorHouseNumber || ''}, ${selectedDonation.donorAddressLine1 || ''}, ${selectedDonation.donorAddressLine2 || ''}, ${selectedDonation.donorTown || ''}, ${selectedDonation.donorPostcode || ''}`.replace(
+                      /^,\s*|,\s*$/g,
+                      '',
+                    )}
+                  </p>
                 </div>
 
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Transaction ID</Label>
                   <p className="text-xs text-gray-700 font-mono mt-1 bg-gray-50 px-2 py-1 rounded border border-gray-200 inline-block break-all">
-                    {selectedDonation.donationId || "N/A"}
+                    {selectedDonation.donationId || 'N/A'}
                   </p>
                 </div>
 
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Declaration Date</Label>
-                  <p className="text-sm text-gray-900 mt-1">{selectedDonation.declarationDate || "N/A"}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {selectedDonation.declarationDate || 'N/A'}
+                  </p>
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium text-gray-700">UK Taxpayer Confirmation</Label>
-                  <p className="text-sm text-gray-900 mt-1">{selectedDonation.ukTaxpayerConfirmation ? "Confirmed" : "Not confirmed"}</p>
+                  <Label className="text-sm font-medium text-gray-700">
+                    UK Taxpayer Confirmation
+                  </Label>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {selectedDonation.ukTaxpayerConfirmation ? 'Confirmed' : 'Not confirmed'}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-gray-700">Operational Status</Label>
-                    <div className="mt-1">{getStatusBadge(selectedDonation.operationalStatus || "captured", selectedDonation.paidConfirmed)}</div>
+                    <div className="mt-1">
+                      {getStatusBadge(
+                        selectedDonation.operationalStatus || 'captured',
+                        selectedDonation.paidConfirmed,
+                      )}
+                    </div>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-700">Exported At</Label>
-                    <p className="text-sm text-gray-900 mt-1">{selectedDonation.exportedAt || "Not exported"}</p>
+                    <p className="text-sm text-gray-900 mt-1">
+                      {selectedDonation.exportedAt || 'Not exported'}
+                    </p>
                   </div>
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium text-gray-700">Charity Submitted Reference (Optional)</Label>
+                  <Label className="text-sm font-medium text-gray-700">
+                    Charity Submitted Reference (Optional)
+                  </Label>
                   <Input
                     value={charitySubmittedReference}
                     onChange={(e) => setCharitySubmittedReference(e.target.value)}
@@ -920,13 +1431,17 @@ export function GiftAidManagement({
                 </div>
               </div>
             )}
-            
+
             <div className="flex justify-end gap-2">
               <Button
                 onClick={handleMarkPaidConfirmed}
                 disabled={!selectedDonation || isUpdatingPaid || selectedDonation?.paidConfirmed}
               >
-                {selectedDonation?.paidConfirmed ? "Paid Confirmed" : (isUpdatingPaid ? "Saving..." : "Mark Paid Confirmed")}
+                {selectedDonation?.paidConfirmed
+                  ? 'Paid Confirmed'
+                  : isUpdatingPaid
+                    ? 'Saving...'
+                    : 'Mark Paid Confirmed'}
               </Button>
               <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
                 Close

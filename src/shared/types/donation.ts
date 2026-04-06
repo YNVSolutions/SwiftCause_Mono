@@ -1,6 +1,7 @@
 // Gift Aid details interface - HMRC compliant
 export interface GiftAidDetails {
   // 1. Donor Information
+  donorTitle?: string;
   firstName: string;
   surname: string;
   houseNumber: string;
@@ -9,7 +10,7 @@ export interface GiftAidDetails {
   town: string;
   postcode: string;
   donorEmail?: string;
-  
+
   // 2. Declaration Requirements
   giftAidConsent: boolean; // Explicit agreement to Gift Aid treatment
   ukTaxpayerConfirmation: boolean; // Confirmation of UK taxpayer status
@@ -18,14 +19,14 @@ export interface GiftAidDetails {
   declarationText: string; // HMRC-compliant declaration wording
   declarationTextVersion?: string; // Legal text revision donor accepted
   declarationDate: string; // ISO date when declaration was made
-  
+
   // 3. Donation Details
   donationAmount: number;
   donationDate: string; // ISO date of donation
   organizationId: string;
   donationId: string; // Default empty string
   declarationId?: string; // Canonical declaration-first linkage key
-  
+
   // 4. Audit Trail (for compliance)
   timestamp: string; // ISO timestamp when record was created
   taxYear: string; // e.g., "2025-26"
@@ -36,7 +37,7 @@ export interface Donation {
   campaignId: string;
   amount: number;
   isRecurring: boolean;
-  recurringInterval?: "monthly" | "quarterly" | "yearly"; // Keep existing for backward compatibility
+  recurringInterval?: 'monthly' | 'quarterly' | 'yearly'; // Keep existing for backward compatibility
   subscriptionId?: string; // NEW - links to subscription for recurring donations
   invoiceId?: string; // NEW - Stripe invoice ID for recurring payments
   id?: string;
@@ -48,7 +49,7 @@ export interface Donation {
   timestamp?: string;
   kioskId?: string;
   transactionId?: string;
-  paymentStatus?: "success" | "pending" | "failed" | string;
+  paymentStatus?: 'success' | 'pending' | 'failed' | string;
   isGiftAid?: boolean;
   giftAidAccepted?: boolean; // Explicit tracking of Gift Aid acceptance/decline
   giftAidDetails?: GiftAidDetails;
@@ -67,7 +68,7 @@ export interface GiftAidDeclaration {
   campaignId: string;
   campaignTitle: string;
   donationDate: string;
-  giftAidStatus: "pending" | "claimed" | "rejected";
+  giftAidStatus: 'pending' | 'claimed' | 'rejected';
   transactionId: string;
   taxYear: string;
   organizationId: string;

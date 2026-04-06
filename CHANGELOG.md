@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Authenticated admin change-password flow with current-password reauthentication, password policy validation, and inline success/error feedback.
+
+### Changed
+
+- Moved the admin change-password UI into a dedicated modal with show/hide password toggles and improved small-screen responsiveness.
+
 ## [0.1.0] - 2026-03-20
 
 ### Added

@@ -1,31 +1,27 @@
-﻿"use client";
+﻿'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../../shared/lib/firebase';
 import { useKiosks } from '../../shared/lib/hooks/useKiosks';
 import { useCampaigns } from '../../entities/campaign';
 import { useKioskPerformance } from '../../shared/lib/hooks/useKioskPerformance';
-import { useOrganization } from "../../shared/lib/hooks/useOrganization";
-import { useStripeOnboarding, StripeOnboardingDialog } from "../../features/stripe-onboarding";
-import {
-  collection,
-  updateDoc,
-  doc,
-  addDoc,
-  deleteDoc,
-  getDoc,
-} from 'firebase/firestore';
+import { useOrganization } from '../../shared/lib/hooks/useOrganization';
+import { useStripeOnboarding, StripeOnboardingDialog } from '../../features/stripe-onboarding';
+import { collection, updateDoc, doc, addDoc, deleteDoc } from 'firebase/firestore';
 import { Screen, Kiosk, AdminSession, Permission } from '../../shared/types';
 import { formatCurrency } from '../../shared/lib/currencyFormatter';
-import { syncCampaignsForKiosk, removeKioskFromAllCampaigns } from "../../shared/lib/sync/campaignKioskSync";
+import {
+  syncCampaignsForKiosk,
+  removeKioskFromAllCampaigns,
+} from '../../shared/lib/sync/campaignKioskSync';
+import { PaginationControls } from '../../shared/ui/PaginationControls';
 
 // UI Components
 import { Button } from '../../shared/ui/button';
-import { Input } from '../../shared/ui/input';
 import { Badge } from '../../shared/ui/badge';
 import { Card, CardContent } from '../../shared/ui/card';
 import { Dialog, DialogContent, DialogTitle, VisuallyHidden } from '../../shared/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../shared/ui/table';
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '../../shared/ui/table';
 
 import {
   Plus,
@@ -37,7 +33,6 @@ import {
   Copy,
   Check,
   MoreVertical,
-  Search,
   DollarSign,
   Users,
   Settings,
@@ -56,81 +51,107 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../../shared/ui/dropdown-menu";
-import { AdminSearchFilterHeader, AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
+} from '../../shared/ui/dropdown-menu';
+import {
+  AdminSearchFilterHeader,
+  AdminSearchFilterConfig,
+} from './components/AdminSearchFilterHeader';
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 
-
-export function KioskManagement({ onNavigate, onLogout, userSession, hasPermission }: {
+export function KioskManagement({
+  onNavigate,
+  onLogout,
+  userSession,
+  hasPermission,
+}: {
   onNavigate: (screen: Screen) => void;
   onLogout: () => void;
   userSession: AdminSession;
   hasPermission: (permission: Permission) => boolean;
 }) {
-  const { kiosks, loading: kiosksLoading, refresh: refreshKiosks } = useKiosks(userSession.user.organizationId);
-  const { campaigns, loading: campaignsLoading, refresh: refreshCampaigns } = useCampaigns(userSession.user.organizationId);
+  // Search + status filter state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'maintenance'>(
+    'all',
+  );
+
+  const {
+    kiosks,
+    loading: kiosksLoading,
+    fetching,
+    pageNumber,
+    canGoNext,
+    canGoPrev,
+    goNext,
+    goPrev,
+    pageSize,
+    refresh: refreshKiosks,
+  } = useKiosks(userSession.user.organizationId, { status: statusFilter });
+
+  const {
+    campaigns,
+    loading: campaignsLoading,
+    refresh: refreshCampaigns,
+  } = useCampaigns(userSession.user.organizationId);
+
+  // Enrich only the visible page — not the full collection
   const performanceData = useKioskPerformance(kiosks);
-  
+
   // Stripe onboarding state & hooks
   const { organization, loading: orgLoading } = useOrganization(
-    userSession.user.organizationId ?? null
+    userSession.user.organizationId ?? null,
   );
   const { needsOnboarding } = useStripeOnboarding(organization);
   const [showOnboardingDialog, setShowOnboardingDialog] = useState(false);
-  
-  // Search + status filter state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'maintenance'>('all');
-  
+
   const isLoading = kiosksLoading || campaignsLoading;
 
-  const enrichedKiosks = kiosks.map(kiosk => ({
-    ...kiosk,
-    totalRaised: performanceData[kiosk.id]?.totalRaised || 0,
-    donorCount: performanceData[kiosk.id]?.donorCount || 0
-  }));
-
-  // Filtered kiosks derived state
-  // Filter kiosks first
-  const filteredKiosksData = enrichedKiosks.filter((kiosk) => {
-    const matchesSearch = kiosk.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  // Client-side search filter on the current page only
+  const filteredKiosksData = kiosks.filter(
+    (kiosk) =>
+      kiosk.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       kiosk.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      kiosk.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || kiosk.status === statusFilter;
-    return matchesSearch && matchesStatus;
+      kiosk.id.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
+  const {
+    sortedData: filteredKiosks,
+    sortKey,
+    sortDirection,
+    handleSort,
+  } = useTableSort({
+    data: filteredKiosksData,
   });
 
-  // Use sorting hook
-  const { sortedData: filteredKiosks, sortKey, sortDirection, handleSort } = useTableSort({
-    data: filteredKiosksData
-  });
-
-  // Calculate total stats
+  // Stats computed from the current page
   const totalStats = {
-    online: filteredKiosks.filter(k => k.status === 'online').length,
-    offline: filteredKiosks.filter(k => k.status === 'offline').length,
-    maintenance: filteredKiosks.filter(k => k.status === 'maintenance').length,
-    totalRaised: Object.values(performanceData).reduce((sum, data) => sum + (data?.totalRaised || 0), 0),
-    totalDonations: Object.values(performanceData).reduce((sum, data) => sum + (data?.donorCount || 0), 0)
+    online: filteredKiosks.filter((k) => k.status === 'online').length,
+    offline: filteredKiosks.filter((k) => k.status === 'offline').length,
+    maintenance: filteredKiosks.filter((k) => k.status === 'maintenance').length,
+    totalRaised: Object.values(performanceData).reduce((sum, d) => sum + (d?.totalRaised || 0), 0),
+    totalDonations: Object.values(performanceData).reduce(
+      (sum, d) => sum + (d?.donorCount || 0),
+      0,
+    ),
   };
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingKiosk, setEditingKiosk] = useState<Kiosk | null>(null);
   const [isCreatingKiosk, setIsCreatingKiosk] = useState(false);
-  const [newKiosk, setNewKiosk] = useState<KioskFormData>({ 
-    name: '', 
-    location: '', 
-    accessCode: '', 
+  const [newKiosk, setNewKiosk] = useState<KioskFormData>({
+    name: '',
+    location: '',
+    accessCode: '',
     status: 'offline' as Kiosk['status'],
     assignedCampaigns: [] as string[],
-    displayLayout: 'grid' as 'grid' | 'list' | 'carousel'
+    displayLayout: 'grid' as 'grid' | 'list' | 'carousel',
   });
-  
+
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [kioskToDelete, setKioskToDelete] = useState<Kiosk | null>(null);
   const [isDeletingKiosk, setIsDeletingKiosk] = useState(false);
-  
+
   // State for showing access codes and copy feedback
   const [showAccessCodes, setShowAccessCodes] = useState<{ [key: string]: boolean }>({});
   const [copiedIds, setCopiedIds] = useState<{ [key: string]: boolean }>({});
@@ -138,59 +159,56 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
   const normalizeAssignedCampaigns = (campaignIds?: string[]) =>
     Array.from(new Set((campaignIds || []).filter(Boolean)));
 
-  // Configuration for AdminSearchFilterHeader
   const searchFilterConfig: AdminSearchFilterConfig = {
     filters: [
       {
-        key: "statusFilter",
-        label: "Status",
-        type: "select",
+        key: 'statusFilter',
+        label: 'Status',
+        type: 'select',
         options: [
-          { label: "Online", value: "online" },
-          { label: "Offline", value: "offline" },
-          { label: "Maintenance", value: "maintenance" }
-        ]
-      }
-    ]
+          { label: 'Online', value: 'online' },
+          { label: 'Offline', value: 'offline' },
+          { label: 'Maintenance', value: 'maintenance' },
+        ],
+      },
+    ],
   };
 
-  const filterValues = {
-    statusFilter
-  };
+  const filterValues = { statusFilter };
 
-  const handleFilterChange = (key: string, value: any) => {
-    if (key === "statusFilter") {
-      setStatusFilter(value);
+  const handleFilterChange = useCallback((key: string, value: string) => {
+    if (key === 'statusFilter') {
+      setStatusFilter(value as typeof statusFilter);
+      // pagination resets automatically in useKiosks when filters change
     }
-  };
+  }, []);
 
   useEffect(() => {
-    refreshKiosks();
     refreshCampaigns();
-  }, [refreshKiosks, refreshCampaigns]);
+  }, [refreshCampaigns]);
 
   const handleAssignCampaign = (campaignId: string) => {
     if (needsOnboarding) {
       setShowOnboardingDialog(true);
       return;
     }
-    
-    setNewKiosk(prev => ({
+
+    setNewKiosk((prev) => ({
       ...prev,
-      assignedCampaigns: normalizeAssignedCampaigns([...prev.assignedCampaigns, campaignId])
+      assignedCampaigns: normalizeAssignedCampaigns([...prev.assignedCampaigns, campaignId]),
     }));
   };
 
   const handleUnassignCampaign = (campaignId: string) => {
-    setNewKiosk(prev => ({
+    setNewKiosk((prev) => ({
       ...prev,
-      assignedCampaigns: prev.assignedCampaigns.filter(id => id !== campaignId)
+      assignedCampaigns: prev.assignedCampaigns.filter((id) => id !== campaignId),
     }));
   };
 
   const handleCreateKiosk = async () => {
     if (!newKiosk.name || !newKiosk.location || !userSession) return;
-    
+
     setIsCreatingKiosk(true);
     try {
       const normalizedAssignedCampaigns = normalizeAssignedCampaigns(newKiosk.assignedCampaigns);
@@ -210,9 +228,13 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
         };
         const kioskRef = doc(db, 'kiosks', editingKiosk.id);
         await updateDoc(kioskRef, updatedKioskData);
-        
+
         const oldAssignedCampaigns = editingKiosk.assignedCampaigns || [];
-        await syncCampaignsForKiosk(editingKiosk.id, normalizedAssignedCampaigns, oldAssignedCampaigns);
+        await syncCampaignsForKiosk(
+          editingKiosk.id,
+          normalizedAssignedCampaigns,
+          oldAssignedCampaigns,
+        );
       } else {
         // Create new kiosk
         const newKioskData: Omit<Kiosk, 'id'> = {
@@ -225,25 +247,32 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
           defaultCampaign: '',
           deviceInfo: {},
           operatingHours: {},
-          settings: { 
-            displayMode: newKiosk.displayLayout, 
-            showAllCampaigns: true, 
-            maxCampaignsDisplay: 6, 
-            autoRotateCampaigns: false 
+          settings: {
+            displayMode: newKiosk.displayLayout,
+            showAllCampaigns: true,
+            maxCampaignsDisplay: 6,
+            autoRotateCampaigns: false,
           },
           organizationId: userSession.user.organizationId,
         };
         const docRef = await addDoc(collection(db, 'kiosks'), newKioskData);
-        
+
         await syncCampaignsForKiosk(docRef.id, normalizedAssignedCampaigns, []);
       }
       refreshKiosks();
-      refreshCampaigns(); // Refresh campaigns to show updated assignments
-      setNewKiosk({ name: '', location: '', accessCode: '', status: 'offline', assignedCampaigns: [], displayLayout: 'grid' });
+      refreshCampaigns();
+      setNewKiosk({
+        name: '',
+        location: '',
+        accessCode: '',
+        status: 'offline',
+        assignedCampaigns: [],
+        displayLayout: 'grid',
+      });
       setIsCreateDialogOpen(false);
       setEditingKiosk(null);
     } catch (error) {
-      console.error("Error saving kiosk: ", error);
+      console.error('Error saving kiosk: ', error);
     } finally {
       setIsCreatingKiosk(false);
     }
@@ -252,7 +281,14 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
   const handleCancel = () => {
     setIsCreateDialogOpen(false);
     setEditingKiosk(null);
-    setNewKiosk({ name: '', location: '', accessCode: '', status: 'offline', assignedCampaigns: [], displayLayout: 'grid' });
+    setNewKiosk({
+      name: '',
+      location: '',
+      accessCode: '',
+      status: 'offline',
+      assignedCampaigns: [],
+      displayLayout: 'grid',
+    });
   };
 
   const handleEditKiosk = (kiosk: Kiosk) => {
@@ -263,7 +299,7 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
       accessCode: kiosk.accessCode || '',
       status: kiosk.status,
       assignedCampaigns: normalizeAssignedCampaigns(kiosk.assignedCampaigns),
-      displayLayout: (kiosk.settings?.displayMode as 'grid' | 'list' | 'carousel') || 'grid'
+      displayLayout: (kiosk.settings?.displayMode as 'grid' | 'list' | 'carousel') || 'grid',
     });
     setIsCreateDialogOpen(true);
   };
@@ -274,7 +310,7 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
   };
 
   const handleEditCampaign = (campaignId: string) => {
-    const campaign = campaigns.find(c => c.id === campaignId);
+    const campaign = campaigns.find((c) => c.id === campaignId);
     if (campaign) {
       onNavigate(`admin-campaigns`);
     }
@@ -282,19 +318,19 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
 
   const confirmDeleteKiosk = async () => {
     if (!kioskToDelete) return;
-    
+
     setIsDeletingKiosk(true);
     try {
       const assignedCampaigns = kioskToDelete.assignedCampaigns || [];
       await removeKioskFromAllCampaigns(kioskToDelete.id, assignedCampaigns);
-      
+
       await deleteDoc(doc(db, 'kiosks', kioskToDelete.id));
       refreshKiosks();
-      refreshCampaigns(); // Refresh campaigns to show updated assignments
+      refreshCampaigns();
       setIsDeleteDialogOpen(false);
       setKioskToDelete(null);
     } catch (error) {
-      console.error("Error deleting kiosk: ", error);
+      console.error('Error deleting kiosk: ', error);
     } finally {
       setIsDeletingKiosk(false);
     }
@@ -304,11 +340,11 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
   const copyKioskId = async (kioskId: string) => {
     try {
       await navigator.clipboard.writeText(kioskId);
-      setCopiedIds(prev => ({ ...prev, [kioskId]: true }));
-      
+      setCopiedIds((prev) => ({ ...prev, [kioskId]: true }));
+
       // Reset copied state after 2 seconds
       setTimeout(() => {
-        setCopiedIds(prev => ({ ...prev, [kioskId]: false }));
+        setCopiedIds((prev) => ({ ...prev, [kioskId]: false }));
       }, 2000);
     } catch (error) {
       console.error('Failed to copy kiosk ID:', error);
@@ -317,9 +353,9 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
 
   // Toggle access code visibility
   const toggleAccessCode = (kioskId: string) => {
-    setShowAccessCodes(prev => ({
+    setShowAccessCodes((prev) => ({
       ...prev,
-      [kioskId]: !prev[kioskId]
+      [kioskId]: !prev[kioskId],
     }));
   };
 
@@ -340,33 +376,19 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
 
     exportToCsv(exportData, 'kiosks');
   };
-  
+
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'online': 
+      case 'online':
+        return <Badge className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20">Online</Badge>;
+      case 'offline':
+        return <Badge className="bg-red-100 text-red-800 border-red-200">Offline</Badge>;
+      case 'maintenance':
         return (
-          <Badge className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20">
-            Online
-          </Badge>
+          <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Maintenance</Badge>
         );
-      case 'offline': 
-        return (
-          <Badge className="bg-red-100 text-red-800 border-red-200">
-            Offline
-          </Badge>
-        );
-      case 'maintenance': 
-        return (
-          <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
-            Maintenance
-          </Badge>
-        );
-      default: 
-        return (
-          <Badge className="bg-gray-100 text-gray-800 border-gray-200">
-            {status}
-          </Badge>
-        );
+      default:
+        return <Badge className="bg-gray-100 text-gray-800 border-gray-200">{status}</Badge>;
     }
   };
 
@@ -399,7 +421,7 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
       userSession={userSession}
       hasPermission={hasPermission}
       activeScreen="admin-kiosks"
-      headerTitle={(
+      headerTitle={
         <div className="flex flex-col">
           {userSession.user.organizationName && (
             <div className="flex items-center gap-1.5 mb-1">
@@ -409,16 +431,14 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
               </span>
             </div>
           )}
-          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">
-            Kiosks
-          </h1>
+          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">Kiosks</h1>
         </div>
-      )}
+      }
       headerSubtitle="Configure and monitor donation kiosks"
       headerSearchPlaceholder="Search kiosks..."
       headerSearchValue={searchTerm}
       onHeaderSearchChange={setSearchTerm}
-      headerTopRightActions={(
+      headerTopRightActions={
         <Button
           variant="outline"
           size="sm"
@@ -428,7 +448,7 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
           <Download className="h-4 w-4 sm:hidden" />
           <span className="hidden sm:inline">Export</span>
         </Button>
-      )}
+      }
       headerInlineActions={
         hasPermission('create_kiosk') ? (
           <Button
@@ -447,10 +467,62 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
         <main className="px-6 lg:px-8 pt-12 pb-8">
           {/* Stat Cards Section */}
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-12">
-            <Card><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-center justify-between"><div><p className="text-xs sm:text-sm font-medium text-gray-600">Total Kiosks</p><p className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900">{filteredKiosks.length}</p><div className="flex items-center space-x-2 sm:space-x-4 text-xs text-gray-500 mt-1"><span className="text-[#064e3b]">{totalStats.online} online</span><span className="text-red-600">{totalStats.offline} offline</span></div></div><Settings className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-blue-600" /></div></CardContent></Card>
-            <Card><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-center justify-between"><div><p className="text-xs sm:text-sm font-medium text-gray-600">Total Raised</p><p className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900">{formatCurrency(totalStats.totalRaised)}</p></div><DollarSign className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-[#064e3b]" /></div></CardContent></Card>
-            <Card><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-center justify-between"><div><p className="text-xs sm:text-sm font-medium text-gray-600">Total Donations</p><p className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900">{totalStats.totalDonations.toLocaleString()}</p></div><Users className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-purple-600" /></div></CardContent></Card>
-            <Card><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-center justify-between"><div><p className="text-xs sm:text-sm font-medium text-gray-600">Maintenance</p><p className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900">{totalStats.maintenance}</p></div><Activity className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-orange-600" /></div></CardContent></Card>
+            <Card>
+              <CardContent className="p-3 sm:p-4 lg:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-gray-600">Total Kiosks</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900">
+                      {filteredKiosks.length}
+                    </p>
+                    <div className="flex items-center space-x-2 sm:space-x-4 text-xs text-gray-500 mt-1">
+                      <span className="text-[#064e3b]">{totalStats.online} online</span>
+                      <span className="text-red-600">{totalStats.offline} offline</span>
+                    </div>
+                  </div>
+                  <Settings className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-blue-600" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3 sm:p-4 lg:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-gray-600">Total Raised</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900">
+                      {formatCurrency(totalStats.totalRaised)}
+                    </p>
+                  </div>
+                  <DollarSign className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-[#064e3b]" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3 sm:p-4 lg:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-gray-600">Total Donations</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900">
+                      {totalStats.totalDonations.toLocaleString()}
+                    </p>
+                  </div>
+                  <Users className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-purple-600" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3 sm:p-4 lg:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-gray-600">Maintenance</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900">
+                      {totalStats.maintenance}
+                    </p>
+                  </div>
+                  <Activity className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-orange-600" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Unified Header Component */}
@@ -459,7 +531,7 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
           />
-          
+
           {/* Modern Table Container */}
           <Card className="overflow-hidden">
             <CardContent className="p-0">
@@ -467,8 +539,12 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                 <>
                   <div className="md:hidden px-6 py-6 space-y-4">
                     {filteredKiosks.map((kiosk) => {
-                      const assignedIds = Array.from(new Set(kiosk.assignedCampaigns || [])).filter(Boolean);
-                      const assignedCount = campaigns.filter((c) => assignedIds.includes(c.id)).length;
+                      const assignedIds = Array.from(new Set(kiosk.assignedCampaigns || [])).filter(
+                        Boolean,
+                      );
+                      const assignedCount = campaigns.filter((c) =>
+                        assignedIds.includes(c.id),
+                      ).length;
 
                       return (
                         <div
@@ -477,7 +553,9 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className="text-sm font-semibold text-gray-900">{kiosk.name}</div>
+                              <div className="text-sm font-semibold text-gray-900">
+                                {kiosk.name}
+                              </div>
                               <div className="flex items-center gap-1 text-xs text-gray-500">
                                 <MapPin className="h-3 w-3" />
                                 {kiosk.location}
@@ -539,7 +617,9 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                                 Kiosk ID
                               </p>
                               <div className="flex items-center justify-between gap-2">
-                                <p className="font-mono text-sm text-gray-900 break-all">{kiosk.id}</p>
+                                <p className="font-mono text-sm text-gray-900 break-all">
+                                  {kiosk.id}
+                                </p>
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -570,7 +650,11 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                                   size="icon"
                                   onClick={() => toggleAccessCode(kiosk.id)}
                                   className="h-8 w-8 text-blue-600 hover:text-blue-800"
-                                  title={showAccessCodes[kiosk.id] ? "Hide Access Code" : "Show Access Code"}
+                                  title={
+                                    showAccessCodes[kiosk.id]
+                                      ? 'Hide Access Code'
+                                      : 'Show Access Code'
+                                  }
                                 >
                                   {showAccessCodes[kiosk.id] ? (
                                     <EyeOff className="h-4 w-4" />
@@ -607,47 +691,47 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                     <Table className="w-full table-fixed">
                       <TableHeader>
                         <TableRow className="bg-gray-100 border-b-2 border-gray-300 text-gray-700">
-                          <SortableTableHeader 
-                            sortKey="name" 
-                            currentSortKey={sortKey} 
-                            currentSortDirection={sortDirection} 
+                          <SortableTableHeader
+                            sortKey="name"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
                             onSort={handleSort}
                             className="w-[30%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
                           >
                             Kiosk Details
                           </SortableTableHeader>
-                          <SortableTableHeader 
-                            sortKey="status" 
-                            currentSortKey={sortKey} 
-                            currentSortDirection={sortDirection} 
+                          <SortableTableHeader
+                            sortKey="status"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
                             onSort={handleSort}
                             className="w-[12%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
                           >
                             Status
                           </SortableTableHeader>
-                          <SortableTableHeader 
-                            sortKey="totalRaised" 
-                            currentSortKey={sortKey} 
-                            currentSortDirection={sortDirection} 
+                          <SortableTableHeader
+                            sortKey="totalRaised"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
                             onSort={handleSort}
                             className="w-[15%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide text-right"
                           >
                             Performance
                           </SortableTableHeader>
-                          <SortableTableHeader 
-                            sortKey="assignedCampaigns" 
-                            currentSortKey={sortKey} 
-                            currentSortDirection={sortDirection} 
+                          <SortableTableHeader
+                            sortKey="assignedCampaigns"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
                             onSort={handleSort}
                             className="w-[18%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
                           >
                             Campaign Assignment
                           </SortableTableHeader>
-                          <SortableTableHeader 
+                          <SortableTableHeader
                             sortable={false}
-                            sortKey="actions" 
-                            currentSortKey={sortKey} 
-                            currentSortDirection={sortDirection} 
+                            sortKey="actions"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
                             onSort={handleSort}
                             className="w-[25%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
                           >
@@ -662,7 +746,9 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                               <div className="space-y-3">
                                 <div>
                                   <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-sm font-medium text-gray-900">{kiosk.name}</span>
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {kiosk.name}
+                                    </span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <MapPin className="w-3 h-3 text-gray-400" />
@@ -671,7 +757,9 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                                 </div>
                                 <div className="bg-gray-50 rounded p-3 text-xs space-y-2">
                                   <div>
-                                    <div className="text-gray-500 uppercase font-medium mb-1">Kiosk ID</div>
+                                    <div className="text-gray-500 uppercase font-medium mb-1">
+                                      Kiosk ID
+                                    </div>
                                     <div className="font-mono text-gray-900 flex items-center justify-between">
                                       <span className="truncate">{kiosk.id}</span>
                                       <Button
@@ -696,17 +784,25 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                                     </div>
                                   </div>
                                   <div>
-                                    <div className="text-gray-500 uppercase font-medium mb-1">Access Code</div>
+                                    <div className="text-gray-500 uppercase font-medium mb-1">
+                                      Access Code
+                                    </div>
                                     <div className="flex items-center justify-between">
                                       <span className="text-blue-600 font-medium font-mono">
-                                        {showAccessCodes[kiosk.id] ? (kiosk.accessCode || 'Not set') : '******'}
+                                        {showAccessCodes[kiosk.id]
+                                          ? kiosk.accessCode || 'Not set'
+                                          : '******'}
                                       </span>
                                       <Button
                                         variant="ghost"
                                         size="sm"
                                         onClick={() => toggleAccessCode(kiosk.id)}
                                         className="h-auto p-1 text-xs text-blue-600 hover:text-gray-800 flex items-center gap-1"
-                                        title={showAccessCodes[kiosk.id] ? "Hide Access Code" : "Show Access Code"}
+                                        title={
+                                          showAccessCodes[kiosk.id]
+                                            ? 'Hide Access Code'
+                                            : 'Show Access Code'
+                                        }
                                       >
                                         {showAccessCodes[kiosk.id] ? (
                                           <>
@@ -735,8 +831,12 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                             </TableCell>
                             <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
                               {(() => {
-                                const assignedIds = Array.from(new Set(kiosk.assignedCampaigns || [])).filter(Boolean);
-                                const assignedCount = campaigns.filter((c) => assignedIds.includes(c.id)).length;
+                                const assignedIds = Array.from(
+                                  new Set(kiosk.assignedCampaigns || []),
+                                ).filter(Boolean);
+                                const assignedCount = campaigns.filter((c) =>
+                                  assignedIds.includes(c.id),
+                                ).length;
                                 return (
                                   <div className="text-sm text-gray-500">
                                     {assignedCount} assigned
@@ -803,6 +903,21 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                   <p className="text-sm mb-4">No kiosks found matching your search criteria.</p>
                 </div>
               )}
+              {/* Pagination — shown whenever there's data or more pages */}
+              {(filteredKiosks.length > 0 || canGoPrev) && (
+                <div className="border-t border-gray-100 px-4">
+                  <PaginationControls
+                    pageNumber={pageNumber}
+                    pageSize={pageSize}
+                    totalOnPage={filteredKiosks.length}
+                    canGoNext={canGoNext}
+                    canGoPrev={canGoPrev}
+                    onNext={goNext}
+                    onPrev={goPrev}
+                    loading={fetching}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         </main>
@@ -815,7 +930,14 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
           setIsCreateDialogOpen(open);
           if (!open) {
             setEditingKiosk(null);
-            setNewKiosk({ name: '', location: '', accessCode: '', status: 'offline', assignedCampaigns: [], displayLayout: 'grid' });
+            setNewKiosk({
+              name: '',
+              location: '',
+              accessCode: '',
+              status: 'offline',
+              assignedCampaigns: [],
+              displayLayout: 'grid',
+            });
           }
         }}
         editingKiosk={editingKiosk}
@@ -831,7 +953,7 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
         formatCurrency={formatCurrency}
         isLoading={isCreatingKiosk}
       />
-      
+
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
@@ -844,24 +966,22 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
                 <AlertTriangle className="w-6 h-6 text-red-600" />
               </div>
             </div>
-            
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">
-              Delete Kiosk
-            </h2>
-            
+
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete Kiosk</h2>
+
             <p className="text-gray-600 mb-6">
               Are you sure you want to delete this kiosk? This action cannot be undone.
             </p>
-            
+
             <div className="flex gap-3 justify-center">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setIsDeleteDialogOpen(false)}
                 disabled={isDeletingKiosk}
               >
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={confirmDeleteKiosk}
                 disabled={isDeletingKiosk}
                 className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
@@ -879,7 +999,7 @@ export function KioskManagement({ onNavigate, onLogout, userSession, hasPermissi
           </div>
         </DialogContent>
       </Dialog>
-      
+
       {/* Stripe Onboarding Dialog */}
       <StripeOnboardingDialog
         open={showOnboardingDialog}

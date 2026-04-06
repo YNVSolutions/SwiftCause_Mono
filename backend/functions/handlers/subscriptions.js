@@ -1,16 +1,15 @@
-const admin = require("firebase-admin");
-const {
-  ensureStripeInitialized,
-} = require("../services/stripe");
-const cors = require("../middleware/cors");
-const {createSubscriptionDoc} = require("../entities/subscription");
-const {createDonationDoc} = require("../entities/donation");
-const DEFAULT_GIFT_AID_DECLARATION_TEXT = "I confirm I have paid enough UK Income or Capital Gains Tax to cover all my Gift Aid donations in this tax year.";
+const admin = require('firebase-admin');
+const { ensureStripeInitialized } = require('../services/stripe');
+const cors = require('../middleware/cors');
+const { createSubscriptionDoc } = require('../entities/subscription');
+const { createDonationDoc } = require('../entities/donation');
+const DEFAULT_GIFT_AID_DECLARATION_TEXT =
+  'I confirm I have paid enough UK Income or Capital Gains Tax to cover all my Gift Aid donations in this tax year.';
 
-const toBoolean = (value) => value === true || value === "true" || value === "1";
+const toBoolean = (value) => value === true || value === 'true' || value === '1';
 
 const toStringOrNull = (value) => {
-  if (typeof value !== "string") return null;
+  if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
@@ -26,7 +25,7 @@ const getTaxYear = (dateValue) => {
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth();
   const startYear = month >= 3 ? year : year - 1;
-  const endYearShort = String((startYear + 1) % 100).padStart(2, "0");
+  const endYearShort = String((startYear + 1) % 100).padStart(2, '0');
   return `${startYear}-${endYearShort}`;
 };
 
@@ -42,68 +41,75 @@ const createGiftAidDeclarationFromMetadata = async ({
   if (!toBoolean(metadata.isGiftAid)) return;
 
   const declarationId =
-    toStringOrNull(metadata.giftAidDeclarationId) ||
-    toStringOrNull(metadata.declarationId);
+    toStringOrNull(metadata.giftAidDeclarationId) || toStringOrNull(metadata.declarationId);
   const now = new Date().toISOString();
+  const donorTitle = toStringOrNull(metadata.giftAidTitle);
 
   if (declarationId) {
-    const declarationRef = admin.firestore().collection("giftAidDeclarations").doc(declarationId);
+    const declarationRef = admin.firestore().collection('giftAidDeclarations').doc(declarationId);
     const declarationSnap = await declarationRef.get();
 
     if (declarationSnap.exists) {
       const existingDonationId = toStringOrNull(declarationSnap.data()?.donationId);
       if (existingDonationId && existingDonationId !== donationId) {
         console.warn(
-            "Gift Aid declaration already linked to a different donation; skipping relink:",
-            declarationId,
-            existingDonationId,
-            donationId,
+          'Gift Aid declaration already linked to a different donation; skipping relink:',
+          declarationId,
+          existingDonationId,
+          donationId,
         );
         return;
       }
 
-      await declarationRef.set({
-        donationId,
-        donationAmount: amountMinor,
-        giftAidAmount: Math.round(amountMinor * 0.25),
-        campaignId: campaignId || null,
-        campaignTitle: campaignTitle || "Recurring Donation",
-        organizationId: organizationId || null,
-        giftAidStatus: "active",
-        hmrcClaimStatus: "pending",
-        operationalStatus: "captured",
-        donorEmail: toStringOrNull(metadata.donorEmail) || null,
-        donorEmailNormalized: normalizeEmail(metadata.donorEmail),
-        updatedAt: now,
-      }, {merge: true});
+      await declarationRef.set(
+        {
+          ...(donorTitle ? { donorTitle } : {}),
+          donationId,
+          donationAmount: amountMinor,
+          giftAidAmount: Math.round(amountMinor * 0.25),
+          campaignId: campaignId || null,
+          campaignTitle: campaignTitle || 'Recurring Donation',
+          organizationId: organizationId || null,
+          giftAidStatus: 'active',
+          hmrcClaimStatus: 'pending',
+          operationalStatus: 'captured',
+          donorEmail: toStringOrNull(metadata.donorEmail) || null,
+          donorEmailNormalized: normalizeEmail(metadata.donorEmail),
+          updatedAt: now,
+        },
+        { merge: true },
+      );
       return;
     }
   }
 
-  const ref = admin.firestore().collection("giftAidDeclarations").doc(donationId);
+  const ref = admin.firestore().collection('giftAidDeclarations').doc(donationId);
   const existing = await ref.get();
   if (existing.exists) return;
 
-  const donorName = toStringOrNull(metadata.donorName) || "Anonymous Donor";
-  const parsed = donorName.split(" ").filter(Boolean);
-  const fallbackFirst = parsed[0] || "Anonymous";
-  const fallbackLast = parsed.slice(1).join(" ") || "Donor";
+  const donorName = toStringOrNull(metadata.donorName) || 'Anonymous Donor';
+  const parsed = donorName.split(' ').filter(Boolean);
+  const fallbackFirst = parsed[0] || 'Anonymous';
+  const fallbackLast = parsed.slice(1).join(' ') || 'Donor';
   const declarationDate = toStringOrNull(metadata.giftAidDeclarationDate) || donationDateIso;
 
   await ref.set({
     id: donationId,
     donationId,
+    donorTitle: donorTitle || '',
     donorFirstName: toStringOrNull(metadata.giftAidFirstName) || fallbackFirst,
     donorSurname: toStringOrNull(metadata.giftAidSurname) || fallbackLast,
-    donorHouseNumber: toStringOrNull(metadata.giftAidHouseNumber) || "",
-    donorAddressLine1: toStringOrNull(metadata.giftAidAddressLine1) || "",
-    donorAddressLine2: toStringOrNull(metadata.giftAidAddressLine2) || "",
-    donorTown: toStringOrNull(metadata.giftAidTown) || "",
-    donorPostcode: toStringOrNull(metadata.giftAidPostcode) || "",
+    donorHouseNumber: toStringOrNull(metadata.giftAidHouseNumber) || '',
+    donorAddressLine1: toStringOrNull(metadata.giftAidAddressLine1) || '',
+    donorAddressLine2: toStringOrNull(metadata.giftAidAddressLine2) || '',
+    donorTown: toStringOrNull(metadata.giftAidTown) || '',
+    donorPostcode: toStringOrNull(metadata.giftAidPostcode) || '',
     donorEmail: toStringOrNull(metadata.donorEmail) || null,
     donorEmailNormalized: normalizeEmail(metadata.donorEmail),
-    declarationText: toStringOrNull(metadata.giftAidDeclarationText) || DEFAULT_GIFT_AID_DECLARATION_TEXT,
-    declarationTextVersion: toStringOrNull(metadata.giftAidDeclarationTextVersion) || "hmrc-ch3-2026-03",
+    declarationText:
+      toStringOrNull(metadata.giftAidDeclarationText) || DEFAULT_GIFT_AID_DECLARATION_TEXT,
+    declarationTextVersion:
+      toStringOrNull(metadata.giftAidDeclarationTextVersion) || 'hmrc-ch3-2026-03',
     declarationDate,
     giftAidConsent: toBoolean(metadata.giftAidConsent),
     ukTaxpayerConfirmation: toBoolean(metadata.giftAidTaxpayer),
@@ -112,13 +118,13 @@ const createGiftAidDeclarationFromMetadata = async ({
     donationAmount: amountMinor,
     giftAidAmount: Math.round(amountMinor * 0.25),
     campaignId: campaignId || null,
-    campaignTitle: campaignTitle || "Recurring Donation",
+    campaignTitle: campaignTitle || 'Recurring Donation',
     organizationId: organizationId || null,
     donationDate: donationDateIso,
-    taxYear: toStringOrNull(metadata.giftAidTaxYear) || getTaxYear(donationDateIso) || "unknown",
-    giftAidStatus: "pending",
-    hmrcClaimStatus: "pending",
-    operationalStatus: "captured",
+    taxYear: toStringOrNull(metadata.giftAidTaxYear) || getTaxYear(donationDateIso) || 'unknown',
+    giftAidStatus: 'pending',
+    hmrcClaimStatus: 'pending',
+    operationalStatus: 'captured',
     createdAt: now,
     updatedAt: now,
   });
@@ -145,25 +151,30 @@ const createRecurringSubscription = (req, res) => {
         metadata = {},
       } = req.body;
 
-      console.log("createRecurringSubscription called with:", {
+      console.log('createRecurringSubscription called with:', {
         amount,
         interval,
         intervalCount,
         campaignId,
         donorEmail: donor?.email,
-        paymentMethodId: paymentMethodId ? "provided" : "missing",
+        paymentMethodId: paymentMethodId ? 'provided' : 'missing',
       });
 
       // Validation
       if (!amount || !interval || !campaignId || !donor?.email) {
-        console.error("Validation failed:", {amount, interval, campaignId, donorEmail: donor?.email});
+        console.error('Validation failed:', {
+          amount,
+          interval,
+          campaignId,
+          donorEmail: donor?.email,
+        });
         return res.status(400).send({
-          error: "Missing required fields: amount, interval, campaignId, donor.email",
+          error: 'Missing required fields: amount, interval, campaignId, donor.email',
         });
       }
 
-      if (!["month", "year"].includes(interval)) {
-        console.error("Invalid interval:", interval);
+      if (!['month', 'year'].includes(interval)) {
+        console.error('Invalid interval:', interval);
         return res.status(400).send({
           error: "Invalid interval. Must be 'month' or 'year'",
         });
@@ -173,58 +184,50 @@ const createRecurringSubscription = (req, res) => {
       if (
         !Number.isInteger(normalizedIntervalCount) ||
         normalizedIntervalCount < 1 ||
-        (interval === "year" && normalizedIntervalCount !== 1) ||
-        (interval === "month" && ![1, 3].includes(normalizedIntervalCount))
+        (interval === 'year' && normalizedIntervalCount !== 1) ||
+        (interval === 'month' && ![1, 3].includes(normalizedIntervalCount))
       ) {
-        console.error("Invalid intervalCount:", intervalCount);
+        console.error('Invalid intervalCount:', intervalCount);
         return res.status(400).send({
-          error: "Invalid intervalCount for the selected interval",
+          error: 'Invalid intervalCount for the selected interval',
         });
       }
 
       if (!paymentMethodId) {
-        console.error("Missing paymentMethodId");
+        console.error('Missing paymentMethodId');
         return res.status(400).send({
-          error: "Missing paymentMethodId",
+          error: 'Missing paymentMethodId',
         });
       }
 
       // Get campaign and organization
-      const campaignSnap = await admin
-          .firestore()
-          .collection("campaigns")
-          .doc(campaignId)
-          .get();
+      const campaignSnap = await admin.firestore().collection('campaigns').doc(campaignId).get();
 
       if (!campaignSnap.exists) {
-        return res.status(404).send({error: "Campaign not found"});
+        return res.status(404).send({ error: 'Campaign not found' });
       }
 
       const campaignData = campaignSnap.data();
       const orgId = campaignData.organizationId;
 
-      const orgSnap = await admin
-          .firestore()
-          .collection("organizations")
-          .doc(orgId)
-          .get();
+      const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
 
       if (!orgSnap.exists) {
-        return res.status(404).send({error: "Organization not found"});
+        return res.status(404).send({ error: 'Organization not found' });
       }
 
       const stripeAccountId = orgSnap.data().stripe?.accountId;
       if (!stripeAccountId) {
         return res.status(400).send({
-          error: "Organization not onboarded with Stripe",
+          error: 'Organization not onboarded with Stripe',
         });
       }
 
       // Get organization currency or default to usd
       const orgData = orgSnap.data();
-      const currency = (orgData.currency || "usd").toLowerCase();
+      const currency = (orgData.currency || 'usd').toLowerCase();
 
-      console.log("Organization data:", {
+      console.log('Organization data:', {
         orgId,
         currency,
         stripeAccountId,
@@ -234,16 +237,16 @@ const createRecurringSubscription = (req, res) => {
       // (Stripe doesn't allow mixing currencies on the same customer)
       const customer = await stripeClient.customers.create({
         email: donor.email,
-        name: donor.name || "Anonymous",
+        name: donor.name || 'Anonymous',
         phone: donor.phone || undefined,
         metadata: {
           campaignId,
           organizationId: orgId,
-          platform: metadata.platform || "web",
+          platform: metadata.platform || 'web',
         },
       });
 
-      console.log("Customer created:", customer.id);
+      console.log('Customer created:', customer.id);
 
       // Attach payment method to customer
       await stripeClient.paymentMethods.attach(paymentMethodId, {
@@ -251,7 +254,7 @@ const createRecurringSubscription = (req, res) => {
       });
 
       await stripeClient.customers.update(customer.id, {
-        invoice_settings: {default_payment_method: paymentMethodId},
+        invoice_settings: { default_payment_method: paymentMethodId },
       });
 
       // Create price with inline product (per-subscription strategy)
@@ -274,22 +277,22 @@ const createRecurringSubscription = (req, res) => {
       // Create subscription
       const subscription = await stripeClient.subscriptions.create({
         customer: customer.id,
-        items: [{price: price.id}],
+        items: [{ price: price.id }],
         default_payment_method: paymentMethodId,
-        collection_method: "charge_automatically",
-        expand: ["latest_invoice.payment_intent"],
-        transfer_data: {destination: stripeAccountId},
+        collection_method: 'charge_automatically',
+        expand: ['latest_invoice.payment_intent'],
+        transfer_data: { destination: stripeAccountId },
         metadata: {
           campaignId,
           organizationId: orgId,
           donorEmail: donor.email,
-          donorName: donor.name || "Anonymous",
-          platform: metadata.platform || "web",
+          donorName: donor.name || 'Anonymous',
+          platform: metadata.platform || 'web',
           ...metadata,
         },
       });
 
-      console.log("Subscription created:", {
+      console.log('Subscription created:', {
         id: subscription.id,
         status: subscription.status,
         customer: customer.id,
@@ -312,10 +315,10 @@ const createRecurringSubscription = (req, res) => {
         cancelReason: cancelReason || null,
         metadata: {
           donorEmail: donor.email,
-          donorName: donor.name || "Anonymous",
+          donorName: donor.name || 'Anonymous',
           donorPhone: donor.phone || null,
           campaignTitle: campaignData.title,
-          platform: metadata.platform || "web",
+          platform: metadata.platform || 'web',
           ...metadata,
         },
       });
@@ -323,9 +326,9 @@ const createRecurringSubscription = (req, res) => {
       // Handle first invoice
       const latestInvoice = subscription.latest_invoice;
       const recurringInterval =
-        interval === "year" ? "yearly" : normalizedIntervalCount === 3 ? "quarterly" : "monthly";
+        interval === 'year' ? 'yearly' : normalizedIntervalCount === 3 ? 'quarterly' : 'monthly';
 
-      console.log("Latest invoice details:", {
+      console.log('Latest invoice details:', {
         exists: !!latestInvoice,
         status: latestInvoice?.status,
         hasPaymentIntent: !!latestInvoice?.payment_intent,
@@ -335,7 +338,7 @@ const createRecurringSubscription = (req, res) => {
       if (latestInvoice?.payment_intent) {
         const paymentIntent = latestInvoice.payment_intent;
         // Safety net: if first recurring payment is already successful, persist donation immediately.
-        if (paymentIntent.status === "succeeded") {
+        if (paymentIntent.status === 'succeeded') {
           const donationId = paymentIntent.id || latestInvoice.id || subscription.id;
           await createDonationDoc({
             transactionId: donationId,
@@ -344,17 +347,17 @@ const createRecurringSubscription = (req, res) => {
             amount: latestInvoice.amount_paid || amount,
             currency,
             donorEmail: donor.email || null,
-            donorName: donor.name || "Anonymous",
+            donorName: donor.name || 'Anonymous',
             donorPhone: donor.phone || null,
             isGiftAid: toBoolean(metadata.isGiftAid),
             isRecurring: true,
             recurringInterval,
             subscriptionId: subscription.id,
             invoiceId: latestInvoice.id || null,
-            platform: metadata.platform || "web",
+            platform: metadata.platform || 'web',
             metadata: {
-              campaignTitleSnapshot: campaignData.title || "Recurring Donation",
-              source: "create_recurring_subscription",
+              campaignTitleSnapshot: campaignData.title || 'Recurring Donation',
+              source: 'create_recurring_subscription',
             },
           });
 
@@ -363,9 +366,11 @@ const createRecurringSubscription = (req, res) => {
             amountMinor: latestInvoice.amount_paid || amount,
             metadata,
             campaignId,
-            campaignTitle: campaignData.title || "Recurring Donation",
+            campaignTitle: campaignData.title || 'Recurring Donation',
             organizationId: orgId,
-            donationDateIso: new Date((latestInvoice.created || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
+            donationDateIso: new Date(
+              (latestInvoice.created || Math.floor(Date.now() / 1000)) * 1000,
+            ).toISOString(),
           });
         }
 
@@ -376,9 +381,9 @@ const createRecurringSubscription = (req, res) => {
           paymentIntentId: paymentIntent.id || null,
           clientSecret: paymentIntent.client_secret,
           status: subscription.status,
-          requiresAction: paymentIntent.status === "requires_action",
+          requiresAction: paymentIntent.status === 'requires_action',
         });
-      } else if (latestInvoice?.status === "paid") {
+      } else if (latestInvoice?.status === 'paid') {
         const donationId = latestInvoice.payment_intent?.id || latestInvoice.id || subscription.id;
         await createDonationDoc({
           transactionId: donationId,
@@ -387,17 +392,17 @@ const createRecurringSubscription = (req, res) => {
           amount: latestInvoice.amount_paid || amount,
           currency,
           donorEmail: donor.email || null,
-          donorName: donor.name || "Anonymous",
+          donorName: donor.name || 'Anonymous',
           donorPhone: donor.phone || null,
           isGiftAid: toBoolean(metadata.isGiftAid),
           isRecurring: true,
           recurringInterval,
           subscriptionId: subscription.id,
           invoiceId: latestInvoice.id || null,
-          platform: metadata.platform || "web",
+          platform: metadata.platform || 'web',
           metadata: {
-            campaignTitleSnapshot: campaignData.title || "Recurring Donation",
-            source: "create_recurring_subscription",
+            campaignTitleSnapshot: campaignData.title || 'Recurring Donation',
+            source: 'create_recurring_subscription',
           },
         });
 
@@ -406,9 +411,11 @@ const createRecurringSubscription = (req, res) => {
           amountMinor: latestInvoice.amount_paid || amount,
           metadata,
           campaignId,
-          campaignTitle: campaignData.title || "Recurring Donation",
+          campaignTitle: campaignData.title || 'Recurring Donation',
           organizationId: orgId,
-          donationDateIso: new Date((latestInvoice.created || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
+          donationDateIso: new Date(
+            (latestInvoice.created || Math.floor(Date.now() / 1000)) * 1000,
+          ).toISOString(),
         });
 
         return res.status(200).send({
@@ -417,7 +424,7 @@ const createRecurringSubscription = (req, res) => {
           customerId: customer.id,
           invoiceId: latestInvoice.id || null,
           paymentIntentId: latestInvoice.payment_intent?.id || null,
-          message: "Subscription created and first payment completed",
+          message: 'Subscription created and first payment completed',
           status: subscription.status,
         });
       }
@@ -428,14 +435,14 @@ const createRecurringSubscription = (req, res) => {
         status: subscription.status,
       });
     } catch (error) {
-      console.error("Error creating recurring subscription:", error);
-      console.error("Error stack:", error.stack);
-      console.error("Error details:", {
+      console.error('Error creating recurring subscription:', error);
+      console.error('Error stack:', error.stack);
+      console.error('Error details:', {
         message: error.message,
         type: error.type,
         code: error.code,
       });
-      return res.status(500).send({error: error.message});
+      return res.status(500).send({ error: error.message });
     }
   });
 };
@@ -450,54 +457,54 @@ const cancelRecurringSubscription = (req, res) => {
     try {
       const stripeClient = ensureStripeInitialized();
 
-      const {subscriptionId, cancelImmediately = false, cancelReason = null} = req.body;
+      const { subscriptionId, cancelImmediately = false, cancelReason = null } = req.body;
 
       if (!subscriptionId) {
         return res.status(400).send({
-          error: "Missing subscriptionId",
+          error: 'Missing subscriptionId',
         });
       }
 
       // Get subscription from Firestore
       const subscriptionDoc = await admin
-          .firestore()
-          .collection("subscriptions")
-          .doc(subscriptionId)
-          .get();
+        .firestore()
+        .collection('subscriptions')
+        .doc(subscriptionId)
+        .get();
 
       if (!subscriptionDoc.exists) {
-        return res.status(404).send({error: "Subscription not found"});
+        return res.status(404).send({ error: 'Subscription not found' });
       }
 
       const subscriptionData = subscriptionDoc.data();
 
       // Cancel in Stripe
       const canceledSubscription = await stripeClient.subscriptions.cancel(
-          subscriptionData.stripeSubscriptionId,
-          {
-            prorate: !cancelImmediately,
-            invoice_now: cancelImmediately,
-          },
+        subscriptionData.stripeSubscriptionId,
+        {
+          prorate: !cancelImmediately,
+          invoice_now: cancelImmediately,
+        },
       );
 
       // Update in Firestore with cancel reason
       await admin
-          .firestore()
-          .collection("subscriptions")
-          .doc(subscriptionId)
-          .update({
-            status: "canceled",
-            canceledAt: admin.firestore.Timestamp.now(),
-            cancelReason: cancelReason || null,
-            cancelReason: cancelReason || null,
-            updatedAt: admin.firestore.Timestamp.now(),
-          });
+        .firestore()
+        .collection('subscriptions')
+        .doc(subscriptionId)
+        .update({
+          status: 'canceled',
+          canceledAt: admin.firestore.Timestamp.now(),
+          cancelReason: cancelReason || null,
+          cancelReason: cancelReason || null,
+          updatedAt: admin.firestore.Timestamp.now(),
+        });
 
-      console.log("Subscription canceled:", subscriptionId);
+      console.log('Subscription canceled:', subscriptionId);
 
       return res.status(200).send({
         success: true,
-        message: "Subscription canceled successfully",
+        message: 'Subscription canceled successfully',
         subscription: {
           id: canceledSubscription.id,
           status: canceledSubscription.status,
@@ -505,8 +512,8 @@ const cancelRecurringSubscription = (req, res) => {
         },
       });
     } catch (error) {
-      console.error("Error canceling subscription:", error);
-      return res.status(500).send({error: error.message});
+      console.error('Error canceling subscription:', error);
+      return res.status(500).send({ error: error.message });
     }
   });
 };
@@ -521,23 +528,23 @@ const updateSubscriptionPaymentMethod = (req, res) => {
     try {
       const stripeClient = ensureStripeInitialized();
 
-      const {subscriptionId, paymentMethodId} = req.body;
+      const { subscriptionId, paymentMethodId } = req.body;
 
       if (!subscriptionId || !paymentMethodId) {
         return res.status(400).send({
-          error: "Missing subscriptionId or paymentMethodId",
+          error: 'Missing subscriptionId or paymentMethodId',
         });
       }
 
       // Get subscription from Firestore
       const subscriptionDoc = await admin
-          .firestore()
-          .collection("subscriptions")
-          .doc(subscriptionId)
-          .get();
+        .firestore()
+        .collection('subscriptions')
+        .doc(subscriptionId)
+        .get();
 
       if (!subscriptionDoc.exists) {
-        return res.status(404).send({error: "Subscription not found"});
+        return res.status(404).send({ error: 'Subscription not found' });
       }
 
       const subscriptionData = subscriptionDoc.data();
@@ -549,26 +556,23 @@ const updateSubscriptionPaymentMethod = (req, res) => {
 
       // Update customer's default payment method
       await stripeClient.customers.update(subscriptionData.customerId, {
-        invoice_settings: {default_payment_method: paymentMethodId},
+        invoice_settings: { default_payment_method: paymentMethodId },
       });
 
       // Update subscription's default payment method
-      await stripeClient.subscriptions.update(
-          subscriptionData.stripeSubscriptionId,
-          {
-            default_payment_method: paymentMethodId,
-          },
-      );
+      await stripeClient.subscriptions.update(subscriptionData.stripeSubscriptionId, {
+        default_payment_method: paymentMethodId,
+      });
 
-      console.log("Payment method updated for subscription:", subscriptionId);
+      console.log('Payment method updated for subscription:', subscriptionId);
 
       return res.status(200).send({
         success: true,
-        message: "Payment method updated successfully",
+        message: 'Payment method updated successfully',
       });
     } catch (error) {
-      console.error("Error updating payment method:", error);
-      return res.status(500).send({error: error.message});
+      console.error('Error updating payment method:', error);
+      return res.status(500).send({ error: error.message });
     }
   });
 };

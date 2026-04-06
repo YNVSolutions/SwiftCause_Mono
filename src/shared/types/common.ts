@@ -44,6 +44,8 @@ export type Permission =
   | "assign_campaigns"
   | "view_donations"
   | "export_donations"
+  | "export_giftaid"
+  | "download_giftaid_exports"
   | "view_users"
   | "create_user"
   | "edit_user"
