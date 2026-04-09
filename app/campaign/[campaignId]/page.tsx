@@ -217,30 +217,6 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
     }
   };
 
-  // Gift Aid declined - save donation and go to payment
-  // NOTE: This should NOT be called in magic link flow (payment already completed)
-  const handleDeclineGiftAid = (finalAmount: number) => {
-    const amountPence = Math.round(finalAmount * 100);
-    const donation = {
-      campaignId: campaign?.id,
-      amount: amountPence,
-      isGiftAid: false, // User DECLINED Gift Aid
-      giftAidEnabled: campaign?.configuration.giftAidEnabled || false, // Campaign supports it
-      giftAidAccepted: false, // User DECLINED Gift Aid
-      isRecurring: isRecurringSelection,
-      recurringInterval: isRecurringSelection ? recurringIntervalParam : undefined,
-      kioskId: currentKioskSession?.kioskId,
-      donorName: sessionStorage.getItem('donorName') || '',
-      donorEmail: sessionStorage.getItem('donorEmail') || '',
-    };
-    sessionStorage.setItem('donation', JSON.stringify(donation));
-    sessionStorage.setItem(
-      'paymentBackPath',
-      `${window.location.pathname}${window.location.search}`,
-    );
-    router.push(`/payment/${campaignId}`);
-  };
-
   if (showGiftAid && loading) {
     return (
       <KioskLoading
@@ -284,7 +260,6 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
         initialDonorName={sessionStorage.getItem('donorName') || ''}
         initialDonorEmail={sessionStorage.getItem('donorEmail') || ''}
         onAcceptGiftAid={handleAcceptGiftAid}
-        onDeclineGiftAid={handleDeclineGiftAid}
         onBack={handleBackFromGiftAid}
       />
     );
