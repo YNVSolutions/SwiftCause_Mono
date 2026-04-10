@@ -1,276 +1,419 @@
-# Gift Aid Export Flow (Server-Side)
+# Gift Aid Export Flow
 
-This document describes the end-to-end Gift Aid export flow implemented in this repo: triggers, sequence, state transitions, and data artifacts.
+## 1) Purpose
 
-## 0. System Overview
+This document explains the Gift Aid export system end-to-end:
 
-### 0.1 Actors
+- what the flow does
+- why each step exists
+- how data moves across frontend, backend, Firestore, and Storage
+- how permissioning, validation, and security controls are enforced
 
-- Admin / Super Admin: initiate exports and download history
-- Manager: download history only
+This is the **export** flow for Gift Aid declarations, not the donor capture flow.
 
-### 0.2 Stores
+---
 
-- Firestore:
-  - `giftAidDeclarations`
-  - `giftAidExportBatches`
-- Storage:
-  - `giftAidExports/{organizationId}/{batchId}/`
+## 2) Scope
 
-### 0.3 Flow Diagrams
+### In Scope
 
-#### 0.3.1 Export & Track (Sequence)
+- Exporting captured Gift Aid declarations as:
+  - HMRC schedule CSV
+  - Internal pence-based CSV
+- Creating and tracking export batches
+- Marking exported declarations to avoid duplicate extraction
+- Re-downloading stored batch files
+- CSV output security hardening
+
+### Out of Scope
+
+- HMRC submission API integration
+- HMRC reference workflow after submission
+- Gift Aid capture UI rules (covered in donor-side docs)
+
+---
+
+## 3) File Map
+
+### Backend
+
+- `backend/functions/handlers/giftAid.js`
+  - `exportGiftAidDeclarations`
+  - `downloadGiftAidExportBatchFile`
+  - permission checks
+  - batch lifecycle writes
+  - storage upload/download
+
+- `backend/functions/services/giftAidExport.js`
+  - CSV column definitions
+  - row-level formatting
+  - HMRC required-field validation
+  - CSV escaping + formula sanitization
+
+- `backend/functions/index.js`
+  - function registrations:
+    - `exportGiftAidDeclarations`
+    - `downloadGiftAidExportBatchFile`
+
+### Frontend
+
+- `src/entities/giftAid/api/giftAidExportApi.ts`
+  - authenticated function calls
+  - export request + batch file download request
+  - history fetch from Firestore collection
+
+- `src/views/admin/GiftAidManagement.tsx`
+  - “Export and track” action
+  - export history table/cards
+  - pagination (history)
+  - role/permission-based UI behavior
+
+---
+
+## 4) High-Level Architecture
+
+```mermaid
+flowchart LR
+  A[Admin GiftAidManagement UI] --> B[giftAidExportApi.ts]
+  B --> C[CF: exportGiftAidDeclarations]
+  C --> D[(Firestore: giftAidDeclarations)]
+  C --> E[giftAidExport service]
+  E --> F[HMRC CSV + Internal CSV]
+  C --> G[(Cloud Storage: giftAidExports/...)]
+  C --> H[(Firestore: giftAidExportBatches)]
+  C --> I[(Firestore: update declarations to exported)]
+  C --> B
+  B --> J[Browser download - HMRC + Internal]
+  A --> K[giftAidExportBatches history view]
+  A --> L[CF: downloadGiftAidExportBatchFile]
+  L --> G
+  L --> J
+```
+
+---
+
+## 5) Export Batch Lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending
+  pending --> completed: both CSV files created + declarations marked exported
+  pending --> failed: any fatal error
+  failed --> [*]
+  completed --> [*]
+```
+
+Batch status is persisted in `giftAidExportBatches`.
+
+---
+
+## 6) End-to-End Export Sequence
 
 ```mermaid
 sequenceDiagram
   actor Admin
-  participant UI as Admin UI
-  participant API as Cloud Function
+  participant UI as GiftAidManagement.tsx
+  participant API as giftAidExportApi.ts
+  participant FN as exportGiftAidDeclarations
   participant DB as Firestore
-  participant ST as Storage
+  participant SVC as giftAidExport.js
+  participant ST as Cloud Storage
 
-  Admin->>UI: Click "Export & Track"
-  UI->>API: POST exportGiftAidDeclarations
-  API->>DB: Query captured declarations
-  API->>API: Validate HMRC fields
-  API->>ST: Write HMRC CSV + Internal CSV
-  API->>DB: Create/update giftAidExportBatches
-  API->>DB: Mark declarations exported/included
-  API-->>UI: Export result + batch metadata
-  UI->>API: POST downloadGiftAidExportBatchFile (HMRC)
-  API-->>UI: CSV stream (attachment)
-  UI->>API: POST downloadGiftAidExportBatchFile (Internal)
-  API-->>UI: CSV stream (attachment)
+  Admin->>UI: Click "Export and Track"
+  UI->>API: exportGiftAidDeclarations(organizationId)
+  API->>FN: POST + Bearer token
+  FN->>FN: verifyAuth + permission + org scope
+  FN->>DB: Query declarations where operationalStatus == captured
+  DB-->>FN: Declaration set
+  FN->>SVC: validateGiftAidDeclarationsForHmrcSchedule
+  SVC-->>FN: validation result
+  FN->>DB: Create batch(status=pending)
+  FN->>SVC: buildHmrcScheduleCsv + buildInternalGiftAidCsv
+  SVC-->>FN: CSV strings
+  FN->>ST: Save both CSV files
+  FN->>DB: Mark declarations exported + set exportBatchId/exportedAt
+  FN->>DB: Update batch(status=completed, file metadata, totals)
+  FN-->>API: success payload with batch + file metadata
+  API->>UI: resolve
+  UI->>API: download HMRC file (function call)
+  UI->>API: download internal file (function call)
+  API->>Admin: Browser downloads
 ```
 
-#### 0.3.2 Export History (Flow)
+---
 
-```mermaid
-flowchart TD
-  UI[Gift Aid Admin UI] --> Q[Query giftAidExportBatches]
-  Q --> DB[(Firestore)]
-  DB --> UI
-  UI --> D1[Download HMRC CSV]
-  UI --> D2[Download Internal CSV]
-  D1 --> API[downloadGiftAidExportBatchFile]
-  D2 --> API
-  API --> ST[(Storage)]
-  ST --> API --> UI
-```
+## 7) Permission Model
 
-## 1. Primary Triggers
+Two backend permissions are enforced separately:
 
-### 1.1 Admin UI: "Export & Track"
+1. `export_giftaid`
+   - required to create new export batches
+2. `download_giftaid_exports`
+   - required to download files from existing batches
 
-- Location: `src/views/admin/GiftAidManagement.tsx`
-- Trigger: Admin clicks **Export & Track**
-- Preconditions:
-  - User must have permission `export_giftaid`
-  - User must be in an organization context
+`system_admin` bypasses both checks.
 
-### 1.2 Admin UI: Export History Re-Download
+Org scope rule:
 
-- Location: `src/views/admin/GiftAidManagement.tsx`
-- Trigger: Admin/Manager clicks **HMRC CSV** or **Internal CSV** in Export History
-- Preconditions:
-  - User must have permission `download_giftaid_exports`
+- non-privileged users can only operate on their own organization
+- privileged role path (`super_admin` in current implementation) can cross org boundary
 
-## 2. Backend Export Flow (Export & Track)
+---
 
-### 2.1 HTTP entrypoint
+## 8) Data Selection and Duplicate Prevention
 
-- Function: `exportGiftAidDeclarations`
-- Location: `backend/functions/handlers/giftAid.js`
-- Auth: Firebase ID token (Bearer)
-- Permission enforced via `export_giftaid` on caller's `users/{uid}` doc
+Only declarations with:
 
-### 2.2 Scope resolution (server-side)
+- `operationalStatus == captured`
 
-- Query:
-  - Collection: `giftAidDeclarations`
-  - Filters:
-    - `organizationId == <requested org>`
-    - `operationalStatus == captured`
+are selected for a new batch export.
 
-### 2.3 Validation
-
-- File: `backend/functions/services/giftAidExport.js`
-- Checks required for HMRC schedule:
-  - donorFirstName
-  - donorSurname
-  - donorHouseNumber
-  - donorPostcode
-  - donationDate (valid)
-  - donationAmount > 0
-
-### 2.4 Export file generation
-
-- File: `backend/functions/services/giftAidExport.js`
-- Outputs:
-  - **HMRC CSV**
-    - fields in HMRC schedule order
-    - amount is donation amount (pounds, 2 decimals)
-  - **Internal CSV**
-    - richer operational fields
-    - amounts remain pence
-
-### 2.5 Batch creation + storage
-
-- Batch doc: `giftAidExportBatches`
-- Storage path:
-  - `giftAidExports/{organizationId}/{batchId}/`
-- Stored files:
-  - `gift-aid-hmrc-schedule-<timestamp>.csv`
-  - `gift-aid-internal-pence-<timestamp>.csv`
-
-### 2.6 Declaration updates (tracking)
-
-Each exported declaration is updated:
+After successful export, each declaration is updated with:
 
 - `operationalStatus = exported`
 - `hmrcClaimStatus = included`
-- `exportBatchId = <batchId>`
-- `exportActorId = <uid>`
-- `exportedAt = <timestamp>`
+- `exportBatchId`
+- `exportedAt`
+- `exportActorId`
 
-### 2.7 Response to UI
+This is the extraction guardrail: records already exported are no longer selected as “captured”.
 
-The function returns:
+---
 
-- `batchId`
+## 9) HMRC Validation Before CSV Generation
+
+For each declaration, required fields are checked before generating the HMRC schedule CSV:
+
+- donor first name
+- donor surname
+- house number/name
+- postcode
+- donation date (valid + formatable)
+- donation amount (> 0)
+
+If validation fails:
+
+- export is rejected with `400`
+- response includes `validationErrors` list by declaration
+
+This prevents writing non-compliant HMRC schedule files.
+
+---
+
+## 10) CSV Outputs
+
+## 10.1 HMRC CSV
+
+Header order:
+
+1. `Title`
+2. `First name or initial`
+3. `Last name`
+4. `House name or number`
+5. `Postcode`
+6. `Aggregated donations`
+7. `Sponsored event`
+8. `Donation date`
+9. `Amount`
+
+Formatting:
+
+- date format: `DD/MM/YY`
+- amount format: pounds with 2 decimals from pence
+
+## 10.2 Internal CSV
+
+Header order:
+
+1. `Title`
+2. `Donor First Name`
+3. `Donor Surname`
+4. `House Number`
+5. `Address Line 1`
+6. `Address Line 2`
+7. `Town`
+8. `Postcode`
+9. `Donation Amount (Pence)`
+10. `Gift Aid Amount (Pence)`
+11. `Donation Date`
+12. `Tax Year`
+13. `Campaign Title`
+14. `Donation ID`
+
+Formatting:
+
+- date format: `YYYY-MM-DD`
+- amount fields kept in pence
+
+---
+
+## 11) Storage and Batch Metadata
+
+Files are stored under:
+
+- `giftAidExports/{organizationId}/{batchId}/...`
+
+For each file, metadata persisted in batch includes:
+
+- `fileName`
+- `storagePath`
+- optional signed `downloadUrl`
+- `sha256`
+- `sizeBytes`
+
+Batch also stores:
+
+- creator info (`createdByUserId`, email/name)
 - `rowCount`
-- `hmrcFile` metadata (fileName, storagePath, size, sha256)
-- `internalFile` metadata
+- declaration IDs
+- status timestamps
+- aggregate totals (`giftAidTotalPence`, `donationTotalPence`)
+- export scope + format version
 
-## 3. Download Flow
+---
 
-### 3.1 Download from Export & Track
+## 12) Re-Download Flow
 
-- UI uses `downloadGiftAidExportFile(...)`
-- API file: `src/entities/giftAid/api/giftAidExportApi.ts`
-- It calls backend endpoint:
-  - `downloadGiftAidExportBatchFile`
-  - Location: `backend/functions/handlers/giftAid.js`
+`downloadGiftAidExportBatchFile` does:
 
-### 3.2 Download from Export History
+1. auth + permission check (`download_giftaid_exports`)
+2. validates `batchId` and `fileKind` (`hmrc` or `internal`)
+3. loads batch doc + resolves file metadata
+4. confirms file exists in storage
+5. streams CSV bytes with attachment headers
 
-- UI buttons for HMRC/Internal
-- Same backend endpoint:
-  - `downloadGiftAidExportBatchFile`
-- Permission enforced via `download_giftaid_exports`
+This supports recovery if local copies are missing.
 
-### 3.3 Backend download endpoint
+---
 
-- Function: `downloadGiftAidExportBatchFile`
-- Validates:
-  - batchId exists
-  - fileKind is `hmrc` or `internal`
-  - caller has `download_giftaid_exports`
-  - caller is same organization unless `system_admin`
-- Reads file from Storage and streams back with:
-  - `Content-Type: text/csv; charset=utf-8`
-  - `Content-Disposition: attachment; filename="<fileName>"`
+## 13) Frontend Behavior
 
-## 4. Export History Data Flow
+`GiftAidManagement.tsx`:
 
-### 4.1 Fetching history
+- Export button triggers backend export and tracking flow
+- Immediately attempts both file downloads after successful export
+- Shows clear warning if secondary file download fails while export succeeded
+- Loads and paginates export history
+- Disables buttons based on permission + file availability + in-flight state
 
-- UI calls `fetchGiftAidExportBatches(...)`
-- File: `src/entities/giftAid/api/giftAidExportApi.ts`
-- Query:
-  - Collection: `giftAidExportBatches`
-  - Filter: `organizationId == <current org>`
+History source:
 
-### 4.2 History presentation
+- `giftAidExportBatches` collection filtered by org
+- sorted by batch timestamps
 
-- UI shows:
-  - Batch id
-  - Timestamp
-  - Row count
-  - Exported by
-  - Status
-  - Download buttons
-- Pagination:
-  - Page size: 8
+---
 
-## 5. Permissions
+## 14) Security Controls
 
-### 5.1 Permissions in use
+## 14.1 Auth and Authorization
 
-- `export_giftaid`
-  - required for **Export & Track**
-- `download_giftaid_exports`
-  - required for history re-downloads
+- backend-only trust boundary via Firebase token verification
+- explicit permission claims
+- org-scope guardrails
 
-### 5.2 Default role mapping
+## 14.2 CSV Formula Injection Hardening
 
-- super_admin: `export_giftaid`, `download_giftaid_exports`
-- admin: `export_giftaid`, `download_giftaid_exports`
-- manager: `download_giftaid_exports` only
-- operator: none by default
-- viewer: none
+Problem:
 
-### 5.3 Permission sync for existing users
+- spreadsheet tools can execute formula-like cell values that begin with `=`, `+`, `-`, `@`
 
-- Script: `backend/functions/scripts/grantGiftAidExportPermission.js`
-- Command:
-  - `npm run backfill:giftaid-export-permission`
+Mitigation now in `giftAidExport.js`:
 
-## 6. Donor Title Capture (HMRC Title field)
+- `sanitizeSpreadsheetFormula(value)` runs before CSV escaping
+- if a string starts (including leading whitespace) with formula trigger characters, prefix with `'`
+- then apply regular CSV escaping for quotes/commas/newlines
 
-### 6.1 Capture points
+Why this is necessary:
 
-- Web Gift Aid form: `src/views/campaigns/GiftAidDetailsScreen.tsx`
-- Kiosk Gift Aid form: `src/features/kiosk-gift-aid/components/GiftAidDetailsPanel.tsx`
+- donor-controlled text fields (name/address/title) can otherwise become executable formulas when admins open CSV files
 
-### 6.2 Metadata propagation
+Outcome:
 
-- Gift Aid title sent in payment metadata:
-  - `giftAidTitle`
-- File: `src/views/campaigns/PaymentScreen.tsx`
+- same defensive behavior as donation export path
 
-### 6.3 Backend persistence
+---
 
-- One-off payments: `backend/functions/handlers/webhooks.js`
-- Subscriptions: `backend/functions/handlers/subscriptions.js`
+## 15) Error Handling and Operational Behavior
 
-### 6.4 Export behavior
+If export fails after batch creation:
 
-- HMRC CSV uses `donorTitle` when present
-- If missing, HMRC title field is blank
+- batch is updated to `failed`
+- `failureMessage` and `failedAt` recorded
 
-## 7. Failure States and Notes
+If no captured declarations exist:
 
-### 7.1 Empty export
+- returns success with `empty: true` and a message
+- no batch files are produced
 
-- If no captured declarations, API returns:
-  - `success: true`
-  - `empty: true`
-  - `message`
+If storage file missing during re-download:
 
-### 7.2 Validation errors
+- returns `404` with explicit error
 
-- If required HMRC fields missing:
-  - export fails
-  - returns `validationErrors`
-  - no batch is marked completed
+---
 
-### 7.3 Download failures
+## 16) Suggested Test Matrix
 
-- If file missing from Storage:
-  - backend returns 404
-  - UI shows "file unavailable" or download error
+Backend service tests should cover:
 
-## 8. Emulator / Local Notes
+- HMRC and internal CSV row formatting correctness
+- formula sanitization for:
+  - `=SUM(...)`
+  - `+cmd`
+  - `-1+2`
+  - `@A1`
+  - leading whitespace + formula characters
+- numeric fields remain unchanged
+- required-field validation output
 
-### 8.1 Emulator toggle
+Handler/integration tests should cover:
 
-- `NEXT_PUBLIC_USE_FIREBASE_EMULATORS=true` enables emulator mode
-- `src/shared/config/firebaseEmulators.ts` reads emulator ports/host
+- permission denied paths (`403`)
+- org mismatch paths (`403`)
+- invalid `fileKind` (`400`)
+- empty export (`empty: true`)
+- batch status transitions (`pending -> completed` / `pending -> failed`)
 
-### 8.2 Function URL overrides (optional)
+---
 
-- `NEXT_PUBLIC_EXPORT_GIFTAID_FUNCTION_URL`
-- `NEXT_PUBLIC_DOWNLOAD_GIFTAID_BATCH_FILE_FUNCTION_URL`
+## 17) Extension Guidance
 
-If unset, the app uses deployed Cloud Functions URLs.
+## Add HMRC/Internal Columns
+
+1. update headers in `giftAidExport.js`
+2. update row builders in same order
+3. ensure validation rules still satisfy HMRC requirements
+4. update tests
+
+## Change Selection Strategy
+
+If extraction rules evolve beyond `captured`:
+
+1. update fetch query criteria
+2. update post-export mutation strategy
+3. verify no duplicate inclusion across batches
+
+## Introduce HMRC Submission Tracking
+
+Current flow marks `hmrcClaimStatus = included` on export.  
+If submission is automated later, add explicit transitions (`submitted`, `paid`) via separate workflow.
+
+---
+
+## 18) Quick Reference
+
+Backend entry points:
+
+- `exportGiftAidDeclarations`
+- `downloadGiftAidExportBatchFile`
+
+Core CSV logic:
+
+- `backend/functions/services/giftAidExport.js`
+
+Frontend API bridge:
+
+- `src/entities/giftAid/api/giftAidExportApi.ts`
+
+Admin UI:
+
+- `src/views/admin/GiftAidManagement.tsx`
