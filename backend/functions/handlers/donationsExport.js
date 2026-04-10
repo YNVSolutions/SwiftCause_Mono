@@ -51,8 +51,24 @@ const ensureDonationExportAccess = async (auth, requestedOrganizationId) => {
 
 const parseDateOnly = (value) => {
   if (!value || typeof value !== 'string') return null;
-  const [year, month, day] = value.split('-').map((part) => Number(part));
-  if (!year || !month || !day) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const validated = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  if (
+    validated.getUTCFullYear() !== year ||
+    validated.getUTCMonth() !== month - 1 ||
+    validated.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
   return { year, month, day };
 };
 
