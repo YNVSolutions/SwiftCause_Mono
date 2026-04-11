@@ -4,17 +4,25 @@ import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -22,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -35,12 +44,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Image
 import com.example.swiftcause.BuildConfig
 import com.example.swiftcause.R
 import com.example.swiftcause.ui.theme.PrimaryGreen
@@ -53,19 +62,21 @@ private const val DISMISS_DELAY_WITH_QR = 30000L
 
 @Composable
 fun ThankYouScreen(
-    magicLinkToken: String,
+    magicLinkToken: String?,
     onDismiss: () -> Unit
 ) {
     val totalSeconds = (DISMISS_DELAY_WITH_QR / 1000).toInt()
     var secondsRemaining by remember { mutableIntStateOf(totalSeconds) }
+    val hasQr = !magicLinkToken.isNullOrBlank()
 
     val progress by animateFloatAsState(
-        targetValue = secondsRemaining.toFloat() / totalSeconds.toFloat(),
+        targetValue = if (hasQr) secondsRemaining.toFloat() / totalSeconds.toFloat() else 1f,
         animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
         label = "resetProgress"
     )
 
     LaunchedEffect(magicLinkToken) {
+        if (magicLinkToken.isNullOrBlank()) return@LaunchedEffect
         secondsRemaining = totalSeconds
         while (secondsRemaining > 0) {
             delay(1000)
@@ -75,6 +86,25 @@ fun ThankYouScreen(
     }
 
     val qrBitmap = remember(magicLinkToken) { generateQrCode(magicLinkToken) }
+    val infiniteTransition = rememberInfiniteTransition(label = "qr-loading")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse-scale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse-alpha"
+    )
 
     Box(
         modifier = Modifier
@@ -84,105 +114,132 @@ fun ThankYouScreen(
         contentAlignment = Alignment.Center
     ) {
         Card(
-            modifier = Modifier.size(width = 760.dp, height = 560.dp),
-            shape = RoundedCornerShape(28.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 900.dp),
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1411))
         ) {
-            Row(
+            Column(
                 modifier = Modifier
-                    .fillMaxSize()
                     .padding(28.dp),
-                horizontalArrangement = Arrangement.spacedBy(24.dp)
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = PrimaryGreen,
-                        modifier = Modifier.size(72.dp)
-                    )
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = PrimaryGreen,
+                    modifier = Modifier.size(66.dp)
+                )
 
-                    Text(
-                        text = "Payment complete",
-                        color = Color.White,
-                        fontSize = 38.sp,
-                        lineHeight = 44.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                    Text(
-                        text = "Thank you for your donation.",
-                        color = Color(0xFFBFD1C7),
-                        fontSize = 18.sp
-                    )
+                Text(
+                    text = "Payment complete",
+                    color = Color.White,
+                    fontSize = 34.sp,
+                    lineHeight = 40.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                    Text(
-                        text = "Returning to campaigns in ${secondsRemaining}s",
-                        color = Color(0xFF9FB5A8),
-                        fontSize = 14.sp
-                    )
+                Text(
+                    text = "Thank you for your donation",
+                    color = Color(0xFFBFD1C7),
+                    fontSize = 17.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
 
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.height(8.dp),
-                        color = PrimaryGreen,
-                        trackColor = Color(0xFF2A3A32)
-                    )
+                Spacer(modifier = Modifier.height(18.dp))
 
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.height(54.dp)
-                    ) {
-                        Text("Done", fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Card(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF141D18))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = stringResource(R.string.magic_link_title),
-                            color = Color.White,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = TextAlign.Center
+                Box(
+                    modifier = Modifier
+                        .size(280.dp)
+                        .border(
+                            BorderStroke(
+                                width = if (hasQr) 2.dp else 3.dp,
+                                color = if (hasQr) Color(0xFF2A3A32) else PrimaryGreen.copy(alpha = pulseAlpha)
+                            ),
+                            shape = RoundedCornerShape(16.dp)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(R.string.scan_qr_for_gift_aid),
-                            color = Color(0xFFAEC3B6),
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            textAlign = TextAlign.Center
+                        .background(Color(0xFF141D18), RoundedCornerShape(16.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (qrBitmap != null && hasQr) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = stringResource(R.string.qr_code_content_description),
+                            modifier = Modifier.size(236.dp)
                         )
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        qrBitmap?.let {
-                            Image(
-                                bitmap = it.asImageBitmap(),
-                                contentDescription = stringResource(R.string.qr_code_content_description),
-                                modifier = Modifier.size(240.dp)
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size((46 * pulseScale).dp),
+                                color = PrimaryGreen,
+                                strokeWidth = 4.dp
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "Generating QR...",
+                                color = Color(0xFFAEC3B6),
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = stringResource(R.string.scan_qr_for_gift_aid),
+                    color = Color(0xFFAEC3B6),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = 520.dp)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = if (hasQr) "Returning to campaigns in ${secondsRemaining}s" else "Preparing your magic link",
+                    color = Color(0xFF9FB5A8),
+                    fontSize = 14.sp
+                )
+
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp),
+                    color = PrimaryGreen,
+                    trackColor = Color(0xFF2A3A32)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .height(52.dp)
+                        .widthIn(min = 220.dp)
+                ) {
+                    Text(
+                        text = if (hasQr) "I've scanned the QR" else "Back to campaigns",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

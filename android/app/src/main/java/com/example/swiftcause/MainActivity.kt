@@ -611,62 +611,15 @@ fun KioskMainContent(
         if (showThankYouScreen && thankYouData != null) {
             val magicLinkToken by paymentViewModel.magicLinkToken.collectAsState()
 
-            if (magicLinkToken != null) {
-                ThankYouScreen(
-                    magicLinkToken = magicLinkToken!!,
-                    onDismiss = {
-                        showThankYouScreen = false
-                        thankYouData = null
-                        pendingDonation = null
-                        viewModel.clearSelectedCampaign()
-                    }
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.55f))
-                        .clickable(enabled = false) {},
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Surface(
-                        modifier = Modifier
-                            .padding(32.dp)
-                            .width(320.dp),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                        color = androidx.compose.ui.graphics.Color.White,
-                        shadowElevation = 8.dp
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(vertical = 32.dp, horizontal = 24.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(40.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 4.dp
-                            )
-
-                            Spacer(modifier = Modifier.height(18.dp))
-
-                            Text(
-                                text = "Payment complete",
-                                fontSize = 20.sp,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text(
-                                text = "Generating your QR code...",
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-                            )
-                        }
-                    }
+            ThankYouScreen(
+                magicLinkToken = magicLinkToken,
+                onDismiss = {
+                    showThankYouScreen = false
+                    thankYouData = null
+                    pendingDonation = null
+                    viewModel.clearSelectedCampaign()
                 }
-            }
+            )
         }
     }
 }
