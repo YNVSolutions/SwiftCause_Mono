@@ -85,18 +85,6 @@ fun CampaignDetailsScreen(
     val images = campaign.getAllImages()
     val scrollState = rememberScrollState()
 
-    // Preload all carousel images using Coil's default caching
-    LaunchedEffect(images) {
-        val imageLoader = coil.ImageLoader(context)
-        images.forEach { imageUrl ->
-            val request = ImageRequest.Builder(context)
-                .data(imageUrl)
-                .build()
-            imageLoader.enqueue(request)
-        }
-        android.util.Log.d("CampaignDetails", "Preloading ${images.size} images")
-    }
-
     // Auto-rotate carousel
     LaunchedEffect(images.size) {
         if (images.size > 1) {

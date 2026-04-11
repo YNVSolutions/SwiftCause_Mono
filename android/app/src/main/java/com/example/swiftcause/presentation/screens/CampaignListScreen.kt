@@ -9,14 +9,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.imageLoader
+import coil.size.Size
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.example.swiftcause.R
 import com.example.swiftcause.domain.models.Campaign
 import com.example.swiftcause.presentation.components.CampaignRow
@@ -30,6 +36,24 @@ fun CampaignListScreen(
     onCampaignClick: (Campaign) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
+    // Prefetch cover images into shared Coil memory/disk cache once campaigns are loaded.
+    LaunchedEffect(campaigns.map { it.id to it.coverImageUrl }) {
+        val imageLoader = context.imageLoader
+        campaigns.forEach { campaign ->
+            campaign.coverImageUrl?.takeIf { it.isNotBlank() }?.let { imageUrl ->
+                val request = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .size(Size.ORIGINAL)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .build()
+                imageLoader.enqueue(request)
+            }
+        }
+    }
+
     Scaffold(
         modifier = modifier,
         containerColor = BackgroundGray,
