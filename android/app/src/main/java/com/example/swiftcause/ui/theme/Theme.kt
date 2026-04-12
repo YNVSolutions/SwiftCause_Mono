@@ -2,7 +2,6 @@ package com.example.swiftcause.ui.theme
 
 import android.app.Activity
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -38,7 +37,7 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun SwiftCauseTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false,
     // Dynamic color disabled to use brand colors
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
