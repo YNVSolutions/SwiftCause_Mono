@@ -47,11 +47,19 @@ fun KioskLoginScreen(
             contentAlignment = Alignment.Center
         ) {
             if (uiState.isAuthenticated && uiState.kioskSession != null) {
-                // Success Screen
-                KioskSuccessScreen(
-                    kioskName = uiState.kioskSession!!.kioskName,
-                    onContinue = { onLoginSuccess(uiState.kioskSession!!) }
-                )
+                // Avoid flashing an intermediate "Continue" screen before navigation
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Signing you in...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             } else {
                 // Login Form
                 Column(

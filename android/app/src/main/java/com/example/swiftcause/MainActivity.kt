@@ -21,7 +21,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Contactless
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -112,6 +115,7 @@ fun KioskMainContent(
     val paymentState by paymentViewModel.paymentState.collectAsState()
     val clientSecret by paymentViewModel.clientSecret.collectAsState()
     val tapToPayState by tapToPayViewModel.state.collectAsState()
+    val isTapToPaySimulated by tapToPayViewModel.isSimulatedMode.collectAsState()
     val context = LocalContext.current
     val hasNfcCapability = remember(context) { NfcAdapter.getDefaultAdapter(context) != null }
 
@@ -406,47 +410,96 @@ fun KioskMainContent(
         // Tap to Pay waiting overlay
         when (tapToPayState) {
             is TapToPayState.WaitingForCard -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.8f))
-                        .clickable(enabled = false) {},
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Surface(
+                if (isTapToPaySimulated) {
+                    Box(
                         modifier = Modifier
-                            .padding(32.dp)
-                            .width(300.dp),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-                        color = androidx.compose.ui.graphics.Color.White,
-                        shadowElevation = 8.dp
+                            .fillMaxSize()
+                            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f))
+                            .clickable(enabled = false) {},
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(vertical = 48.dp, horizontal = 24.dp)
+                        androidx.compose.material3.Surface(
+                            modifier = Modifier
+                                .padding(32.dp)
+                                .width(280.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                            color = androidx.compose.ui.graphics.Color.White,
+                            shadowElevation = 8.dp
                         ) {
-                            // Large emoji icon for tap to pay
-                            Text(
-                                text = "📱",
-                                fontSize = 80.sp,
-                                modifier = Modifier.padding(bottom = 24.dp)
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(vertical = 40.dp, horizontal = 24.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(48.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 4.dp
+                                )
 
-                            Text(
-                                text = "Tap Card on Phone",
-                                fontSize = 22.sp,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                                Spacer(modifier = Modifier.height(24.dp))
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Processing Payment",
+                                    fontSize = 18.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
 
-                            Text(
-                                text = "Hold your card near the top of the device",
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "Please wait...",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.8f))
+                            .clickable(enabled = false) {},
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.material3.Surface(
+                            modifier = Modifier
+                                .padding(32.dp)
+                                .width(300.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                            color = androidx.compose.ui.graphics.Color.White,
+                            shadowElevation = 8.dp
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(vertical = 48.dp, horizontal = 24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Contactless,
+                                    contentDescription = "Tap to Pay",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .size(72.dp)
+                                        .padding(bottom = 24.dp)
+                                )
+
+                                Text(
+                                    text = "Tap Card on Phone",
+                                    fontSize = 22.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "Hold your card near the top of the device",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
                         }
                     }
                 }

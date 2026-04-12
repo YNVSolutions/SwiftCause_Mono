@@ -4,8 +4,15 @@ import android.annotation.SuppressLint
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -84,6 +92,12 @@ fun CampaignDetailsScreen(
 
     val images = campaign.getAllImages()
     val scrollState = rememberScrollState()
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    val panelLift by animateDpAsState(
+        targetValue = if (imeBottom > 0) 72.dp else 0.dp,
+        animationSpec = tween(durationMillis = 220),
+        label = "panel-lift"
+    )
 
     // Auto-rotate carousel
     LaunchedEffect(images.size) {
@@ -98,7 +112,6 @@ fun CampaignDetailsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding()
     ) {
         Column(
             modifier = Modifier
@@ -234,7 +247,9 @@ fun CampaignDetailsScreen(
                     if (isRecurring) recurringEmail else null
                 )
             },
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = -panelLift)
         )
     }
 }
@@ -447,6 +462,8 @@ private fun DonationPanel(
 
     // Validate: amount > 0, and if recurring, email must be valid
     val isValidEmail = recurringEmail.contains("@") && recurringEmail.contains(".")
+    val customAmountMajor = customAmount.toLongOrNull() ?: 0L
+    val canConfirmCustomAmount = customAmountMajor > 0L && (!isRecurring || isValidEmail)
 
     Surface(
         modifier = modifier
@@ -464,7 +481,6 @@ private fun DonationPanel(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
             // Amount label
@@ -552,6 +568,31 @@ private fun DonationPanel(
                         fontWeight = FontWeight.SemiBold,
                         color = PremiumBody
                     )
+                },
+                trailingIcon = {
+                    AnimatedVisibility(
+                        visible = canConfirmCustomAmount,
+                        enter = fadeIn() + scaleIn(initialScale = 0.85f),
+                        exit = fadeOut() + scaleOut(targetScale = 0.85f)
+                    ) {
+                        Button(
+                            onClick = { onAmountDonateClick(customAmountMajor * 100) },
+                            modifier = Modifier.height(44.dp).padding(end = 6.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PremiumPrimary,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                text = stringResource(R.string.donate),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -654,7 +695,6 @@ private fun DonationPanel(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }

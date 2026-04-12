@@ -2,6 +2,7 @@ package com.example.swiftcause.presentation.screens
 
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
@@ -36,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,12 +65,19 @@ import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.delay
 
 private const val DISMISS_DELAY_WITH_QR = 30000L
+private const val PROCESSING_ANIMATION_DELAY_MS = 1400L
+
+private enum class ThankYouPhase {
+    Processing,
+    Complete
+}
 
 @Composable
 fun ThankYouScreen(
     magicLinkToken: String?,
     onDismiss: () -> Unit
 ) {
+    var phase by remember { mutableStateOf(ThankYouPhase.Processing) }
     val totalSeconds = (DISMISS_DELAY_WITH_QR / 1000).toInt()
     var secondsRemaining by remember { mutableIntStateOf(totalSeconds) }
     val hasQr = !magicLinkToken.isNullOrBlank()
@@ -79,7 +88,13 @@ fun ThankYouScreen(
         label = "resetProgress"
     )
 
-    LaunchedEffect(magicLinkToken) {
+    LaunchedEffect(Unit) {
+        delay(PROCESSING_ANIMATION_DELAY_MS)
+        phase = ThankYouPhase.Complete
+    }
+
+    LaunchedEffect(phase, magicLinkToken) {
+        if (phase != ThankYouPhase.Complete) return@LaunchedEffect
         if (magicLinkToken.isNullOrBlank()) return@LaunchedEffect
         secondsRemaining = totalSeconds
         while (secondsRemaining > 0) {
@@ -118,121 +133,164 @@ fun ThankYouScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.CheckCircle,
-            contentDescription = null,
-            tint = PremiumPrimary,
-            modifier = Modifier.size(66.dp)
-        )
+        Crossfade(targetState = phase, label = "thank-you-phase") { currentPhase ->
+            when (currentPhase) {
+                ThankYouPhase.Processing -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(56.dp),
+                            color = PremiumPrimary,
+                            strokeWidth = 5.dp
+                        )
 
-        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
 
-        Text(
-            text = "Payment complete",
-            color = PremiumHeadline,
-            fontSize = 34.sp,
-            lineHeight = 40.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
+                        Text(
+                            text = "Processing your payment",
+                            color = PremiumHeadline,
+                            fontSize = 26.sp,
+                            lineHeight = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
 
-        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
-            text = "Thank you for your donation",
-            color = PremiumBody,
-            fontSize = 17.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+                        Text(
+                            text = "Please wait...",
+                            color = PremiumBody,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
 
-        Spacer(modifier = Modifier.height(18.dp))
+                ThankYouPhase.Complete -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = PremiumPrimary,
+                            modifier = Modifier.size(66.dp)
+                        )
 
-        Box(
-            modifier = Modifier
-                .size(290.dp)
-                .border(
-                    BorderStroke(
-                        width = if (hasQr) 2.dp else 3.dp,
-                        color = if (hasQr) PremiumBorder else PremiumPrimary.copy(alpha = pulseAlpha)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                )
-                .background(PremiumCardSurface, RoundedCornerShape(16.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (qrBitmap != null && hasQr) {
-                Image(
-                    bitmap = qrBitmap.asImageBitmap(),
-                    contentDescription = stringResource(R.string.qr_code_content_description),
-                    modifier = Modifier.size(242.dp)
-                )
-            } else {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size((46 * pulseScale).dp),
-                        color = PremiumPrimary,
-                        strokeWidth = 4.dp
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "Generating QR...",
-                        color = PremiumBody,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center
-                    )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = "Payment complete",
+                            color = PremiumHeadline,
+                            fontSize = 34.sp,
+                            lineHeight = 40.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Thank you for your donation",
+                            color = PremiumBody,
+                            fontSize = 17.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .size(290.dp)
+                                .border(
+                                    BorderStroke(
+                                        width = if (hasQr) 2.dp else 3.dp,
+                                        color = if (hasQr) PremiumBorder else PremiumPrimary.copy(alpha = pulseAlpha)
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .background(PremiumCardSurface, RoundedCornerShape(16.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (qrBitmap != null && hasQr) {
+                                Image(
+                                    bitmap = qrBitmap.asImageBitmap(),
+                                    contentDescription = stringResource(R.string.qr_code_content_description),
+                                    modifier = Modifier.size(242.dp)
+                                )
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size((46 * pulseScale).dp),
+                                        color = PremiumPrimary,
+                                        strokeWidth = 4.dp
+                                    )
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Text(
+                                        text = "Generating QR...",
+                                        color = PremiumBody,
+                                        fontSize = 14.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = stringResource(R.string.scan_qr_for_gift_aid),
+                            color = PremiumBody,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(max = 520.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = if (hasQr) "Returning to campaigns in ${secondsRemaining}s" else "Preparing your magic link",
+                            color = PremiumBody,
+                            fontSize = 14.sp
+                        )
+
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp),
+                            color = PremiumPrimary,
+                            trackColor = PremiumBorder
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.buttonColors(containerColor = PremiumPrimary),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .height(52.dp)
+                                .widthIn(min = 220.dp)
+                        ) {
+                            Text(
+                                text = if (hasQr) "I've scanned the QR" else "Back to campaigns",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        Text(
-            text = stringResource(R.string.scan_qr_for_gift_aid),
-            color = PremiumBody,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(max = 520.dp)
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = if (hasQr) "Returning to campaigns in ${secondsRemaining}s" else "Preparing your magic link",
-            color = PremiumBody,
-            fontSize = 14.sp
-        )
-
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp),
-            color = PremiumPrimary,
-            trackColor = PremiumBorder
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = onDismiss,
-            colors = ButtonDefaults.buttonColors(containerColor = PremiumPrimary),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .height(52.dp)
-                .widthIn(min = 220.dp)
-        ) {
-            Text(
-                text = if (hasQr) "I've scanned the QR" else "Back to campaigns",
-                fontWeight = FontWeight.Bold
-            )
         }
     }
 }

@@ -32,12 +32,16 @@ class TapToPayViewModel(application: Application) : AndroidViewModel(application
     private val _state = MutableStateFlow<TapToPayState>(TapToPayState.Idle)
     val state: StateFlow<TapToPayState> = _state.asStateFlow()
 
+    private val _isSimulatedMode = MutableStateFlow(false)
+    val isSimulatedMode: StateFlow<Boolean> = _isSimulatedMode.asStateFlow()
+
     private var currentPaymentClientSecret: String? = null
 
     /**
      * Initialize and setup Tap to Pay
      */
     fun initializeTapToPay(isSimulated: Boolean = false) {
+        _isSimulatedMode.value = isSimulated
         viewModelScope.launch {
             try {
                 _state.value = TapToPayState.Initializing
