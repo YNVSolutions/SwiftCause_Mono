@@ -8,6 +8,11 @@ export interface SubscriptionExportRequest {
   range: SubscriptionExportRange;
   startDate?: string;
   endDate?: string;
+  filters?: {
+    searchTerm?: string;
+    status?: string;
+    interval?: string;
+  };
 }
 
 const getCurrentUserToken = async () => {
