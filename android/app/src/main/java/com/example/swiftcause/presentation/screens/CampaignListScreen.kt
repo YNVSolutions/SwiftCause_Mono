@@ -93,12 +93,12 @@ fun CampaignListScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 16.dp), // Further reduced vertical padding
+                    .padding(vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp) // Further reduced spacing
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.ic_swiftcause_logo),
@@ -111,7 +111,7 @@ fun CampaignListScreen(
                     )
                     Text(
                         text = "SwiftCause",
-                        style = MaterialTheme.typography.headlineSmall.copy( // Further reduced text size
+                        style = MaterialTheme.typography.headlineSmall.copy(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -157,7 +157,7 @@ fun CampaignListScreen(
                     // Campaign List
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp), // Reduced horizontal padding
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
                         items(campaigns) { campaign ->

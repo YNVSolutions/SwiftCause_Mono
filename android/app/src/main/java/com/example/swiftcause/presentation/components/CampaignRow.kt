@@ -36,12 +36,12 @@ fun CampaignRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onCampaignClick(campaign) },
-        shape = RoundedCornerShape(8.dp), // Reduced corner rounding
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            modifier = Modifier.height(120.dp), // Reduced height by 25%
+            modifier = Modifier.height(120.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SubcomposeAsyncImage(
@@ -54,7 +54,7 @@ fun CampaignRow(
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(150.dp)
-                    .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)) // Match card rounding
+                    .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
             ) {
                 if (painter.state is coil.compose.AsyncImagePainter.State.Loading ||
                     painter.state is coil.compose.AsyncImagePainter.State.Empty

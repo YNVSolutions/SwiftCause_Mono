@@ -71,7 +71,7 @@ class CampaignListViewModel(
         _uiState.value = _uiState.value.copy(selectedCampaign = null)
     }
 
-    fun startPolling(kioskSession: KioskSession, interval: Long = 60000L) { // Increased interval to 1 minute
+    fun startPolling(kioskSession: KioskSession, interval: Long = 60000L) {
         viewModelScope.launch {
             while (true) {
                 loadCampaigns(kioskSession)
