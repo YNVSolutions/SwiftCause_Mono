@@ -2340,12 +2340,14 @@ const CampaignManagement = ({
 
     setIsExporting(true);
     try {
-      const visibleCampaignIds = filteredAndSortedCampaigns
-        .map((campaign) => campaign.id)
-        .filter((campaignId): campaignId is string => Boolean(campaignId));
       await exportCampaigns({
         organizationId: userSession.user.organizationId,
-        campaignIds: visibleCampaignIds,
+        filters: {
+          searchTerm,
+          status: statusFilter,
+          category: categoryFilter,
+          dateRange: dateRange as 'all' | 'last30' | 'last90' | 'last365',
+        },
       });
       showToast('Campaign export started. Your download should begin shortly.', 'success');
     } catch (exportError) {
