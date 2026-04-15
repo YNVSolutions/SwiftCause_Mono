@@ -29,6 +29,27 @@ const getTaxYear = (dateValue) => {
   return `${startYear}-${endYearShort}`;
 };
 
+const writeGiftAidReconciliationIssue = async ({
+  paymentIntentId,
+  declarationId,
+  organizationId,
+  reason,
+  metadata,
+}) => {
+  await admin
+    .firestore()
+    .collection('giftAidReconciliationIssues')
+    .add({
+      paymentIntentId: paymentIntentId || null,
+      declarationId: declarationId || null,
+      organizationId: organizationId || null,
+      reason,
+      metadata: metadata || {},
+      resolved: false,
+      createdAt: admin.firestore.Timestamp.now(),
+    });
+};
+
 const createGiftAidDeclarationFromMetadata = async ({
   donationId,
   amountMinor,
@@ -38,7 +59,37 @@ const createGiftAidDeclarationFromMetadata = async ({
   organizationId,
   donationDateIso,
 }) => {
-  if (!toBoolean(metadata.isGiftAid)) return;
+  // Strict Guard: Only process if isGiftAid is explicitly true
+  const isGiftAid = toBoolean(metadata.isGiftAid);
+  if (!isGiftAid) {
+    return; // Exit immediately - not a Gift Aid donation
+  }
+
+  // Consent Validation: Verify required consent fields are present
+  const giftAidConsent = toBoolean(metadata.giftAidConsent);
+  const ukTaxpayerConfirmation = toBoolean(metadata.giftAidTaxpayer);
+
+  if (!giftAidConsent || !ukTaxpayerConfirmation) {
+    console.warn('[Gift Aid Recurring] Skipping declaration: missing required consent', {
+      donationId,
+      campaignId: campaignId || 'unknown',
+      // Raw metadata values (for debugging string vs boolean issues)
+      raw: {
+        isGiftAid: metadata.isGiftAid,
+        giftAidConsent: metadata.giftAidConsent,
+        giftAidTaxpayer: metadata.giftAidTaxpayer,
+      },
+      // Parsed boolean values
+      parsed: {
+        isGiftAid,
+        giftAidConsent,
+        ukTaxpayerConfirmation,
+      },
+      // Validation failure reason
+      reason: !giftAidConsent ? 'missing_gift_aid_consent' : 'missing_uk_taxpayer_confirmation',
+    });
+    return; // Exit immediately - consent not provided
+  }
 
   const declarationId =
     toStringOrNull(metadata.giftAidDeclarationId) || toStringOrNull(metadata.declarationId);
@@ -52,12 +103,26 @@ const createGiftAidDeclarationFromMetadata = async ({
     if (declarationSnap.exists) {
       const existingDonationId = toStringOrNull(declarationSnap.data()?.donationId);
       if (existingDonationId && existingDonationId !== donationId) {
-        console.warn(
-          'Gift Aid declaration already linked to a different donation; skipping relink:',
+        // Track conflict in reconciliation issues (matches one-time behavior)
+        await writeGiftAidReconciliationIssue({
+          paymentIntentId: donationId,
+          declarationId,
+          organizationId: organizationId || null,
+          reason: 'declaration_already_linked_to_other_donation',
+          metadata: {
+            existingDonationId,
+            incomingDonationId: donationId,
+            source: 'recurring_subscription',
+          },
+        });
+        console.error('[Gift Aid Recurring] Declaration already linked to different donation:', {
           declarationId,
           existingDonationId,
-          donationId,
-        );
+          incomingDonationId: donationId,
+          campaignId: campaignId || 'unknown',
+        });
+        // Note: We return instead of throw to avoid breaking subscription flow,
+        // but we DO track the issue for visibility (deliberate divergence from one-time path)
         return;
       }
 
