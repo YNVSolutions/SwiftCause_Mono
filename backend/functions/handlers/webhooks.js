@@ -120,8 +120,39 @@ const createGiftAidDeclarationIfNeeded = async ({
   campaignTitleSnapshot,
   organizationId,
 }) => {
+  // Strict Guard: Only process if isGiftAid is explicitly true
   const isGiftAid = toBoolean(metadata.isGiftAid);
-  if (!isGiftAid) return;
+  if (!isGiftAid) {
+    return; // Exit immediately - not a Gift Aid donation
+  }
+
+  // Consent Validation: Verify required consent fields are present
+  const giftAidConsent = toBoolean(metadata.giftAidConsent);
+  const ukTaxpayerConfirmation = toBoolean(metadata.giftAidTaxpayer);
+
+  if (!giftAidConsent || !ukTaxpayerConfirmation) {
+    console.warn('[Gift Aid] Skipping declaration: missing required consent', {
+      paymentIntentId: paymentIntent.id,
+      campaignId: campaignId || 'unknown',
+      platform: metadata.platform || 'unknown',
+      // Raw metadata values (for debugging string vs boolean issues)
+      raw: {
+        isGiftAid: metadata.isGiftAid,
+        giftAidConsent: metadata.giftAidConsent,
+        giftAidTaxpayer: metadata.giftAidTaxpayer,
+      },
+      // Parsed boolean values
+      parsed: {
+        isGiftAid,
+        giftAidConsent,
+        ukTaxpayerConfirmation,
+      },
+      // Validation failure reason
+      reason: !giftAidConsent ? 'missing_gift_aid_consent' : 'missing_uk_taxpayer_confirmation',
+    });
+    return; // Exit immediately - consent not provided
+  }
+
   if (!Number.isInteger(paymentIntent.amount) || paymentIntent.amount <= 0) {
     throw new Error(`Invalid payment amount for Gift Aid declaration: ${paymentIntent.amount}`);
   }

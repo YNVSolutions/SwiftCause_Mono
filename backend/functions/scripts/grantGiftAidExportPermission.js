@@ -1,27 +1,27 @@
-const admin = require("firebase-admin");
+const admin = require('firebase-admin');
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
 const db = admin.firestore();
-const EXPORT_PERMISSION = "export_giftaid";
-const DOWNLOAD_PERMISSION = "download_giftaid_exports";
-const EXPORT_ELIGIBLE_ROLES = new Set(["super_admin", "admin"]);
-const DOWNLOAD_ELIGIBLE_ROLES = new Set(["super_admin", "admin", "manager"]);
+const EXPORT_PERMISSION = 'export_giftaid';
+const DOWNLOAD_PERMISSION = 'download_giftaid_exports';
+const EXPORT_ELIGIBLE_ROLES = new Set(['super_admin', 'admin']);
+const DOWNLOAD_ELIGIBLE_ROLES = new Set(['super_admin', 'admin', 'manager', 'operator']);
 
 const shouldHaveExportPermission = (userData) => {
-  const role = typeof userData?.role === "string" ? userData.role : "";
+  const role = typeof userData?.role === 'string' ? userData.role : '';
   return EXPORT_ELIGIBLE_ROLES.has(role);
 };
 
 const shouldHaveDownloadPermission = (userData) => {
-  const role = typeof userData?.role === "string" ? userData.role : "";
+  const role = typeof userData?.role === 'string' ? userData.role : '';
   return DOWNLOAD_ELIGIBLE_ROLES.has(role);
 };
 
 const grantGiftAidExportPermission = async () => {
-  const snapshot = await db.collection("users").get();
+  const snapshot = await db.collection('users').get();
   let scanned = 0;
   let exportGranted = 0;
   let exportRemoved = 0;
@@ -67,10 +67,14 @@ const grantGiftAidExportPermission = async () => {
     if (!changed) {
       continue;
     }
-    batch.set(doc.ref, {
-      permissions: nextPermissions,
-      updatedAt: new Date().toISOString(),
-    }, {merge: true});
+    batch.set(
+      doc.ref,
+      {
+        permissions: nextPermissions,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
     batchOps += 1;
 
     if (batchOps === 400) {
@@ -84,7 +88,7 @@ const grantGiftAidExportPermission = async () => {
     await batch.commit();
   }
 
-  console.log("Gift Aid permission sync complete.");
+  console.log('Gift Aid permission sync complete.');
   console.log({
     scanned,
     exportGranted,
@@ -97,6 +101,6 @@ const grantGiftAidExportPermission = async () => {
 grantGiftAidExportPermission()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error("Failed to sync Gift Aid permissions:", error);
+    console.error('Failed to sync Gift Aid permissions:', error);
     process.exit(1);
   });

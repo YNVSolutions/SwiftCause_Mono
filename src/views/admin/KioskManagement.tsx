@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../../shared/lib/firebase';
 import { useKiosks } from '../../shared/lib/hooks/useKiosks';
 import { useCampaigns } from '../../entities/campaign';
+import { exportKiosks } from '../../entities/kiosk/api';
 import { useKioskPerformance } from '../../shared/lib/hooks/useKioskPerformance';
 import { useOrganization } from '../../shared/lib/hooks/useOrganization';
 import { useStripeOnboarding, StripeOnboardingDialog } from '../../features/stripe-onboarding';
@@ -45,7 +46,7 @@ import {
 } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { KioskForm, KioskFormData } from './components/KioskForm';
-import { exportToCsv } from '../../shared/utils/csvExport';
+import { useToast } from '../../shared/ui/ToastProvider';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,6 +71,7 @@ export function KioskManagement({
   userSession: AdminSession;
   hasPermission: (permission: Permission) => boolean;
 }) {
+  const { showToast } = useToast();
   // Search + status filter state
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'maintenance'>(
@@ -151,6 +153,7 @@ export function KioskManagement({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [kioskToDelete, setKioskToDelete] = useState<Kiosk | null>(null);
   const [isDeletingKiosk, setIsDeletingKiosk] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // State for showing access codes and copy feedback
   const [showAccessCodes, setShowAccessCodes] = useState<{ [key: string]: boolean }>({});
@@ -359,22 +362,30 @@ export function KioskManagement({
     }));
   };
 
-  const handleExportKiosks = () => {
-    const exportData = filteredKiosks.map((kiosk) => {
-      const performance = performanceData[kiosk.id];
-      return {
-        name: kiosk.name,
-        location: kiosk.location,
-        status: kiosk.status,
-        kioskId: kiosk.id,
-        totalRaised: performance?.totalRaised ?? 0,
-        totalDonations: performance?.donorCount ?? 0,
-        assignedCampaigns: kiosk.assignedCampaigns?.length ?? 0,
-        lastActive: kiosk.lastActive || '',
-      };
-    });
+  const handleExportKiosks = async () => {
+    if (!userSession.user.organizationId) {
+      showToast('Organization ID is required to export kiosks.', 'warning');
+      return;
+    }
 
-    exportToCsv(exportData, 'kiosks');
+    setIsExporting(true);
+    try {
+      await exportKiosks({
+        organizationId: userSession.user.organizationId,
+        filters: {
+          searchTerm,
+          status: statusFilter,
+        },
+      });
+      showToast('Kiosk export started. Your download should begin shortly.', 'success');
+    } catch (exportError) {
+      console.error('Kiosk export failed:', exportError);
+      const message =
+        exportError instanceof Error ? exportError.message : 'Failed to export kiosks.';
+      showToast(message, 'error');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -444,9 +455,10 @@ export function KioskManagement({
           size="sm"
           className="rounded-2xl border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-5"
           onClick={handleExportKiosks}
+          disabled={isExporting}
         >
           <Download className="h-4 w-4 sm:hidden" />
-          <span className="hidden sm:inline">Export</span>
+          <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export'}</span>
         </Button>
       }
       headerInlineActions={

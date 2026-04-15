@@ -56,28 +56,28 @@ export const PERMISSIONS = {
 
 // Campaign-related constants
 export const CAMPAIGN_CATEGORIES = [
-  'Global Health', 
-  'Education', 
-  'Emergency Relief', 
-  'Food Security', 
-  'Environmental', 
-  'Community Development', 
-  'Animal Welfare', 
-  'Arts & Culture'
+  'Global Health',
+  'Education',
+  'Emergency Relief',
+  'Food Security',
+  'Environmental',
+  'Community Development',
+  'Animal Welfare',
+  'Arts & Culture',
 ] as const;
 
 export const CAMPAIGN_THEMES = [
   { value: 'default', label: 'Default', description: 'Clean, professional design' },
   { value: 'minimal', label: 'Minimal', description: 'Simple, distraction-free' },
   { value: 'vibrant', label: 'Vibrant', description: 'Bold colors and gradients' },
-  { value: 'elegant', label: 'Elegant', description: 'Sophisticated typography' }
+  { value: 'elegant', label: 'Elegant', description: 'Sophisticated typography' },
 ] as const;
 
 export const PREDEFINED_AMOUNT_SETS = [
   { name: 'Small Donations', amounts: [5, 10, 25, 50, 100] },
   { name: 'Medium Donations', amounts: [25, 50, 100, 250, 500] },
   { name: 'Large Donations', amounts: [100, 250, 500, 1000, 2500] },
-  { name: 'Major Gifts', amounts: [500, 1000, 2500, 5000, 10000] }
+  { name: 'Major Gifts', amounts: [500, 1000, 2500, 5000, 10000] },
 ] as const;
 
 export const DEFAULT_CAMPAIGN_CONFIG = {
@@ -104,7 +104,7 @@ export const DEFAULT_CAMPAIGN_CONFIG = {
   enableSocialSharing: true,
   enableDonorWall: true,
   enableComments: false,
-  giftAidEnabled: false
+  giftAidEnabled: false,
 } as const;
 
 export const DEFAULT_CAMPAIGN_VALUES = {
@@ -118,26 +118,26 @@ export const DEFAULT_CAMPAIGN_VALUES = {
   galleryImages: [],
   impactMetrics: {
     peopleHelped: 0,
-    itemsProvided: 0
-  }
+    itemsProvided: 0,
+  },
 } as const;
 
 export const CAMPAIGN_STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'paused', label: 'Paused' },
-  { value: 'completed', label: 'Completed' }
+  { value: 'completed', label: 'Completed' },
 ] as const;
 
 export const RECURRING_INTERVALS = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'quarterly', label: 'Quarterly' },
-  { value: 'yearly', label: 'Yearly' }
+  { value: 'yearly', label: 'Yearly' },
 ] as const;
 
 export const DISPLAY_STYLES = [
   { value: 'grid', label: 'Grid' },
   { value: 'list', label: 'List' },
-  { value: 'carousel', label: 'Carousel' }
+  { value: 'carousel', label: 'Carousel' },
 ] as const;
 
 export const FORM_FIELDS = [
@@ -145,7 +145,7 @@ export const FORM_FIELDS = [
   { value: 'name', label: 'Name' },
   { value: 'phone', label: 'Phone' },
   { value: 'address', label: 'Address' },
-  { value: 'message', label: 'Message' }
+  { value: 'message', label: 'Message' },
 ] as const;
 
 // UI and validation constants
@@ -155,60 +155,60 @@ export const VALIDATION_LIMITS = {
     description: { min: 10, max: 500 },
     goal: { min: 1, max: 10000000 },
     maxCustomAmount: { min: 1, max: 100000 },
-    maxRecentDonations: { min: 1, max: 50 }
+    maxRecentDonations: { min: 1, max: 50 },
   },
   user: {
     username: { min: 3, max: 30 },
     email: { max: 100 },
     firstName: { min: 1, max: 50 },
-    lastName: { min: 1, max: 50 }
+    lastName: { min: 1, max: 50 },
   },
   organization: {
     name: { min: 2, max: 100 },
-    website: { max: 200 }
-  }
+    website: { max: 200 },
+  },
 } as const;
 
 export const FILE_UPLOAD_LIMITS = {
   image: {
     maxSize: 5 * 1024 * 1024, // 5MB
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
-    maxDimensions: { width: 4000, height: 4000 }
+    maxDimensions: { width: 4000, height: 4000 },
   },
   document: {
     maxSize: 10 * 1024 * 1024, // 10MB
-    allowedTypes: ['application/pdf', 'text/plain', 'application/msword']
-  }
+    allowedTypes: ['application/pdf', 'text/plain', 'application/msword'],
+  },
 } as const;
 
 export const PAGINATION_DEFAULTS = {
   campaigns: { pageSize: 12, maxPageSize: 50 },
   donations: { pageSize: 20, maxPageSize: 100 },
   users: { pageSize: 10, maxPageSize: 50 },
-  kiosks: { pageSize: 10, maxPageSize: 50 }
+  kiosks: { pageSize: 10, maxPageSize: 50 },
 } as const;
 
 export const TOAST_DEFAULTS = {
   duration: 2500,
-  position: 'top-right'
+  position: 'top-right',
 } as const;
 
 export const LOADING_STATES = {
   short: 500,
   medium: 1000,
-  long: 2000
+  long: 2000,
 } as const;
 
 export const BREAKPOINTS = {
   mobile: 768,
   tablet: 1050,
-  desktop: 1050
+  desktop: 1050,
 } as const;
 
 export const ANIMATION_DURATIONS = {
   fast: 150,
   normal: 300,
-  slow: 500
+  slow: 500,
 } as const;
 
 // User and organization-related constants
@@ -222,7 +222,7 @@ export const ORGANIZATION_TYPES = [
   'Environmental Group',
   'Community Organization',
   'International NGO',
-  'Other'
+  'Other',
 ] as const;
 
 export const ORGANIZATION_SIZES = [
@@ -230,7 +230,7 @@ export const ORGANIZATION_SIZES = [
   '11-50 employees',
   '51-200 employees',
   '201-500 employees',
-  '500+ employees'
+  '500+ employees',
 ] as const;
 
 export const CURRENCY_OPTIONS = [
@@ -243,7 +243,7 @@ export const CURRENCY_OPTIONS = [
   { value: 'CHF', label: 'Swiss Franc (CHF)', symbol: 'CHF' },
   { value: 'SEK', label: 'Swedish Krona (kr)', symbol: 'kr' },
   { value: 'NOK', label: 'Norwegian Krone (kr)', symbol: 'kr' },
-  { value: 'DKK', label: 'Danish Krone (kr)', symbol: 'kr' }
+  { value: 'DKK', label: 'Danish Krone (kr)', symbol: 'kr' },
 ] as const;
 
 export const DEFAULT_USER_PERMISSIONS = {
@@ -267,7 +267,7 @@ export const DEFAULT_USER_PERMISSIONS = {
     'edit_user',
     'delete_user',
     'manage_permissions',
-    'system_admin'
+    'system_admin',
   ],
   admin: [
     'view_dashboard',
@@ -288,7 +288,7 @@ export const DEFAULT_USER_PERMISSIONS = {
     'create_user',
     'edit_user',
     'delete_user',
-    'manage_permissions'
+    'manage_permissions',
   ],
   manager: [
     'view_dashboard',
@@ -304,7 +304,7 @@ export const DEFAULT_USER_PERMISSIONS = {
     'download_giftaid_exports',
     'view_users',
     'create_user',
-    'edit_user'
+    'edit_user',
   ],
   operator: [
     'view_dashboard',
@@ -316,14 +316,10 @@ export const DEFAULT_USER_PERMISSIONS = {
     'edit_kiosk',
     'assign_campaigns',
     'view_donations',
-    'export_donations'
+    'export_donations',
+    'download_giftaid_exports',
   ],
-  viewer: [
-    'view_dashboard',
-    'view_campaigns',
-    'view_kiosks',
-    'view_donations'
-  ]
+  viewer: ['view_dashboard', 'view_campaigns', 'view_kiosks', 'view_donations'],
 } as const;
 
 export const PASSWORD_REQUIREMENTS = {
@@ -331,15 +327,16 @@ export const PASSWORD_REQUIREMENTS = {
   requireUppercase: true,
   requireLowercase: true,
   requireNumbers: true,
-  requireSpecialChars: true
+  requireSpecialChars: true,
 } as const;
 
 // HMRC-compliant Gift Aid declaration text
 // LEGAL REQUIREMENT - DO NOT MODIFY WITHOUT COMPLIANCE REVIEW
-export const HMRC_DECLARATION_TEXT = "I confirm that I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital Gains Tax in the current tax year than the amount of Gift Aid claimed on all my donations, it is my responsibility to pay any difference." as const;
-export const HMRC_DECLARATION_TEXT_VERSION = "hmrc-ch3-2026-03" as const;
+export const HMRC_DECLARATION_TEXT =
+  'I confirm that I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital Gains Tax in the current tax year than the amount of Gift Aid claimed on all my donations, it is my responsibility to pay any difference.' as const;
+export const HMRC_DECLARATION_TEXT_VERSION = 'hmrc-ch3-2026-03' as const;
 
 export function getHmrcDeclarationText(charityName: string): string {
-  const resolvedCharityName = charityName.trim() || "This Charity";
+  const resolvedCharityName = charityName.trim() || 'This Charity';
   return `${resolvedCharityName}: I want to Gift Aid my donation and any donations I make in the future or have made in the past four years to ${resolvedCharityName}. I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital Gains Tax than the amount of Gift Aid claimed on all my donations in that tax year, it is my responsibility to pay any difference.`;
 }
