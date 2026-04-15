@@ -590,7 +590,7 @@ private fun handleDonation(
     android.util.Log.d("MainActivity", "Currency: ${campaign.currency}")
     android.util.Log.d("MainActivity", "Is Recurring: $isRecurring")
     android.util.Log.d("MainActivity", "Interval: $interval")
-    android.util.Log.d("MainActivity", "Email: $email")
+    android.util.Log.d("MainActivity", "Email provided: ${!email.isNullOrBlank()}")
 
     // Get currency from campaign
     val currency = campaign.currency.lowercase()
