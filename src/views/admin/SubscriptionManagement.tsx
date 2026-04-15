@@ -2,33 +2,60 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../shared/ui/card';
 import { Button } from '../../shared/ui/button';
 import { Badge } from '../../shared/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../shared/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../shared/ui/table';
+import { Input } from '../../shared/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../shared/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../shared/ui/table';
 import { Alert, AlertDescription } from '../../shared/ui/alert';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../shared/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../../shared/ui/dialog';
 import { Label } from '../../shared/ui/label';
-import { 
-  RefreshCw, 
-  Calendar, 
-  DollarSign, 
-  Users, 
+import {
+  RefreshCw,
+  Calendar,
+  DollarSign,
+  Users,
   TrendingUp,
   XCircle,
   CheckCircle,
   AlertCircle,
   Download,
   Building2,
-  Eye
+  Eye,
 } from 'lucide-react';
-import { getRecurringStats, getSubscriptionsByOrganization } from '../../entities/subscription/api/subscriptionApi';
+import {
+  getRecurringStats,
+  getSubscriptionsByOrganization,
+} from '../../entities/subscription/api/subscriptionApi';
+import {
+  exportSubscriptions,
+  type SubscriptionExportRange,
+} from '../../entities/subscription/api/subscriptionExportApi';
 import { RecurringStatsResponse, Subscription } from '../../shared/types/subscription';
 import { formatCurrencyFromMajor } from '../../shared/lib/currencyFormatter';
 import { getSubscriptionDisplayInterval } from '../../entities/subscription/model/selectors';
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
-import { exportToCsv } from '../../shared/utils/csvExport';
 import { AdminLayout } from './AdminLayout';
 import { Screen, AdminSession, Permission } from '../../shared/types';
+import { useToast } from '../../shared/ui/ToastProvider';
 
 interface SubscriptionManagementProps {
   organizationId: string;
@@ -60,6 +87,7 @@ export function SubscriptionManagement({
   userSession,
   hasPermission,
 }: SubscriptionManagementProps) {
+  const { showToast } = useToast();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [stats, setStats] = useState<SubscriptionStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,29 +97,37 @@ export function SubscriptionManagement({
   const [intervalFilter, setIntervalFilter] = useState('all');
   const [windowDays, setWindowDays] = useState('30');
   const [trends, setTrends] = useState<RecurringStatsResponse['trends']>([]);
-  const [selectedSubscription, setSelectedSubscription] = useState<(Subscription & {
-    donorName: string;
-    donorEmail: string;
-    intervalLabel: string;
-    nextPayment: DateLike;
-    createdAtTs: number;
-    nextPaymentTs: number;
-  }) | null>(null);
+  const [exportRange, setExportRange] = useState<SubscriptionExportRange>('current_month');
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [isMobileExportMenuOpen, setIsMobileExportMenuOpen] = useState(false);
+  const [selectedSubscription, setSelectedSubscription] = useState<
+    | (Subscription & {
+        donorName: string;
+        donorEmail: string;
+        intervalLabel: string;
+        nextPayment: DateLike;
+        createdAtTs: number;
+        nextPaymentTs: number;
+      })
+    | null
+  >(null);
 
   const loadSubscriptions = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const days = Number(windowDays);
       const to = new Date();
-      const from = new Date(to.getTime() - (days * 24 * 60 * 60 * 1000));
+      const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
 
       const [subs, recurring] = await Promise.all([
         getSubscriptionsByOrganization(organizationId),
         getRecurringStats(organizationId, { from, to }),
       ]);
-      
+
       setSubscriptions(subs);
       setTrends(recurring.trends);
       setStats({
@@ -103,9 +139,10 @@ export function SubscriptionManagement({
         recurringCashCollectedMinor: recurring.summary.recurringCashCollectedMinor,
         totalMonthlyRevenue: recurring.summary.mrrMinor,
         totalAnnualRevenue: recurring.summary.arrMinor,
-        averageAmount: recurring.summary.activeSubscriptions > 0
-          ? recurring.summary.mrrMinor / recurring.summary.activeSubscriptions
-          : 0,
+        averageAmount:
+          recurring.summary.activeSubscriptions > 0
+            ? recurring.summary.mrrMinor / recurring.summary.activeSubscriptions
+            : 0,
         windowLabel: `Last ${days} days`,
       });
     } catch (err) {
@@ -125,7 +162,11 @@ export function SubscriptionManagement({
       active: { color: 'bg-green-100 text-green-800', icon: CheckCircle, label: 'Active' },
       past_due: { color: 'bg-yellow-100 text-yellow-800', icon: AlertCircle, label: 'Past Due' },
       canceled: { color: 'bg-gray-100 text-gray-800', icon: XCircle, label: 'Canceled' },
-      incomplete: { color: 'bg-orange-100 text-orange-800', icon: AlertCircle, label: 'Incomplete' },
+      incomplete: {
+        color: 'bg-orange-100 text-orange-800',
+        icon: AlertCircle,
+        label: 'Incomplete',
+      },
       incomplete_expired: { color: 'bg-red-100 text-red-800', icon: XCircle, label: 'Expired' },
       trialing: { color: 'bg-blue-100 text-blue-800', icon: Calendar, label: 'Trial' },
       unpaid: { color: 'bg-red-100 text-red-800', icon: AlertCircle, label: 'Unpaid' },
@@ -144,9 +185,10 @@ export function SubscriptionManagement({
 
   const formatDate = (date: DateLike) => {
     if (!date) return 'N/A';
-    const d = typeof date === 'object' && date !== null && 'seconds' in date
-      ? new Date(date.seconds * 1000)
-      : new Date(date);
+    const d =
+      typeof date === 'object' && date !== null && 'seconds' in date
+        ? new Date(date.seconds * 1000)
+        : new Date(date);
     if (Number.isNaN(d.getTime())) return 'N/A';
     return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   };
@@ -160,7 +202,12 @@ export function SubscriptionManagement({
       const value = new Date(date).getTime();
       return Number.isNaN(value) ? 0 : value;
     }
-    if (typeof date === 'object' && date !== null && 'seconds' in date && typeof date.seconds === 'number') {
+    if (
+      typeof date === 'object' &&
+      date !== null &&
+      'seconds' in date &&
+      typeof date.seconds === 'number'
+    ) {
       return date.seconds * 1000;
     }
     return 0;
@@ -212,23 +259,38 @@ export function SubscriptionManagement({
     return unique.sort((a, b) => a.localeCompare(b));
   }, [tableData]);
 
-  const handleExport = () => {
-    const rows = sortedData.map((sub) => ({
-      donorName: sub.donorName,
-      donorEmail: sub.donorEmail || 'N/A',
-      stripeSubscriptionId: sub.stripeSubscriptionId,
-      status: sub.status,
-      amountMinor: sub.amount,
-      amountDisplay: formatCurrencyFromMajor(sub.amount / 100),
-      interval: sub.intervalLabel,
-      nextPayment: formatDate(sub.nextPayment),
-      startedAt: formatDate(sub.startedAt),
-      createdAt: formatDate(sub.createdAt),
-      canceledAt: formatDate(sub.canceledAt),
-      cancelReason: sub.cancelReason || '',
-    }));
+  const handleExport = async () => {
+    if (!hasPermission('export_donations')) return;
+    if (!organizationId) return;
 
-    exportToCsv(rows, 'subscriptions');
+    if (exportRange === 'custom' && (!exportStartDate || !exportEndDate)) {
+      showToast('Select both start and end dates for custom range.', 'warning');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await exportSubscriptions({
+        organizationId,
+        range: exportRange,
+        startDate: exportRange === 'custom' ? exportStartDate : undefined,
+        endDate: exportRange === 'custom' ? exportEndDate : undefined,
+        filters: {
+          searchTerm,
+          status: statusFilter,
+          interval: intervalFilter,
+        },
+      });
+      setIsMobileExportMenuOpen(false);
+      showToast('Subscription export started. Your download should begin shortly.', 'success');
+    } catch (exportError) {
+      console.error('Subscription export failed:', exportError);
+      const message =
+        exportError instanceof Error ? exportError.message : 'Failed to export subscriptions.';
+      showToast(message, 'error');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -238,7 +300,7 @@ export function SubscriptionManagement({
       userSession={userSession}
       hasPermission={hasPermission}
       activeScreen="admin-subscriptions"
-      headerTitle={(
+      headerTitle={
         <div className="flex flex-col">
           {userSession.user.organizationName && (
             <div className="flex items-center gap-1.5 mb-1">
@@ -248,38 +310,152 @@ export function SubscriptionManagement({
               </span>
             </div>
           )}
-          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">
-            Subscriptions
-          </h1>
+          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">Subscriptions</h1>
         </div>
-      )}
+      }
       headerSubtitle="Manage recurring donations and lifecycle health"
       headerSearchPlaceholder="Search donor, email, subscription ID..."
       headerSearchValue={searchTerm}
       onHeaderSearchChange={setSearchTerm}
-      headerTopRightActions={(
+      headerTopRightActions={
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-2xl border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-5"
-            onClick={handleExport}
-            disabled={sortedData.length === 0}
-          >
-            <Download className="h-4 w-4 sm:hidden" />
-            <span className="hidden sm:inline">Export</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-2xl border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-5"
-            onClick={loadSubscriptions}
-          >
-            <RefreshCw className="h-4 w-4 sm:hidden" />
-            <span className="hidden sm:inline">Refresh</span>
-          </Button>
+          {hasPermission('export_donations') ? (
+            <>
+              <div className="relative sm:hidden">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-xl border-[#064e3b] bg-transparent px-4 text-[#064e3b] transition-all duration-300 hover:border-emerald-600 hover:bg-emerald-50"
+                  onClick={() => setIsMobileExportMenuOpen((current) => !current)}
+                  disabled={isExporting}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  <span>{isExporting ? 'Exporting...' : 'Export'}</span>
+                </Button>
+
+                {isMobileExportMenuOpen ? (
+                  <div className="absolute right-0 top-11 z-20 w-[280px] rounded-2xl border border-gray-200 bg-white p-3 shadow-lg">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-gray-600">Export range</Label>
+                      <select
+                        value={exportRange}
+                        onChange={(event) =>
+                          setExportRange(event.target.value as SubscriptionExportRange)
+                        }
+                        className="h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:border-emerald-500 focus:outline-none"
+                      >
+                        <option value="current_month">Current month</option>
+                        <option value="past_month">Past month</option>
+                        <option value="custom">Custom range</option>
+                      </select>
+                    </div>
+
+                    {exportRange === 'custom' ? (
+                      <div className="mt-3 grid grid-cols-1 gap-2">
+                        <div>
+                          <Label className="mb-1 block text-xs font-medium text-gray-600">
+                            Start
+                          </Label>
+                          <Input
+                            type="date"
+                            value={exportStartDate}
+                            onChange={(event) => setExportStartDate(event.target.value)}
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs font-medium text-gray-600">
+                            End
+                          </Label>
+                          <Input
+                            type="date"
+                            value={exportEndDate}
+                            onChange={(event) => setExportEndDate(event.target.value)}
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 flex-1 rounded-xl"
+                        onClick={() => setIsMobileExportMenuOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 flex-1 rounded-xl border-[#064e3b] text-[#064e3b] hover:bg-emerald-50"
+                        onClick={handleExport}
+                        disabled={isExporting}
+                      >
+                        {isExporting ? 'Exporting...' : 'Export'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="hidden sm:flex sm:flex-row sm:flex-wrap sm:items-end sm:justify-end sm:gap-2">
+                <div className="sm:min-w-[170px]">
+                  <Label className="mb-1 block text-xs font-medium text-gray-600">
+                    Export range
+                  </Label>
+                  <select
+                    value={exportRange}
+                    onChange={(event) =>
+                      setExportRange(event.target.value as SubscriptionExportRange)
+                    }
+                    className="h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:border-emerald-500 focus:outline-none"
+                  >
+                    <option value="current_month">Current month</option>
+                    <option value="past_month">Past month</option>
+                    <option value="custom">Custom range</option>
+                  </select>
+                </div>
+
+                {exportRange === 'custom' ? (
+                  <>
+                    <div className="sm:min-w-[145px]">
+                      <Label className="mb-1 block text-xs font-medium text-gray-600">Start</Label>
+                      <Input
+                        type="date"
+                        value={exportStartDate}
+                        onChange={(event) => setExportStartDate(event.target.value)}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="sm:min-w-[145px]">
+                      <Label className="mb-1 block text-xs font-medium text-gray-600">End</Label>
+                      <Input
+                        type="date"
+                        value={exportEndDate}
+                        onChange={(event) => setExportEndDate(event.target.value)}
+                        className="h-9"
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-xl border-[#064e3b] bg-transparent px-4 text-[#064e3b] transition-all duration-300 hover:border-emerald-600 hover:bg-emerald-50 hover:shadow-md hover:shadow-emerald-900/10"
+                  onClick={handleExport}
+                  disabled={isExporting}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  <span>{isExporting ? 'Exporting...' : 'Export'}</span>
+                </Button>
+              </div>
+            </>
+          ) : null}
         </div>
-      )}
+      }
     >
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8 space-y-6">
@@ -361,9 +537,7 @@ export function SubscriptionManagement({
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
-                        {stats.churnRatePercent.toFixed(2)}%
-                      </div>
+                      <div className="text-2xl font-bold">{stats.churnRatePercent.toFixed(2)}%</div>
                       <p className="text-xs text-gray-500">{stats.windowLabel}</p>
                     </CardContent>
                   </Card>
@@ -526,12 +700,17 @@ export function SubscriptionManagement({
                                 </TableCell>
                                 <TableCell className="p-3">
                                   <Badge variant="outline">
-                                    {getSubscriptionDisplayInterval(sub.interval, sub.intervalCount)}
+                                    {getSubscriptionDisplayInterval(
+                                      sub.interval,
+                                      sub.intervalCount,
+                                    )}
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="p-3">{getStatusBadge(sub.status)}</TableCell>
                                 <TableCell className="p-3 text-sm">
-                                  {sub.status === 'active' || sub.status === 'trialing' ? formatDate(sub.nextPayment) : 'N/A'}
+                                  {sub.status === 'active' || sub.status === 'trialing'
+                                    ? formatDate(sub.nextPayment)
+                                    : 'N/A'}
                                 </TableCell>
                                 <TableCell className="p-3 text-sm text-gray-500">
                                   {formatDate(sub.createdAt)}
@@ -557,7 +736,10 @@ export function SubscriptionManagement({
 
                       <div className="md:hidden space-y-4">
                         {sortedData.map((sub) => (
-                          <Card key={sub.id} className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm">
+                          <Card
+                            key={sub.id}
+                            className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
+                          >
                             <CardContent className="p-4 space-y-3">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
@@ -574,15 +756,26 @@ export function SubscriptionManagement({
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500">Amount</p>
-                                  <p className="font-semibold">{formatCurrencyFromMajor(sub.amount / 100)}</p>
+                                  <p className="font-semibold">
+                                    {formatCurrencyFromMajor(sub.amount / 100)}
+                                  </p>
                                 </div>
                                 <div>
                                   <p className="text-gray-500">Interval</p>
-                                  <p className="font-semibold">{getSubscriptionDisplayInterval(sub.interval, sub.intervalCount)}</p>
+                                  <p className="font-semibold">
+                                    {getSubscriptionDisplayInterval(
+                                      sub.interval,
+                                      sub.intervalCount,
+                                    )}
+                                  </p>
                                 </div>
                                 <div>
                                   <p className="text-gray-500">Next Payment</p>
-                                  <p>{sub.status === 'active' || sub.status === 'trialing' ? formatDate(sub.nextPayment) : 'N/A'}</p>
+                                  <p>
+                                    {sub.status === 'active' || sub.status === 'trialing'
+                                      ? formatDate(sub.nextPayment)
+                                      : 'N/A'}
+                                  </p>
                                 </div>
                                 <div>
                                   <p className="text-gray-500">Created</p>
@@ -617,7 +810,9 @@ export function SubscriptionManagement({
                 </CardHeader>
                 <CardContent>
                   {trends.length === 0 ? (
-                    <p className="text-sm text-gray-500">No trend data available for this window.</p>
+                    <p className="text-sm text-gray-500">
+                      No trend data available for this window.
+                    </p>
                   ) : (
                     <Table>
                       <TableHeader>
@@ -634,7 +829,9 @@ export function SubscriptionManagement({
                           <TableRow key={point.period}>
                             <TableCell>{point.period}</TableCell>
                             <TableCell>{formatCurrencyFromMajor(point.mrrMinor / 100)}</TableCell>
-                            <TableCell>{formatCurrencyFromMajor(point.cashCollectedMinor / 100)}</TableCell>
+                            <TableCell>
+                              {formatCurrencyFromMajor(point.cashCollectedMinor / 100)}
+                            </TableCell>
                             <TableCell>{point.newSubscriptions}</TableCell>
                             <TableCell>{point.canceledSubscriptions}</TableCell>
                           </TableRow>
@@ -649,7 +846,10 @@ export function SubscriptionManagement({
         </main>
       </div>
 
-      <Dialog open={!!selectedSubscription} onOpenChange={(open) => !open && setSelectedSubscription(null)}>
+      <Dialog
+        open={!!selectedSubscription}
+        onOpenChange={(open) => !open && setSelectedSubscription(null)}
+      >
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Subscription Details</DialogTitle>
@@ -663,13 +863,17 @@ export function SubscriptionManagement({
               <div>
                 <Label className="text-sm font-medium text-gray-700">Donor</Label>
                 <p className="text-sm text-gray-900 mt-1">{selectedSubscription.donorName}</p>
-                <p className="text-sm text-gray-500 break-all">{selectedSubscription.donorEmail || 'N/A'}</p>
+                <p className="text-sm text-gray-500 break-all">
+                  {selectedSubscription.donorEmail || 'N/A'}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Subscription Amount</Label>
-                  <p className="text-sm font-semibold text-gray-900 mt-1">{formatCurrencyFromMajor(selectedSubscription.amount / 100)}</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-1">
+                    {formatCurrencyFromMajor(selectedSubscription.amount / 100)}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Status</Label>
@@ -684,35 +888,49 @@ export function SubscriptionManagement({
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Next Payment</Label>
-                  <p className="text-sm text-gray-900 mt-1">{formatDate(selectedSubscription.nextPaymentAt || selectedSubscription.nextPayment)}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {formatDate(
+                      selectedSubscription.nextPaymentAt || selectedSubscription.nextPayment,
+                    )}
+                  </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Started At</Label>
-                  <p className="text-sm text-gray-900 mt-1">{formatDate(selectedSubscription.startedAt)}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {formatDate(selectedSubscription.startedAt)}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Current Period End</Label>
-                  <p className="text-sm text-gray-900 mt-1">{formatDate(selectedSubscription.currentPeriodEnd)}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {formatDate(selectedSubscription.currentPeriodEnd)}
+                  </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Created At</Label>
-                  <p className="text-sm text-gray-900 mt-1">{formatDate(selectedSubscription.createdAt)}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {formatDate(selectedSubscription.createdAt)}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Updated At</Label>
-                  <p className="text-sm text-gray-900 mt-1">{formatDate(selectedSubscription.updatedAt)}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {formatDate(selectedSubscription.updatedAt)}
+                  </p>
                 </div>
               </div>
 
               <div>
                 <Label className="text-sm font-medium text-gray-700">Cancel Reason</Label>
-                <p className="text-sm text-gray-900 mt-1">{selectedSubscription.cancelReason || 'N/A'}</p>
+                <p className="text-sm text-gray-900 mt-1">
+                  {selectedSubscription.cancelReason || 'N/A'}
+                </p>
               </div>
 
               <div>
