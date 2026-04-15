@@ -75,7 +75,7 @@ export function CampaignScreen({
   const config = campaign.configuration;
 
   const getProgressPercentage = (raised: number, goal: number) => {
-    return Math.min(((raised / 100) / goal) * 100, 100);
+    return ((raised / 100) / goal) * 100;
   };
 
   const getCurrentAmount = () => {
@@ -195,7 +195,7 @@ export function CampaignScreen({
                     <span>Raised: {formatCurrency(campaign.raised, organizationCurrency || 'GBP')}</span>
                     <span>Goal: {formatCurrencyFromMajor(campaign.goal, organizationCurrency || 'GBP')}</span>
                   </div>
-                  <Progress value={getProgressPercentage(campaign.raised || 0, campaign.goal || 0)} className="h-2" />
+                  <Progress value={Math.min(getProgressPercentage(campaign.raised || 0, campaign.goal || 0), 100)} className="h-2" />
                   <p className="text-sm text-gray-600">{getProgressPercentage(campaign.raised || 0, campaign.goal || 0).toFixed(1)}% funded</p>
                 </div>
               )}

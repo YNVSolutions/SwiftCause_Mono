@@ -20,7 +20,7 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
 
   const getStatusIcon = (status: CampaignProgress['status']) => {
     switch (status) {
-      case 'completed':
+      case 'exceeded':
         return <CheckCircle2 className="w-4 h-4" />;
       case 'good':
         return <TrendingUp className="w-4 h-4" />;
@@ -111,7 +111,7 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
                 style={{ width: `${Math.min(100, campaign.percentage)}%` }}
               >
                 {/* Shimmer effect for active campaigns */}
-                {campaign.status !== 'completed' && (
+                {campaign.status !== 'exceeded' && (
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
                 )}
               </div>
@@ -152,8 +152,8 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
           <span className="text-xs text-gray-600">67-99% Good</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-blue-600" />
-          <span className="text-xs text-gray-600">100%+ Completed</span>
+          <div className="w-3 h-3 rounded-full bg-emerald-600" />
+          <span className="text-xs text-gray-600">100%+ Exceeded</span>
         </div>
       </div>
     </div>

@@ -39,7 +39,7 @@ export interface Campaign {
   coverImageUrl: string;
   category: string;
   tags?: string[];
-  status?: "active" | "paused" | "completed";
+  status?: "active" | "paused" | "completed" | "exceeded";
   createdAt?: string;
   startDate?: string | Date | { seconds: number; nanoseconds?: number; toDate?: () => Date };
   endDate?: string | Date | { seconds: number; nanoseconds?: number; toDate?: () => Date };

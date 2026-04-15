@@ -19,7 +19,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
   formatCurrency = formatGbp,
 }) => {
   const [sortBy, setSortBy] = useState<'progress' | 'raised' | 'goal' | 'name'>('progress');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'critical' | 'warning' | 'good' | 'completed'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'critical' | 'warning' | 'good' | 'exceeded'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   if (!isOpen) return null;
@@ -38,12 +38,12 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
   const totalGoal = campaigns.reduce((sum, c) => sum + c.goal, 0);
   const overallProgress =
     totalGoal > 0 ? Math.round(((totalRaised / 100) / totalGoal) * 100) : 0;
-  const completedCount = campaigns.filter((c) => c.status === 'completed').length;
+  const completedCount = campaigns.filter((c) => c.status === 'exceeded').length;
   const criticalCount = campaigns.filter((c) => c.status === 'critical').length;
 
   const getStatusIcon = (status: CampaignProgress['status']) => {
     switch (status) {
-      case 'completed':
+      case 'exceeded':
         return <CheckCircle2 className="w-5 h-5" />;
       case 'good':
         return <TrendingUp className="w-5 h-5" />;
@@ -56,8 +56,8 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
 
   const getStatusLabel = (status: CampaignProgress['status']) => {
     switch (status) {
-      case 'completed':
-        return 'Completed';
+      case 'exceeded':
+        return 'Exceeded';
       case 'good':
         return 'On Track';
       case 'warning':
@@ -165,7 +165,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                   className="px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 text-sm bg-white"
                 >
                   <option value="all">All Status</option>
-                  <option value="completed">Completed</option>
+                  <option value="exceeded">Exceeded</option>
                   <option value="good">On Track</option>
                   <option value="warning">Needs Attention</option>
                   <option value="critical">Critical</option>
@@ -201,7 +201,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                       <div className="w-full bg-gray-100 rounded-full h-2">
                         <div
                           className={`h-2 rounded-full transition-all duration-500 ${
-                            campaign.status === 'completed'
+                            campaign.status === 'exceeded'
                               ? 'bg-slate-600'
                               : campaign.status === 'good'
                               ? 'bg-stone-600'
@@ -242,7 +242,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                     className={`group relative ${
                       onCampaignClick ? 'cursor-pointer hover:shadow-sm' : ''
                     } p-5 rounded-xl transition-all border ${
-                      campaign.status === 'completed'
+                      campaign.status === 'exceeded'
                         ? 'border-slate-100 bg-slate-50/30'
                         : campaign.status === 'good'
                         ? 'border-gray-100 bg-gray-50/30'
@@ -261,7 +261,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                           <h4 className="text-base font-semibold text-gray-900 mb-1">{campaign.name}</h4>
                           <div className="flex items-center gap-2">
                             <span className={`text-xs font-medium px-2 py-1 rounded-md ${
-                              campaign.status === 'completed'
+                              campaign.status === 'exceeded'
                                 ? 'bg-slate-100 text-slate-700'
                                 : campaign.status === 'good'
                                 ? 'bg-gray-100 text-gray-700'
@@ -302,7 +302,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                     </div>
 
                     {/* Remaining amount */}
-                    {campaign.status !== 'completed' && (
+                    {campaign.status !== 'exceeded' && (
                       <div className="mt-3 pt-3 border-t border-gray-100">
                         <div className="text-xs text-gray-600">
                           Remaining: <span className="font-medium text-gray-900">{formatGbpMajor(campaign.goal - (campaign.raised / 100))}</span>

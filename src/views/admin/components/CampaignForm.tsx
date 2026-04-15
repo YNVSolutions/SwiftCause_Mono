@@ -547,6 +547,7 @@ export function CampaignForm({
                             <SelectItem value="active">Active</SelectItem>
                             <SelectItem value="paused">Paused</SelectItem>
                             <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="exceeded">Exceeded</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

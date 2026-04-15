@@ -65,7 +65,7 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
           <div className="w-full bg-gray-200 rounded-full h-[5px]">
             <div
               className="bg-[#0E8F5A] h-[5px] rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
+              style={{ width: `${Math.min(100, progress)}%` }}
             />
           </div>
 

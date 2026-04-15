@@ -95,7 +95,7 @@ export const TopPerformingCampaigns: React.FC<TopPerformingCampaignsProps> = ({
               const goal = campaign.goal || 0;
               const raisedInGbp = (campaign.raised || 0) / 100;
               const displayPercentage =
-                goal > 0 ? Math.min((raisedInGbp / goal) * 100, 100) : 0;
+                goal > 0 ? (raisedInGbp / goal) * 100 : 0;
 
               return (
               <div key={campaign.id} className="space-y-3">

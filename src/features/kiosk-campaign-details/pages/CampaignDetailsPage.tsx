@@ -106,7 +106,7 @@ export const CampaignDetailsPage: React.FC<CampaignDetailsPageProps> = ({
 
   // Calculate progress — raised is in pence (minor units), goal is in pounds (major units)
   const progress =
-    campaign.goal > 0 ? Math.min((((campaign.raised || 0) / 100) / campaign.goal) * 100, 100) : 0;
+    campaign.goal > 0 ? (((campaign.raised || 0) / 100) / campaign.goal) * 100 : 0;
 
   // Format amount without decimals
   const formatAmount = (amount: number) => formatCurrency(amount, currency);
@@ -314,7 +314,7 @@ export const CampaignDetailsPage: React.FC<CampaignDetailsPageProps> = ({
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="bg-[#0E8F5A] h-2 rounded-full transition-all duration-300 ease-out"
-                    style={{ width: `${progress}%` }}
+                    style={{ width: `${Math.min(100, progress)}%` }}
                   />
                 </div>
               </div>
@@ -401,7 +401,7 @@ export const CampaignDetailsPage: React.FC<CampaignDetailsPageProps> = ({
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
                 className="kiosk-progress-bar bg-[#0E8F5A] h-2 rounded-full transition-all duration-300 ease-out"
-                style={{ width: `${progress}%` }}
+                style={{ width: `${Math.min(100, progress)}%` }}
               />
             </div>
           </div>

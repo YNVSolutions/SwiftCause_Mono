@@ -387,7 +387,7 @@ export function DonationSelectionScreen({
                     <span>Raised: {formatCurrency(campaign.raised)}</span>
                     <span>Goal: {formatCurrencyFromMajor(campaign.goal)}</span>
                   </div>
-                  <Progress value={progress} className="h-2" />
+                  <Progress value={Math.min(progress, 100)} className="h-2" />
                   <p className="text-sm text-gray-600">{progress.toFixed(1)}% funded</p>
                 </div>
               )}

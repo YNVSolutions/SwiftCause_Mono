@@ -183,7 +183,7 @@ export function FeaturedCampaign({
                   {/* Progress fill with gradient */}
                   <div
                     className={`h-full ${accentColor} rounded-full transition-all duration-1000 ease-out relative overflow-hidden`}
-                    style={{ width: `${progress}%` }}
+                    style={{ width: `${Math.min(100, progress)}%` }}
                   >
                     {/* Shimmer effect */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />

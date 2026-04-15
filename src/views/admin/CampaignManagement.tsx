@@ -2537,9 +2537,7 @@ const CampaignManagement = ({
                         const goalAmount = Number(campaign.goal) || 0;
                         const donationCount = Number(campaign.donationCount) || 0;
                         const progress =
-                          goalAmount > 0
-                            ? Math.min((raisedAmount / 100 / goalAmount) * 100, 100)
-                            : 0;
+                          goalAmount > 0 ? (raisedAmount / 100 / goalAmount) * 100 : 0;
 
                         return (
                           <div
@@ -2639,7 +2637,7 @@ const CampaignManagement = ({
                               <div className="mt-2 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
                                 <div
                                   className={`h-full ${getProgressColor(progress)} transition-all duration-300`}
-                                  style={{ width: `${progress}%` }}
+                                  style={{ width: `${Math.min(100, progress)}%` }}
                                 />
                               </div>
                             </div>
@@ -3015,7 +3013,7 @@ const CampaignManagement = ({
                       </Button>
                       {(() => {
                         const status = (selectedCampaign?.status ?? '').toString().toLowerCase();
-                        const isCompleted = status === 'completed';
+                        const isCompleted = status === 'completed' || status === 'exceeded';
                         const isPaused = status === 'paused';
 
                         return (

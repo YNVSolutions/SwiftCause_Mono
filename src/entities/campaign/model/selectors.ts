@@ -19,8 +19,9 @@ export const selectCampaignsByKiosk = (campaigns: Campaign[], kioskId: string) =
 
 export const selectCampaignProgress = (campaign: Campaign) => {
   if (campaign.goal <= 0) return 0;
-  return Math.min(((campaign.raised / 100) / campaign.goal) * 100, 100);
+  // Allow progress to exceed 100% for over-funded campaigns
+  return ((campaign.raised / 100) / campaign.goal) * 100;
 };
 
 export const selectCampaignIsCompleted = (campaign: Campaign) =>
-  campaign.status === 'completed' || selectCampaignProgress(campaign) >= 100;
+  campaign.status === 'completed' || campaign.status === 'exceeded' || selectCampaignProgress(campaign) >= 100;

@@ -25,10 +25,11 @@ export const getTop3Amounts = (campaign: Campaign): number[] => {
 
 /**
  * Calculate progress percentage for a campaign
+ * Allows percentage to exceed 100% for over-funded campaigns
  */
 export const getProgressPercentage = (raised: number, goal: number): number => {
   if (goal <= 0) return 0;
-  return Math.min(((raised / 100) / goal) * 100, 100);
+  return ((raised / 100) / goal) * 100;
 };
 
 /**

@@ -100,7 +100,7 @@ export const CampaignListLayout: React.FC<CampaignListLayoutProps> = ({
                 <div className="w-full bg-gray-200 rounded-full h-2 mb-5">
                   <div
                     className="bg-[#0E8F5A] h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${progress}%` }}
+                    style={{ width: `${Math.min(100, progress)}%` }}
                   />
                 </div>
 

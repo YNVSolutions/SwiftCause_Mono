@@ -120,7 +120,6 @@ const createGiftAidDeclarationIfNeeded = async ({
   campaignTitleSnapshot,
   organizationId,
 }) => {
- 
   // Strict Guard: Only process if isGiftAid is explicitly true
   const isGiftAid = toBoolean(metadata.isGiftAid);
   if (!isGiftAid) {
