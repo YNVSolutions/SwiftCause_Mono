@@ -209,13 +209,12 @@ exports.validateMagicLinkToken = functions.https.onRequest(async (req, res) => {
     const db = admin.firestore();
 
     const result = await db.runTransaction(async (transaction) => {
-      // Look up token by hash
-      const tokensQuery = await transaction.get(
-        db.collection('magicLinkTokens').where('tokenHash', '==', tokenHash).limit(1),
-      );
+      // Direct document lookup using tokenHash as document ID (O(1) lookup)
+      const tokenRef = db.collection('magicLinkTokens').doc(tokenHash);
+      const tokenDoc = await transaction.get(tokenRef);
 
       // Check if token exists
-      if (tokensQuery.empty) {
+      if (!tokenDoc.exists) {
         console.warn('⚠️ [Validate Token] Token not found');
         return {
           status: 404,
@@ -226,10 +225,8 @@ exports.validateMagicLinkToken = functions.https.onRequest(async (req, res) => {
         };
       }
 
-      const tokenDoc = tokensQuery.docs[0];
       const tokenData = tokenDoc.data();
       const tokenId = tokenDoc.id;
-      const tokenRef = db.collection('magicLinkTokens').doc(tokenId);
 
       console.log('🔵 [Validate Token] Token found:', {
         tokenId,
