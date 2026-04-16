@@ -533,3 +533,349 @@ exports.consumeMagicLinkToken = functions.https.onRequest(async (req, res) => {
     });
   }
 });
+
+// ============================================
+// COMPLETE GIFT AID FLOW - ATOMIC & IDEMPOTENT
+// ============================================
+
+const PROCESSING_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+
+/**
+ * Complete Gift Aid Flow - Atomic & Idempotent
+ *
+ * Handles the entire Gift Aid submission in a single transaction:
+ * 1. Validate token
+ * 2. Check idempotency
+ * 3. Create declaration
+ * 4. Link donation
+ * 5. Consume token
+ *
+ * ALL OR NOTHING - no partial failures
+ */
+exports.completeGiftAidFlow = functions.https.onRequest(async (req, res) => {
+  // CORS
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+  }
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).send('');
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({
+      success: false,
+      error: 'METHOD_NOT_ALLOWED',
+      message: 'Only POST requests are allowed',
+    });
+  }
+
+  try {
+    const { token, formData } = req.body;
+
+    // ============================================
+    // INPUT VALIDATION
+    // ============================================
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_REQUEST',
+        message: 'Token is required',
+      });
+    }
+
+    if (!formData || typeof formData !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_REQUEST',
+        message: 'Form data is required',
+      });
+    }
+
+    // Validate required fields
+    const requiredFields = [
+      'firstName',
+      'surname',
+      'houseNumber',
+      'addressLine1',
+      'town',
+      'postcode',
+    ];
+    const missingFields = requiredFields.filter((field) => !formData[field]);
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_REQUIRED_FIELDS',
+        message: `Missing required fields: ${missingFields.join(', ')}`,
+      });
+    }
+
+    // Validate consents
+    const consents = formData.consents || {};
+    const requiredConsents = [
+      'giftAidConsent',
+      'ukTaxpayerConfirmation',
+      'dataProcessingConsent',
+      'homeAddressConfirmed',
+    ];
+    const missingConsents = requiredConsents.filter((consent) => consents[consent] !== true);
+
+    if (missingConsents.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_REQUIRED_CONSENTS',
+        message: 'All required consents must be provided',
+      });
+    }
+
+    // Hash token for lookup
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // ============================================
+    // ATOMIC TRANSACTION
+    // ============================================
+
+    const db = admin.firestore();
+    const timestamp = admin.firestore.Timestamp.now();
+
+    const result = await db.runTransaction(async (transaction) => {
+      // ----------------------------------------
+      // STEP 1: FETCH & VALIDATE TOKEN (Direct Lookup)
+      // ----------------------------------------
+
+      // Use tokenHash as document ID for direct lookup (no query)
+      const tokenRef = db.collection('magicLinkTokens').doc(tokenHash);
+      const tokenSnap = await transaction.get(tokenRef);
+
+      if (!tokenSnap.exists) {
+        throw {
+          status: 404,
+          error: 'TOKEN_NOT_FOUND',
+          message: 'Invalid or expired link',
+        };
+      }
+
+      const tokenData = tokenSnap.data();
+
+      // Check token status
+      if (tokenData.blocked === true) {
+        throw {
+          status: 403,
+          error: 'TOKEN_BLOCKED',
+          message: 'This link has been blocked',
+        };
+      }
+
+      if (tokenData.status === 'consumed') {
+        throw {
+          status: 409,
+          error: 'TOKEN_CONSUMED',
+          message: 'This link has already been used',
+        };
+      }
+
+      if (tokenData.status !== 'active') {
+        throw {
+          status: 400,
+          error: 'TOKEN_INVALID',
+          message: 'Invalid link',
+        };
+      }
+
+      const expiresAt = tokenData.expiresAt?.toMillis();
+      if (!expiresAt || expiresAt < Date.now()) {
+        throw {
+          status: 410,
+          error: 'TOKEN_EXPIRED',
+          message: 'This link has expired',
+        };
+      }
+
+      // ----------------------------------------
+      // STEP 2: FETCH DONATION
+      // ----------------------------------------
+
+      const donationId = tokenData.donationId;
+      const donationRef = db.collection('donations').doc(donationId);
+      const donationSnap = await transaction.get(donationRef);
+
+      if (!donationSnap.exists) {
+        throw {
+          status: 404,
+          error: 'DONATION_NOT_FOUND',
+          message: 'Associated donation not found',
+        };
+      }
+
+      const donationData = donationSnap.data();
+
+      // ----------------------------------------
+      // STEP 3: CHECK PROCESSING LOCK (with timeout)
+      // ----------------------------------------
+
+      if (donationData.processing === true) {
+        const startedAt = donationData.processingStartedAt?.toMillis();
+
+        // Check if lock is stale (older than timeout)
+        if (!startedAt || Date.now() - startedAt < PROCESSING_TIMEOUT_MS) {
+          throw {
+            status: 409,
+            error: 'PROCESSING_IN_PROGRESS',
+            message: 'This donation is currently being processed',
+          };
+        }
+
+        // Stale lock detected - allow override
+        console.warn('Stale processing lock detected, overriding', {
+          donationId,
+          startedAt: new Date(startedAt).toISOString(),
+          age: Date.now() - startedAt,
+        });
+      }
+
+      // ----------------------------------------
+      // STEP 4: IDEMPOTENCY CHECK
+      // ----------------------------------------
+
+      if (donationData.giftAidDeclarationId && donationData.isGiftAid === true) {
+        // Already processed - return success (idempotent)
+        const giftAidAmount = Math.round(donationData.amount * 0.25);
+
+        return {
+          success: true,
+          idempotent: true,
+          declarationId: donationData.giftAidDeclarationId,
+          donationId: donationId,
+          giftAidAmount: giftAidAmount,
+          totalImpact: donationData.amount + giftAidAmount,
+        };
+      }
+
+      // ----------------------------------------
+      // STEP 5: SET PROCESSING LOCK
+      // ----------------------------------------
+
+      transaction.update(donationRef, {
+        processing: true,
+        processingStartedAt: timestamp,
+      });
+
+      // ----------------------------------------
+      // STEP 6: CREATE GIFT AID DECLARATION
+      // ----------------------------------------
+
+      const declarationRef = db.collection('giftAidDeclarations').doc();
+      const declarationId = declarationRef.id;
+
+      const giftAidAmount = Math.round(tokenData.amount * 0.25);
+      const totalImpact = tokenData.amount + giftAidAmount;
+
+      const donorEmail = formData.donorEmail?.trim() || null;
+      const donorEmailNormalized = donorEmail?.toLowerCase() || null;
+
+      const getTaxYear = (date) => {
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        return month >= 3 ? `${year}-${(year + 1) % 100}` : `${year - 1}-${year % 100}`;
+      };
+
+      const declarationData = {
+        id: declarationId,
+        donationId: donationId,
+        donorTitle: formData.donorTitle?.trim() || '',
+        donorFirstName: formData.firstName.trim(),
+        donorSurname: formData.surname.trim(),
+        donorHouseNumber: formData.houseNumber.trim(),
+        donorAddressLine1: formData.addressLine1.trim(),
+        donorAddressLine2: formData.addressLine2?.trim() || '',
+        donorTown: formData.town.trim(),
+        donorPostcode: formData.postcode.trim(),
+        donorEmail: donorEmail,
+        donorEmailNormalized: donorEmailNormalized,
+        declarationText:
+          'I want to Gift Aid my donation and any donations I make in the future or have made in the past 4 years to this charity. I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital Gains Tax than the amount of Gift Aid claimed on all my donations in that tax year it is my responsibility to pay any difference.',
+        declarationTextVersion: 'v1.0',
+        declarationDate: timestamp,
+        giftAidConsent: consents.giftAidConsent,
+        ukTaxpayerConfirmation: consents.ukTaxpayerConfirmation,
+        dataProcessingConsent: consents.dataProcessingConsent,
+        homeAddressConfirmed: consents.homeAddressConfirmed,
+        donationAmount: tokenData.amount,
+        giftAidAmount: giftAidAmount,
+        campaignId: tokenData.campaignId || null,
+        campaignTitle: donationData.metadata?.campaignTitleSnapshot || 'Donation',
+        organizationId: tokenData.charityId || donationData.organizationId || null,
+        donationDate: donationData.createdAt || timestamp,
+        taxYear: getTaxYear(new Date()),
+        giftAidStatus: 'active',
+        hmrcClaimStatus: 'pending',
+        operationalStatus: 'captured',
+        captureMethod: 'magic_link',
+        magicLinkTokenId: tokenHash,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+
+      transaction.set(declarationRef, declarationData);
+
+      // ----------------------------------------
+      // STEP 7: LINK DONATION & CLEAR LOCK
+      // ----------------------------------------
+
+      transaction.update(donationRef, {
+        isGiftAid: true,
+        giftAidDeclarationId: declarationId,
+        processing: false,
+        processingCompletedAt: timestamp,
+        updatedAt: timestamp,
+      });
+
+      // ----------------------------------------
+      // STEP 8: CONSUME TOKEN
+      // ----------------------------------------
+
+      transaction.update(tokenRef, {
+        status: 'consumed',
+        completedAt: timestamp,
+      });
+
+      // ----------------------------------------
+      // STEP 9: RETURN SUCCESS
+      // ----------------------------------------
+
+      return {
+        success: true,
+        idempotent: false,
+        declarationId: declarationId,
+        donationId: donationId,
+        giftAidAmount: giftAidAmount,
+        totalImpact: totalImpact,
+      };
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Complete Gift Aid Flow Error:', error);
+
+    // Structured error response
+    if (error.status && error.error) {
+      return res.status(error.status).json({
+        success: false,
+        error: error.error,
+        message: error.message,
+      });
+    }
+
+    // Unexpected error
+    return res.status(500).json({
+      success: false,
+      error: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred',
+    });
+  }
+});
