@@ -3,14 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Button } from '../../shared/ui/button';
-import { Input } from '../../shared/ui/input';
-import { Label } from '../../shared/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../shared/ui/card';
 import { Badge } from '../../shared/ui/badge';
-import { Progress } from '../../shared/ui/progress';
 import { Skeleton } from '../../shared/ui/skeleton';
-import { ImageWithFallback } from '../../shared/ui/figma/ImageWithFallback';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../../shared/ui/collapsible';
 import {
   DollarSign,
   Users,
@@ -22,38 +17,18 @@ import {
   Activity as ActivityIcon,
   AlertCircle,
   CheckCircle,
-  Database,
-  UserCog,
-  LogOut,
   Plus,
   RefreshCw,
-  Smartphone,
   CreditCard,
   Shield,
-  BookOpen,
-  HelpCircle,
-  Star,
-  ChevronDown,
-  ChevronUp,
   ChevronRight,
   Monitor,
-  QrCode,
   BarChart3,
   Target,
-  Workflow,
-  Bell,
-  Lightbulb,
-  Rocket,
-  Play,
   TriangleAlert,
   Building2,
   ArrowUpRight,
-  ArrowDownRight,
-  Trophy,
-  Medal,
-  X,
   Zap,
-  MoreVertical,
   Pencil,
   Gift,
 } from 'lucide-react';
@@ -71,12 +46,10 @@ import {
   formatCurrency as formatGbp,
   formatCurrencyFromMajor as formatGbpMajor,
 } from '../../shared/lib/currencyFormatter';
-import { db, storage } from '../../shared/lib/firebase';
+import { auth, db } from '../../shared/lib/firebase';
 import {
   collection,
   query,
-  orderBy,
-  limit,
   getDocs,
   where,
   addDoc,
@@ -84,11 +57,9 @@ import {
   updateDoc,
   Timestamp,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { useDashboardData, Activity, Alert } from '../../shared/lib/hooks/useDashboardData';
+import { useDashboardData, Activity } from '../../shared/lib/hooks/useDashboardData';
 import { useOrganization } from '../../shared/lib/hooks/useOrganization';
 import { useCampaignManagement } from '../../shared/lib/hooks/useCampaignManagement';
-import { auth } from '../../shared/lib/firebase';
 import {
   syncKiosksForCampaign,
   syncCampaignsForKiosk,
@@ -99,12 +70,8 @@ import { DEFAULT_CAMPAIGN_CONFIG } from '../../shared/config';
 import { AdminLayout } from './AdminLayout';
 import { useStripeOnboarding, StripeOnboardingDialog } from '../../features/stripe-onboarding';
 import { useToast } from '../../shared/ui/ToastProvider';
+import { PerformanceDetailDialog } from '../../widgets/campaign-performance';
 import {
-  FundraisingEfficiencyGauge,
-  PerformanceDetailDialog,
-} from '../../widgets/campaign-performance';
-import {
-  CampaignProgressBars,
   CampaignProgressDialog,
   transformCampaignsToProgress,
 } from '../../widgets/campaign-progress';
@@ -163,6 +130,52 @@ const CHART_COLORS = [
   '#D9B36A', // Muted Amber (repeat)
 ];
 
+interface GoalComparisonDataPoint {
+  name: string;
+  Collected: number;
+  Goal: number;
+}
+
+interface CategoryDataPoint {
+  name: string;
+  value: number;
+  color: string;
+}
+
+const parseDateLikeValue = (value: unknown): Date | null => {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  if (typeof value === 'object') {
+    const timestampLike = value as { toDate?: () => Date; seconds?: number };
+
+    if (typeof timestampLike.toDate === 'function') {
+      const fromToDate = timestampLike.toDate();
+      return Number.isNaN(fromToDate.getTime()) ? null : fromToDate;
+    }
+
+    if (typeof timestampLike.seconds === 'number') {
+      const fromSeconds = new Date(timestampLike.seconds * 1000);
+      return Number.isNaN(fromSeconds.getTime()) ? null : fromSeconds;
+    }
+  }
+
+  return null;
+};
+
+const toDateInputString = (value: unknown): string => {
+  const parsed = parseDateLikeValue(value);
+  return parsed ? parsed.toISOString().split('T')[0] : '';
+};
+
 export function AdminDashboard({
   onNavigate,
   onLogout,
@@ -173,19 +186,12 @@ export function AdminDashboard({
     userSession.user.organizationId,
   );
 
-  const { deviceDistribution } = stats;
-
   // Use the campaign management hook for image upload functionality
   const {
     handleImageSelect,
     handleGalleryImagesSelect,
-    handleImageUpload,
-    handleGalleryImagesUpload,
     selectedImage,
     selectedGalleryImages,
-    uploadingImage,
-    uploadingGallery,
-    saveCampaign,
     clearImageSelection,
     clearGallerySelection,
     uploadFile,
@@ -193,7 +199,7 @@ export function AdminDashboard({
   } = useCampaignManagement(userSession.user.organizationId);
 
   // Helper function to remove undefined properties from an object
-  const removeUndefined = (obj: any): any => {
+  const removeUndefined = (obj: unknown): unknown => {
     if (obj === null || typeof obj !== 'object') {
       return obj;
     }
@@ -202,10 +208,10 @@ export function AdminDashboard({
       return obj.map(removeUndefined).filter((item) => item !== undefined);
     }
 
-    const newObj: any = {};
+    const newObj: Record<string, unknown> = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        const value = obj[key];
+        const value = (obj as Record<string, unknown>)[key];
         if (value !== undefined) {
           const processedValue = removeUndefined(value);
           if (processedValue !== undefined) {
@@ -238,8 +244,8 @@ export function AdminDashboard({
   const [dashboardData, setDashboardData] = useState({
     topCampaigns: [] as Campaign[],
     allCampaignsForPerformance: [] as Campaign[],
-    goalComparisonData: [] as any[],
-    categoryData: [] as any[],
+    goalComparisonData: [] as GoalComparisonDataPoint[],
+    categoryData: [] as CategoryDataPoint[],
     showFeatures: false,
     isLegendExpanded: false,
   });
@@ -346,7 +352,7 @@ export function AdminDashboard({
     userSession.user.organizationName ||
     null;
 
-  const { isStripeOnboarded, needsOnboarding } = useStripeOnboarding(organization);
+  const { needsOnboarding } = useStripeOnboarding(organization);
   const { showToast } = useToast();
 
   // Reusable function to fetch campaigns by organization ID
@@ -437,18 +443,6 @@ export function AdminDashboard({
       }));
       setDashboardData((prev) => ({ ...prev, goalComparisonData: comparisonData }));
 
-      // Calculate average donations for category data
-      const averageDonation: { [key: string]: number } = {};
-      let average = 0;
-      allCampaigns.forEach((campaign) => {
-        const raisedAmount = campaign.raised;
-        const donationCount = campaign.donationCount;
-
-        if (raisedAmount > 0) {
-          const average = raisedAmount / (donationCount || 1);
-          averageDonation[campaign.id] = average;
-        }
-      });
       // Build categoryData from per-campaign average donation values so the
       // pie chart shows the relative average donation per campaign.
       const averages: { id: string; name: string; avg: number }[] = [];
@@ -522,167 +516,6 @@ export function AdminDashboard({
   const handleRefresh = () => {
     refreshDashboard();
     fetchChartData();
-  };
-
-  const handleCreateCampaign = async () => {
-    // Validate all required fields
-    if (
-      !campaignCreation.newCampaign.title ||
-      !campaignCreation.newCampaign.description ||
-      !campaignCreation.newCampaign.category ||
-      !campaignCreation.newCampaign.status ||
-      !campaignCreation.newCampaign.startDate ||
-      !campaignCreation.newCampaign.endDate ||
-      !userSession
-    ) {
-      showToast('Please fill in all required fields', 'error', 4000);
-      return;
-    }
-
-    // Validate goal is a positive number
-    if (!campaignCreation.newCampaign.goal || campaignCreation.newCampaign.goal <= 0) {
-      showToast('Fundraising goal must be greater than 0', 'error', 4000);
-      return;
-    }
-
-    // Validate dates
-    const startDate = new Date(campaignCreation.newCampaign.startDate);
-    const endDate = new Date(campaignCreation.newCampaign.endDate);
-
-    if (endDate <= startDate) {
-      setCampaignDateError(true);
-      return;
-    }
-
-    // Clear date error if validation passes
-    setCampaignDateError(false);
-
-    setCampaignCreation((prev) => ({ ...prev, isCreating: true }));
-    try {
-      // Save the campaign to database
-      const campaignData = {
-        title: campaignCreation.newCampaign.title,
-        description: campaignCreation.newCampaign.description,
-        goal: Number(campaignCreation.newCampaign.goal),
-        status: campaignCreation.newCampaign.status,
-        startDate: startDate,
-        endDate: endDate,
-        organizationId: userSession.user.organizationId,
-        raised: 0,
-        donationCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        isGlobal: campaignCreation.newCampaign.isGlobal || false,
-        tags: campaignCreation.newCampaign.tags || [],
-        coverImageUrl: campaignCreation.newCampaign.coverImageUrl || '',
-        category: campaignCreation.newCampaign.category,
-      };
-      const docRef = await addDoc(collection(db, 'campaigns'), campaignData);
-
-      // Save the created campaign ID
-      setCampaignCreation((prev) => ({ ...prev, createdId: docRef.id }));
-
-      // Move to kiosk form
-      setOnboardingFlow((prev) => ({ ...prev, showKioskForm: true }));
-    } catch (error) {
-      console.error('Error creating campaign: ', error);
-      showToast('Failed to create campaign. Please try again.', 'error', 4000);
-    } finally {
-      setCampaignCreation((prev) => ({ ...prev, isCreating: false }));
-    }
-  };
-
-  const handleCreateKiosk = async () => {
-    if (!kioskCreation.newKiosk.name || !kioskCreation.newKiosk.location || !userSession) return;
-
-    // Validate access code
-    if (!kioskCreation.newKiosk.accessCode || kioskCreation.newKiosk.accessCode.length < 4) {
-      showToast('Access code must be at least 4 characters', 'error', 4000);
-      return;
-    }
-
-    setKioskCreation((prev) => ({ ...prev, isCreating: true }));
-    try {
-      // Create the kiosk (campaign was already created in previous step)
-      const newKioskData = {
-        name: kioskCreation.newKiosk.name,
-        location: kioskCreation.newKiosk.location,
-        accessCode: kioskCreation.newKiosk.accessCode,
-        status: 'offline',
-        lastActive: new Date().toISOString(),
-        totalDonations: 0,
-        totalRaised: 0,
-        assignedCampaigns: [],
-        defaultCampaign: '',
-        deviceInfo: {},
-        operatingHours: {},
-        settings: {
-          displayMode: 'grid',
-          showAllCampaigns: true,
-          maxCampaignsDisplay: 6,
-          autoRotateCampaigns: false,
-        },
-        organizationId: userSession.user.organizationId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      const docRef = await addDoc(collection(db, 'kiosks'), newKioskData);
-
-      // Save the created kiosk ID
-      setKioskCreation((prev) => ({ ...prev, createdId: docRef.id }));
-
-      // Move to linking form
-      setOnboardingFlow((prev) => ({ ...prev, showLinkingForm: true }));
-    } catch (error) {
-      console.error('Error adding kiosk: ', error);
-      showToast('Failed to create kiosk. Please try again.', 'error', 4000);
-    } finally {
-      setKioskCreation((prev) => ({ ...prev, isCreating: false }));
-    }
-  };
-
-  const handleLinkCampaignToKiosk = async (campaignId: string) => {
-    if (!campaignId || !kioskCreation.createdId) {
-      showToast('Campaign or Kiosk ID is missing', 'error', 4000);
-      return;
-    }
-
-    setCampaignCreation((prev) => ({ ...prev, linkingId: campaignId }));
-    try {
-      // Update kiosk with the campaign assignment
-      const kioskRef = doc(db, 'kiosks', kioskCreation.createdId);
-
-      // Add campaign to assigned campaigns if not already assigned
-      const updatedAssignedCampaigns = campaignCreation.assignedCampaignIds.includes(campaignId)
-        ? campaignCreation.assignedCampaignIds
-        : [...campaignCreation.assignedCampaignIds, campaignId];
-
-      await updateDoc(kioskRef, {
-        assignedCampaigns: updatedAssignedCampaigns,
-        defaultCampaign: updatedAssignedCampaigns[0], // Set first campaign as default
-        updatedAt: new Date(),
-      });
-
-      // Sync the campaign side so campaign.assignedKiosks stays consistent
-      const oldAssignedCampaigns = campaignCreation.assignedCampaignIds;
-      try {
-        await syncCampaignsForKiosk(
-          kioskCreation.createdId,
-          updatedAssignedCampaigns,
-          oldAssignedCampaigns,
-        );
-      } catch (syncError) {
-        console.error('Kiosk-campaign sync failed after link (kiosk was updated):', syncError);
-      }
-
-      // Update local state
-      setCampaignCreation((prev) => ({ ...prev, assignedCampaignIds: updatedAssignedCampaigns }));
-    } catch (error) {
-      console.error('Error linking campaign to kiosk: ', error);
-      showToast('Failed to link campaign. Please try again.', 'error', 4000);
-    } finally {
-      setCampaignCreation((prev) => ({ ...prev, linkingId: null }));
-    }
   };
 
   // Kiosk Form Handlers
@@ -839,7 +672,7 @@ export function AdminDashboard({
         const existingGalleryUrls = Array.isArray(campaignCreation.formData.galleryImages)
           ? campaignCreation.formData.galleryImages
           : [];
-        let galleryImageUrls = [...existingGalleryUrls];
+        const galleryImageUrls = [...existingGalleryUrls];
 
         if (selectedGalleryImages.length > 0) {
           for (const file of selectedGalleryImages) {
@@ -890,7 +723,7 @@ export function AdminDashboard({
         }
 
         // Upload gallery images if any were selected
-        let galleryImageUrls = [...(formData.galleryImages || [])];
+        const galleryImageUrls = [...(formData.galleryImages || [])];
         if (selectedGalleryImages.length > 0) {
           for (const file of selectedGalleryImages) {
             const uploadedUrl = await uploadFile(
@@ -903,7 +736,7 @@ export function AdminDashboard({
           }
         }
 
-        const dataToSave: { [key: string]: any } = {
+        const dataToSave: Record<string, unknown> = {
           title: formData.title,
           description: formData.briefOverview || '',
           longDescription: formData.description || '',
@@ -935,7 +768,7 @@ export function AdminDashboard({
           dataToSave.endDate = Timestamp.fromDate(new Date(formData.endDate));
         }
 
-        const finalDataToSave = removeUndefined(dataToSave);
+        const finalDataToSave = removeUndefined(dataToSave) as Omit<Campaign, 'id'>;
         const newCampaign = await createWithImage(finalDataToSave);
 
         await syncKiosksForCampaign(
@@ -1067,46 +900,6 @@ export function AdminDashboard({
   }, [onboardingFlow.showKioskForm, userSession.user.organizationId]);
 
   const formatCurrency = (amount: number) => formatGbp(amount);
-  const formatNumber = (num: number) => new Intl.NumberFormat('en-GB').format(num);
-
-  const formatLargeCurrency = (amount: number) => {
-    if (amount === 0) return '£0';
-    if (typeof amount !== 'number') return '...';
-
-    const amountInGbp = amount / 100;
-    const tiers = [
-      { value: 1e12, name: 'T' },
-      { value: 1e9, name: 'B' },
-      { value: 1e6, name: 'M' },
-      { value: 1e3, name: 'K' },
-    ];
-
-    const tier = tiers.find((t) => amountInGbp >= t.value);
-
-    if (tier) {
-      const value = (amountInGbp / tier.value).toFixed(1);
-      return `£${value}${tier.name}`;
-    }
-
-    return formatCurrency(amount);
-  };
-  const formatShortCurrency = (amount: number) => {
-    if (amount === 0) return '£0';
-    if (typeof amount !== 'number') return '...';
-    const amountInGbp = amount / 100;
-    const tiers = [
-      { value: 1e12, name: 'T' },
-      { value: 1e9, name: 'B' },
-      { value: 1e6, name: 'M' },
-      { value: 1e3, name: 'K' },
-    ];
-    const tier = tiers.find((t) => amountInGbp >= t.value);
-    if (tier) {
-      const value = (amountInGbp / tier.value).toFixed(1);
-      return `£${value}${tier.name}`;
-    }
-    return formatCurrency(amount);
-  };
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -1120,21 +913,6 @@ export function AdminDashboard({
         return <ActivityIcon className="w-4 h-4 text-gray-600" />;
     }
   };
-
-  const getAlertIcon = (type: string) => {
-    switch (type) {
-      case 'warning':
-        return <AlertCircle className="w-4 h-4 text-yellow-600" />;
-      case 'success':
-        return <CheckCircle className="w-4 h-4 text-green-600" />;
-      default:
-        return <ActivityIcon className="w-4 h-4 text-blue-600" />;
-    }
-  };
-
-  const displayedCategories = dashboardData.isLegendExpanded
-    ? dashboardData.categoryData
-    : dashboardData.categoryData.slice(0, 6);
 
   const handleStartTour = () => {
     // Reset all form states
@@ -1254,13 +1032,18 @@ export function AdminDashboard({
       } else {
         throw new Error('No onboarding URL received from server.');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating Stripe onboarding link:', error);
+      const errorName =
+        typeof error === 'object' && error !== null && 'name' in error
+          ? String((error as { name: unknown }).name)
+          : '';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      if (error.name === 'AbortError') {
+      if (errorName === 'AbortError') {
         showToast('Request timed out. Please check your connection and try again.', 'error', 4000);
       } else {
-        showToast(`Failed to start Stripe onboarding: ${error.message}`, 'error', 4000);
+        showToast(`Failed to start Stripe onboarding: ${errorMessage}`, 'error', 4000);
       }
       setStripeOnboarding((prev) => ({ ...prev, isOnboarding: false }));
     }
@@ -1625,23 +1408,8 @@ export function AdminDashboard({
                                         ...prev,
                                         editingCampaignInTour: campaign,
                                       }));
-                                      // Handle date conversion safely
-                                      let startDateStr = '';
-                                      let endDateStr = '';
-                                      if ((campaign as any).startDate) {
-                                        const sd = (campaign as any).startDate;
-                                        const startDateObj = sd.seconds
-                                          ? new Date(sd.seconds * 1000)
-                                          : new Date(sd);
-                                        startDateStr = startDateObj.toISOString().split('T')[0];
-                                      }
-                                      if (campaign.endDate) {
-                                        const ed = campaign.endDate as any;
-                                        const endDateObj = ed.seconds
-                                          ? new Date(ed.seconds * 1000)
-                                          : new Date(ed);
-                                        endDateStr = endDateObj.toISOString().split('T')[0];
-                                      }
+                                      const startDateStr = toDateInputString(campaign.startDate);
+                                      const endDateStr = toDateInputString(campaign.endDate);
                                       setCampaignCreation((prev) => ({
                                         ...prev,
                                         formData: {
@@ -2713,7 +2481,7 @@ export function AdminDashboard({
                     <AlertsSection
                       alerts={alerts}
                       loading={loading}
-                      onDismissAlert={(alertId) => {
+                      onDismissAlert={() => {
                         // Handle alert dismissal - could add to local storage or API call
                       }}
                     />
@@ -3066,16 +2834,26 @@ export function AdminDashboard({
         }
         campaigns={transformCampaignsToProgress(
           dashboardData.goalComparisonData.map(
-            (d, index) =>
-              ({
-                id: `${d.name}-${index}`,
-                title: d.name,
-                raised: d.Collected,
-                goal: d.Goal,
-              }) as any,
+            (d, index): Campaign => ({
+              id: `${d.name}-${index}`,
+              title: d.name,
+              description: '',
+              raised: d.Collected,
+              goal: d.Goal,
+              coverImageUrl: '',
+              category: 'General',
+              configuration: {
+                ...DEFAULT_CAMPAIGN_CONFIG,
+                predefinedAmounts: [...DEFAULT_CAMPAIGN_CONFIG.predefinedAmounts],
+                suggestedAmounts: [...DEFAULT_CAMPAIGN_CONFIG.suggestedAmounts],
+                recurringIntervals: [...DEFAULT_CAMPAIGN_CONFIG.recurringIntervals],
+                requiredFields: [...DEFAULT_CAMPAIGN_CONFIG.requiredFields],
+                optionalFields: [...DEFAULT_CAMPAIGN_CONFIG.optionalFields],
+              },
+            }),
           ),
         )}
-        onCampaignClick={(id) => {
+        onCampaignClick={() => {
           setDialogVisibility((prev) => ({ ...prev, showCampaignProgressDialog: false }));
           onNavigate('admin-campaigns');
         }}
