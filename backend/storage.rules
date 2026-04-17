@@ -1,9 +1,65 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow all reads and writes for emulator testing
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function callerUserDoc() {
+      return firestore.get(
+        /databases/(default)/documents/users/$(request.auth.uid)
+      );
+    }
+
+    function hasCallerProfile() {
+      return isAuthenticated() && callerUserDoc().data != null;
+    }
+
+    function hasPermission(permission) {
+      return hasCallerProfile() &&
+        callerUserDoc().data.permissions is list &&
+        callerUserDoc().data.permissions.hasAny([permission]);
+    }
+
+    function isAdminLike() {
+      return hasCallerProfile() &&
+        (
+          callerUserDoc().data.role in ['admin', 'super_admin'] ||
+          hasPermission('manage_permissions') ||
+          hasPermission('system_admin')
+        );
+    }
+
+    function isOrgSettingsAdmin(orgId) {
+      return hasCallerProfile() &&
+        callerUserDoc().data.organizationId == orgId &&
+        isAdminLike();
+    }
+
+    // Campaign image assets remain publicly readable and admin-writable.
+    match /campaigns/{campaignId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdminLike();
+    }
+
+    // Organization settings assets:
+    // - logo and idleImage are publicly readable for kiosk rendering.
+    // - writes are restricted to admins of the same organization.
+    match /organizations/{orgId}/settings/{assetType}/{fileName} {
+      allow read: if assetType in ['logo', 'idleImage'];
+      allow write: if assetType in ['logo', 'idleImage'] && isOrgSettingsAdmin(orgId);
+    }
+
+    // Gift Aid exports should never be publicly fetched from Storage directly.
+    // Downloads are mediated through backend functions.
+    match /giftAidExports/{orgId}/{batchId}/{fileName} {
+      allow read, write: if false;
+    }
+
+    // Deny all other paths by default.
     match /{allPaths=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
+
