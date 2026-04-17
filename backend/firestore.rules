@@ -36,11 +36,48 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
+
+    // Helper function to fetch the caller's user document
+    function callerUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Helper function to check if caller profile exists
+    function hasCallerProfile() {
+      return isAuthenticated() && callerUserDoc().data != null;
+    }
+
+    // Helper to check a caller permission flag
+    function hasPermission(permission) {
+      return hasCallerProfile() &&
+             callerUserDoc().data.permissions is list &&
+             callerUserDoc().data.permissions.hasAny([permission]);
+    }
     
     // Helper function to check if user is admin
     function isAdmin() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'];
+      return hasCallerProfile() &&
+             callerUserDoc().data.role in ['admin', 'super_admin'];
+    }
+
+    // Helper function to check privileged admin access (cross-organization)
+    function isPrivilegedAdmin() {
+      return hasCallerProfile() &&
+             (
+               callerUserDoc().data.role == 'super_admin' ||
+               hasPermission('system_admin')
+             );
+    }
+
+    // Helper function to check if caller can manage settings for this organization
+    function isOrganizationSettingsAdmin(orgId) {
+      return hasCallerProfile() &&
+             callerUserDoc().data.organizationId == orgId &&
+             (
+               callerUserDoc().data.role in ['admin', 'super_admin'] ||
+               hasPermission('manage_permissions') ||
+               hasPermission('system_admin')
+             );
     }
     
     // Helper function to check if user owns the document
@@ -133,9 +170,17 @@ service cloud.firestore {
     match /organizations/{orgId} {
       // Anyone can read organization info
       allow read: if true;
-      
-      // Only admins can write
-      allow write: if isAdmin();
+
+      // Only privileged admins can create/delete organization records
+      allow create, delete: if isPrivilegedAdmin();
+
+      // Organization admins can only update the settings field for their own org.
+      // Privileged admins can update any field.
+      allow update: if isPrivilegedAdmin() ||
+                      (
+                        isOrganizationSettingsAdmin(orgId) &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settings'])
+                      );
     }
     
     // ============================================
