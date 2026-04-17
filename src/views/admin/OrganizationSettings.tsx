@@ -62,11 +62,15 @@ export function OrganizationSettings({
   const { organization, loading, error } = useOrganization(organizationId);
   const { showToast } = useToast();
 
-  const canManageSettings =
+  const canEditIdentity =
     userSession.user.role === 'admin' ||
     userSession.user.role === 'super_admin' ||
-    hasPermission('manage_permissions') ||
-    hasPermission('system_admin');
+    hasPermission('change_org_identity');
+  const canEditBranding =
+    userSession.user.role === 'admin' ||
+    userSession.user.role === 'super_admin' ||
+    hasPermission('change_org_branding');
+  const canManageSettings = canEditIdentity || canEditBranding;
   const canSwitchOrganization =
     userSession.user.role === 'super_admin' && hasPermission('system_admin');
   const resolvedOrganizationName =
@@ -258,6 +262,17 @@ export function OrganizationSettings({
   };
 
   const handleSaveSection = async (section: 'identity' | 'branding') => {
+    const hasSectionPermission = section === 'identity' ? canEditIdentity : canEditBranding;
+    if (!hasSectionPermission) {
+      showToast(
+        section === 'identity'
+          ? 'You do not have permission to change organization identity.'
+          : 'You do not have permission to change organization branding.',
+        'error',
+      );
+      return;
+    }
+
     if (section === 'identity' && !hasIdentityChanges) {
       return;
     }
@@ -306,6 +321,7 @@ export function OrganizationSettings({
     try {
       await organizationApi.saveOrganizationSettings({
         organizationId,
+        section,
         displayName: trimmedDisplayName,
         accentColorHex: trimmedAccentColorHex,
         thankYouMessage: trimmedThankYouMessage || null,
@@ -444,7 +460,7 @@ export function OrganizationSettings({
               </div>
               <Button
                 onClick={() => void handleSaveSection('identity')}
-                disabled={savingSection !== null || !hasIdentityChanges}
+                disabled={savingSection !== null || !hasIdentityChanges || !canEditIdentity}
               >
                 {savingSection === 'identity' ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -463,6 +479,7 @@ export function OrganizationSettings({
                   onChange={(event) => setDisplayName(event.target.value)}
                   maxLength={displayNameMax}
                   placeholder="Enter display name"
+                  disabled={!canEditIdentity}
                 />
                 <p className="text-xs text-gray-500">
                   {displayNameLength}/{displayNameMax} characters
@@ -478,6 +495,7 @@ export function OrganizationSettings({
                   maxLength={thankYouMessageMax}
                   placeholder="Thank you for supporting our mission..."
                   rows={4}
+                  disabled={!canEditIdentity}
                 />
                 <p className="text-xs text-gray-500">
                   {thankYouMessageLength}/{thankYouMessageMax} characters
@@ -499,7 +517,7 @@ export function OrganizationSettings({
               </div>
               <Button
                 onClick={() => void handleSaveSection('branding')}
-                disabled={savingSection !== null || !hasBrandingChanges}
+                disabled={savingSection !== null || !hasBrandingChanges || !canEditBranding}
               >
                 {savingSection === 'branding' ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -523,6 +541,7 @@ export function OrganizationSettings({
                       }
                       onChange={(event) => setAccentColorHex(event.target.value.toUpperCase())}
                       className="h-11 w-14 p-1"
+                      disabled={!canEditBranding}
                     />
                     <Input
                       value={accentColorHex}
@@ -530,6 +549,7 @@ export function OrganizationSettings({
                       placeholder="#0E8F5A"
                       className="w-40 font-mono uppercase"
                       maxLength={7}
+                      disabled={!canEditBranding}
                     />
                   </div>
                   <Button
@@ -537,6 +557,7 @@ export function OrganizationSettings({
                     variant="outline"
                     onClick={handleResetAccentColor}
                     disabled={
+                      !canEditBranding ||
                       isUploadingLogo ||
                       isUploadingIdleImage ||
                       accentColorHex.trim().toUpperCase() === ACCENT_COLOR_FALLBACK
@@ -560,7 +581,7 @@ export function OrganizationSettings({
                         type="button"
                         variant="outline"
                         onClick={() => logoInputRef.current?.click()}
-                        disabled={isUploadingLogo}
+                        disabled={!canEditBranding || isUploadingLogo}
                       >
                         {isUploadingLogo ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -573,7 +594,7 @@ export function OrganizationSettings({
                         type="button"
                         variant="outline"
                         onClick={handleRemoveLogo}
-                        disabled={isUploadingLogo || !logoUrl}
+                        disabled={!canEditBranding || isUploadingLogo || !logoUrl}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Remove
@@ -616,7 +637,7 @@ export function OrganizationSettings({
                         type="button"
                         variant="outline"
                         onClick={() => idleImageInputRef.current?.click()}
-                        disabled={isUploadingIdleImage}
+                        disabled={!canEditBranding || isUploadingIdleImage}
                       >
                         {isUploadingIdleImage ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -629,7 +650,7 @@ export function OrganizationSettings({
                         type="button"
                         variant="outline"
                         onClick={handleRemoveIdleImage}
-                        disabled={isUploadingIdleImage || !idleImageUrl}
+                        disabled={!canEditBranding || isUploadingIdleImage || !idleImageUrl}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Remove

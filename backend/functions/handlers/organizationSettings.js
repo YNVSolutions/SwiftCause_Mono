@@ -7,6 +7,8 @@ const THANK_YOU_MESSAGE_MAX_LENGTH = 140;
 const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
 const LOGO_STORAGE_PATH_REGEX = /^organizations\/([^/]+)\/settings\/logo\//;
 const IDLE_IMAGE_STORAGE_PATH_REGEX = /^organizations\/([^/]+)\/settings\/idleImage\//;
+const IDENTITY_PERMISSION = 'change_org_identity';
+const BRANDING_PERMISSION = 'change_org_branding';
 
 const getCallerProfile = async (uid) => {
   const callerDoc = await admin.firestore().collection('users').doc(uid).get();
@@ -19,14 +21,21 @@ const getCallerProfile = async (uid) => {
   return callerDoc.data() || {};
 };
 
-const hasOrgSettingsWriteAccess = (callerData) => {
+const hasAnyOrgSettingsWriteAccess = (callerData) => {
+  return (
+    hasOrgSettingsWriteAccessForPermission(callerData, IDENTITY_PERMISSION) ||
+    hasOrgSettingsWriteAccessForPermission(callerData, BRANDING_PERMISSION)
+  );
+};
+
+const hasOrgSettingsWriteAccessForPermission = (callerData, permission) => {
   const role = typeof callerData?.role === 'string' ? callerData.role : '';
   const permissions = Array.isArray(callerData?.permissions) ? callerData.permissions : [];
 
   return (
     role === 'admin' ||
     role === 'super_admin' ||
-    permissions.includes('manage_permissions') ||
+    permissions.includes(permission) ||
     permissions.includes('system_admin')
   );
 };
@@ -57,10 +66,89 @@ const parseNumberOrNull = (value) => {
   return parsed;
 };
 
+const normalizeDisplayName = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+};
+
+const resolveOrganizationDisplayName = (organizationData) => {
+  if (!organizationData || typeof organizationData !== 'object') {
+    return '';
+  }
+
+  const settings =
+    organizationData.settings && typeof organizationData.settings === 'object'
+      ? organizationData.settings
+      : null;
+
+  if (settings && typeof settings.displayName === 'string' && settings.displayName.trim()) {
+    return settings.displayName.trim();
+  }
+
+  if (typeof organizationData.name === 'string' && organizationData.name.trim()) {
+    return organizationData.name.trim();
+  }
+
+  if (
+    typeof organizationData.organizationName === 'string' &&
+    organizationData.organizationName.trim()
+  ) {
+    return organizationData.organizationName.trim();
+  }
+
+  return '';
+};
+
+const ensureDisplayNameAvailable = async (
+  organizationId,
+  nextDisplayName,
+  currentOrganizationData,
+) => {
+  const nextNormalizedName = normalizeDisplayName(nextDisplayName);
+  if (!nextNormalizedName) {
+    return;
+  }
+
+  const currentNormalizedName = normalizeDisplayName(
+    resolveOrganizationDisplayName(currentOrganizationData),
+  );
+  if (nextNormalizedName === currentNormalizedName) {
+    return;
+  }
+
+  const organizationsSnapshot = await admin.firestore().collection('organizations').get();
+  const hasConflict = organizationsSnapshot.docs.some((organizationDoc) => {
+    if (organizationDoc.id === organizationId) {
+      return false;
+    }
+
+    const candidateDisplayName = resolveOrganizationDisplayName(organizationDoc.data() || {});
+    const candidateNormalizedName = normalizeDisplayName(candidateDisplayName);
+    return candidateNormalizedName && candidateNormalizedName === nextNormalizedName;
+  });
+
+  if (hasConflict) {
+    const error = new Error(
+      'Organization display name already exists. Please choose a different name.',
+    );
+    error.code = 409;
+    throw error;
+  }
+};
+
 const validateAndNormalizeSettingsPayload = (body) => {
   const organizationId = typeof body?.organizationId === 'string' ? body.organizationId.trim() : '';
   if (!organizationId) {
     const error = new Error('organizationId is required');
+    error.code = 400;
+    throw error;
+  }
+  const section = body?.section;
+  if (section !== undefined && section !== 'identity' && section !== 'branding') {
+    const error = new Error("section must be either 'identity' or 'branding'");
     error.code = 400;
     throw error;
   }
@@ -133,6 +221,7 @@ const validateAndNormalizeSettingsPayload = (body) => {
 
   return {
     organizationId,
+    section,
     settings: {
       displayName,
       logoUrl,
@@ -188,6 +277,32 @@ const assertAssetBelongsToOrganization = (url, organizationId, pathRegex, fieldN
   }
 };
 
+const normalizeHexColor = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value.trim().toUpperCase();
+};
+
+const normalizeIdentityField = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim();
+};
+
+const resolveSettingsForDiff = (organizationData) => {
+  if (!organizationData || typeof organizationData !== 'object') {
+    return {};
+  }
+  if (!organizationData.settings || typeof organizationData.settings !== 'object') {
+    return {};
+  }
+
+  return organizationData.settings;
+};
+
 const updateOrganizationSettings = (req, res) => {
   cors(req, res, async () => {
     try {
@@ -196,7 +311,7 @@ const updateOrganizationSettings = (req, res) => {
       }
 
       const auth = await verifyAuth(req);
-      const { organizationId, settings } = validateAndNormalizeSettingsPayload(req.body);
+      const { organizationId, section, settings } = validateAndNormalizeSettingsPayload(req.body);
       assertAssetBelongsToOrganization(
         settings.logoUrl,
         organizationId,
@@ -211,7 +326,7 @@ const updateOrganizationSettings = (req, res) => {
       );
       const callerData = await getCallerProfile(auth.uid);
 
-      if (!hasOrgSettingsWriteAccess(callerData)) {
+      if (!hasAnyOrgSettingsWriteAccess(callerData)) {
         return res.status(403).send({
           error: 'You do not have permission to update organization settings',
         });
@@ -235,6 +350,57 @@ const updateOrganizationSettings = (req, res) => {
       if (!orgSnapshot.exists) {
         return res.status(404).send({ error: 'Organization not found' });
       }
+
+      const currentOrganizationData = orgSnapshot.data() || {};
+      const currentSettings = resolveSettingsForDiff(currentOrganizationData);
+      const identityChanged =
+        normalizeIdentityField(settings.displayName) !==
+          normalizeIdentityField(resolveOrganizationDisplayName(currentOrganizationData)) ||
+        normalizeIdentityField(settings.thankYouMessage) !==
+          normalizeIdentityField(currentSettings.thankYouMessage);
+      const brandingChanged =
+        normalizeHexColor(settings.accentColorHex) !==
+          normalizeHexColor(currentSettings.accentColorHex) ||
+        normalizeOptionalString(settings.logoUrl) !==
+          normalizeOptionalString(currentSettings.logoUrl) ||
+        normalizeOptionalString(settings.idleImageUrl) !==
+          normalizeOptionalString(currentSettings.idleImageUrl);
+
+      if (section === 'identity' && brandingChanged) {
+        return res.status(400).send({
+          error: 'Branding fields cannot be changed when section is identity',
+        });
+      }
+
+      if (section === 'branding' && identityChanged) {
+        return res.status(400).send({
+          error: 'Identity fields cannot be changed when section is branding',
+        });
+      }
+
+      if (
+        identityChanged &&
+        !hasOrgSettingsWriteAccessForPermission(callerData, IDENTITY_PERMISSION)
+      ) {
+        return res.status(403).send({
+          error: 'You do not have permission to change organization identity',
+        });
+      }
+
+      if (
+        brandingChanged &&
+        !hasOrgSettingsWriteAccessForPermission(callerData, BRANDING_PERMISSION)
+      ) {
+        return res.status(403).send({
+          error: 'You do not have permission to change organization branding',
+        });
+      }
+
+      await ensureDisplayNameAvailable(
+        organizationId,
+        settings.displayName,
+        currentOrganizationData,
+      );
 
       const updatedAt = new Date().toISOString();
       await orgRef.set(

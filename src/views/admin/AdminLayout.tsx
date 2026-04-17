@@ -169,7 +169,8 @@ function AdminSidebar({
   const canManageOrgSettings =
     userSession.user.role === 'admin' ||
     userSession.user.role === 'super_admin' ||
-    hasPermission('manage_permissions') ||
+    hasPermission('change_org_identity') ||
+    hasPermission('change_org_branding') ||
     hasPermission('system_admin');
 
   // On mobile, always show expanded sidebar (with text)
@@ -1712,6 +1713,16 @@ export function AdminLayout({
                   {hasPermission('delete_user') && (
                     <span className="px-2.5 py-1 bg-rose-100/80 backdrop-blur-xl text-rose-700 text-xs font-medium rounded-md border border-rose-200/50">
                       delete user
+                    </span>
+                  )}
+                  {hasPermission('change_org_identity') && (
+                    <span className="px-2.5 py-1 bg-emerald-100/80 backdrop-blur-xl text-emerald-700 text-xs font-medium rounded-md border border-emerald-200/50">
+                      change org identity
+                    </span>
+                  )}
+                  {hasPermission('change_org_branding') && (
+                    <span className="px-2.5 py-1 bg-teal-100/80 backdrop-blur-xl text-teal-700 text-xs font-medium rounded-md border border-teal-200/50">
+                      change org branding
                     </span>
                   )}
                   {hasPermission('manage_permissions') && (

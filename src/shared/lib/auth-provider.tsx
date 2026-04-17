@@ -365,6 +365,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           'create_user',
           'edit_user',
           'delete_user',
+          'change_org_identity',
+          'change_org_branding',
           'manage_permissions',
         ] as Permission[],
         isActive: true,

@@ -21,6 +21,7 @@ export type OrganizationSettingsUploadResult = UploadedImageAsset;
 
 export interface OrganizationSettingsUpdateRequest {
   organizationId: string;
+  section?: 'identity' | 'branding';
   settings: OrganizationSettings & {
     logoWidth?: number;
     logoHeight?: number;
@@ -35,6 +36,7 @@ export interface OrganizationSettingsUpdateResponse {
 
 export interface SaveOrganizationSettingsParams {
   organizationId: string;
+  section?: 'identity' | 'branding';
   displayName: string;
   accentColorHex: string;
   thankYouMessage?: string | null;
@@ -221,6 +223,7 @@ export const organizationApi = {
 
     const payload: OrganizationSettingsUpdateRequest = {
       organizationId: params.organizationId,
+      ...(params.section ? { section: params.section } : {}),
       settings: {
         displayName: params.displayName.trim(),
         logoUrl: resolvedLogoUrl,
