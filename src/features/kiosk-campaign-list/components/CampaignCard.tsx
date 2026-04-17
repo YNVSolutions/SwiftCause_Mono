@@ -2,14 +2,18 @@ import React from 'react';
 import { formatCurrency, formatCurrencyFromMajor } from '@/shared/lib/currencyFormatter';
 import { CampaignCardProps } from '../types';
 import { getProgressPercentage, getTop3Amounts } from '../lib/campaignUtils';
+import { darkenHexColor, resolveAccentColor } from '../lib/brandUtils';
 
 export const CampaignCard: React.FC<CampaignCardProps> = ({
   campaign,
   currency,
+  accentColorHex,
   onSelectAmount,
   onDonate,
   onCardClick,
 }) => {
+  const accentColor = resolveAccentColor(accentColorHex);
+  const accentColorDark = darkenHexColor(accentColor, 0.12);
   const progress = getProgressPercentage(campaign.raised || 0, campaign.goal);
   const top3Amounts = getTop3Amounts(campaign);
 
@@ -55,17 +59,17 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
             <span className="font-medium text-gray-900 text-[13px]">
               {formatRaised(campaign.raised || 0)}
             </span>
-            <span className="text-[12px] text-gray-500">
-              Goal {formatGoal(campaign.goal)}
+            <span className="text-[12px] text-gray-500">Goal {formatGoal(campaign.goal)}</span>
+            <span className="font-medium text-[13px]" style={{ color: accentColor }}>
+              {Math.round(progress)}%
             </span>
-            <span className="text-green-700 font-medium text-[13px]">{Math.round(progress)}%</span>
           </div>
 
           {/* Progress Bar */}
           <div className="w-full bg-gray-200 rounded-full h-[5px]">
             <div
-              className="bg-[#0E8F5A] h-[5px] rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
+              className="h-[5px] rounded-full transition-all duration-300"
+              style={{ backgroundColor: accentColor, width: `${progress}%` }}
             />
           </div>
 
@@ -75,7 +79,8 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
               <button
                 key={index}
                 onClick={(e) => handleAmountClick(e, amount)}
-                className="h-10 rounded-xl bg-gray-100/50 text-[#0E8F5A] border border-[rgba(15,23,42,0.08)] font-semibold text-sm hover:bg-gray-100/70 hover:border-[rgba(15,23,42,0.12)] transition-colors duration-200"
+                className="h-10 rounded-xl bg-gray-100/50 border border-[rgba(15,23,42,0.08)] font-semibold text-sm hover:bg-gray-100/70 hover:border-[rgba(15,23,42,0.12)] transition-colors duration-200"
+                style={{ color: accentColor }}
               >
                 {formatCurrencyFromMajor(amount, currency)}
               </button>
@@ -85,7 +90,14 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
           {/* Donate Button - Dominant CTA */}
           <button
             onClick={handleDonateClick}
-            className="w-full h-12 rounded-full font-bold text-base text-white bg-[#0E8F5A] hover:bg-[#0C8050] transition-colors duration-200 flex items-center justify-center shadow-sm md:mt-1 lg:mt-1"
+            className="w-full h-12 rounded-full font-bold text-base text-white transition-colors duration-200 flex items-center justify-center shadow-sm md:mt-1 lg:mt-1"
+            style={{ backgroundColor: accentColor }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.backgroundColor = accentColorDark;
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.backgroundColor = accentColor;
+            }}
           >
             Donate
           </button>

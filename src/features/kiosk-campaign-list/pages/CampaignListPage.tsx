@@ -9,6 +9,7 @@ import {
   CampaignListLayout,
   CampaignCarousel,
 } from '../components';
+import { resolveAccentColor } from '../lib/brandUtils';
 
 /**
  * Pure presentational component for the Campaign List page.
@@ -21,13 +22,67 @@ import {
 export const CampaignListPage: React.FC<CampaignListPageProps> = ({
   state,
   kioskSession,
+  organizationBranding,
   onSelectCampaign,
   onViewDetails,
   onLogout,
 }) => {
   const { campaigns, loading, error, layoutMode } = state;
   const currency = kioskSession?.organizationCurrency || 'GBP';
-  
+  const accentColor = resolveAccentColor(organizationBranding?.accentColorHex);
+  const brandDisplayName = organizationBranding?.displayName || 'SwiftCause';
+  const brandLogo = organizationBranding?.logoUrl || '/logo.png';
+  const idleImageUrl = organizationBranding?.idleImageUrl || null;
+  const [isIdleScreenVisible, setIsIdleScreenVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!idleImageUrl) {
+      setIsIdleScreenVisible(false);
+      return;
+    }
+
+    const idleTimeoutMs = 60_000;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleIdle = () => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+      }
+      idleTimer = setTimeout(() => {
+        setIsIdleScreenVisible(true);
+      }, idleTimeoutMs);
+    };
+
+    const handleInteraction = () => {
+      if (isIdleScreenVisible) {
+        setIsIdleScreenVisible(false);
+      }
+      scheduleIdle();
+    };
+
+    const interactionEvents: Array<keyof WindowEventMap> = [
+      'pointerdown',
+      'mousemove',
+      'touchstart',
+      'keydown',
+      'scroll',
+    ];
+
+    scheduleIdle();
+    interactionEvents.forEach((eventName) => {
+      window.addEventListener(eventName, handleInteraction);
+    });
+
+    return () => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+      }
+      interactionEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, handleInteraction);
+      });
+    };
+  }, [idleImageUrl, isIdleScreenVisible]);
+
   // Loading state
   if (loading) {
     return <LoadingState />;
@@ -51,16 +106,18 @@ export const CampaignListPage: React.FC<CampaignListPageProps> = ({
         <div className="md:hidden">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="SwiftCause" className="h-10 w-10" />
-              <div className="text-xl font-semibold text-slate-900">
-                <span className="text-slate-900">Swift</span>
-                <span className="text-[#22c55e]">Cause</span>
-              </div>
+              <img
+                src={brandLogo}
+                alt={brandDisplayName}
+                className="h-10 w-10 rounded-lg object-cover"
+              />
+              <div className="text-xl font-semibold text-slate-900">{brandDisplayName}</div>
             </div>
             {onLogout && (
               <button
                 onClick={onLogout}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-transparent px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-800"
+                className="inline-flex items-center gap-2 rounded-full border bg-transparent px-3 py-2 text-sm font-medium transition-colors"
+                style={{ borderColor: accentColor, color: accentColor }}
               >
                 <LogOut className="h-4 w-4" />
                 Log out
@@ -79,11 +136,12 @@ export const CampaignListPage: React.FC<CampaignListPageProps> = ({
 
         <div className="hidden md:grid grid-cols-[1fr_auto_1fr] items-start">
           <div className="justify-self-start flex items-center gap-3">
-            <img src="/logo.png" alt="SwiftCause" className="h-11 w-11" />
-            <div className="text-2xl font-semibold text-slate-900">
-              <span className="text-slate-900">Swift</span>
-              <span className="text-[#22c55e]">Cause</span>
-            </div>
+            <img
+              src={brandLogo}
+              alt={brandDisplayName}
+              className="h-11 w-11 rounded-lg object-cover"
+            />
+            <div className="text-2xl font-semibold text-slate-900">{brandDisplayName}</div>
           </div>
 
           <div className="justify-self-center text-center">
@@ -99,7 +157,8 @@ export const CampaignListPage: React.FC<CampaignListPageProps> = ({
             {onLogout && (
               <button
                 onClick={onLogout}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-transparent px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-800"
+                className="inline-flex items-center gap-2 rounded-full border bg-transparent px-4 py-2 text-sm font-medium transition-colors"
+                style={{ borderColor: accentColor, color: accentColor }}
               >
                 <LogOut className="h-4 w-4" />
                 Log out
@@ -120,6 +179,7 @@ export const CampaignListPage: React.FC<CampaignListPageProps> = ({
               <CampaignGrid
                 campaigns={campaigns}
                 currency={currency}
+                accentColorHex={accentColor}
                 onSelectCampaign={onSelectCampaign}
                 onViewDetails={onViewDetails}
               />
@@ -131,6 +191,7 @@ export const CampaignListPage: React.FC<CampaignListPageProps> = ({
                 <CampaignCarousel
                   campaigns={campaigns}
                   currency={currency}
+                  accentColorHex={accentColor}
                   onSelectCampaign={onSelectCampaign}
                   onViewDetails={onViewDetails}
                 />
@@ -140,6 +201,7 @@ export const CampaignListPage: React.FC<CampaignListPageProps> = ({
                 <CampaignListLayout
                   campaigns={campaigns}
                   currency={currency}
+                  accentColorHex={accentColor}
                   onSelectCampaign={onSelectCampaign}
                   onViewDetails={onViewDetails}
                 />
@@ -149,6 +211,7 @@ export const CampaignListPage: React.FC<CampaignListPageProps> = ({
                 <CampaignGrid
                   campaigns={campaigns}
                   currency={currency}
+                  accentColorHex={accentColor}
                   onSelectCampaign={onSelectCampaign}
                   onViewDetails={onViewDetails}
                 />
@@ -157,6 +220,29 @@ export const CampaignListPage: React.FC<CampaignListPageProps> = ({
           </>
         )}
       </main>
+
+      {isIdleScreenVisible && idleImageUrl ? (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setIsIdleScreenVisible(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              setIsIdleScreenVisible(false);
+            }
+          }}
+          className="fixed inset-0 z-50 flex cursor-pointer items-end justify-center bg-black/60"
+        >
+          <img
+            src={idleImageUrl}
+            alt="Kiosk screensaver"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="relative mb-14 rounded-full bg-white/85 px-6 py-3 text-base font-medium text-slate-800 shadow-lg">
+            Tap anywhere to continue
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
