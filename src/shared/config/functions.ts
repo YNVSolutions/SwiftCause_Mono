@@ -27,6 +27,7 @@ export const FUNCTION_URLS = {
   createUser: getFunctionUrl('createUser'),
   updateUser: getFunctionUrl('updateUser'),
   deleteUser: getFunctionUrl('deleteUser'),
+  updateOrganizationSettings: getFunctionUrl('updateOrganizationSettings'),
 } as const;
 
 export default FUNCTION_URLS;
