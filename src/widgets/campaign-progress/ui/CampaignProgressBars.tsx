@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { ArrowUpDown, CheckCircle2, AlertCircle, AlertTriangle, TrendingUp } from 'lucide-react';
 import { CampaignProgress, sortCampaignProgress } from '../lib/progressCalculations';
-import { formatCurrency as formatGbp, formatCurrencyFromMajor as formatGbpMajor } from '../../../shared/lib/currencyFormatter';
+import {
+  formatCurrency as formatGbp,
+  formatCurrencyFromMajor as formatGbpMajor,
+} from '../../../shared/lib/currencyFormatter';
 
 interface CampaignProgressBarsProps {
   campaigns: CampaignProgress[];
@@ -15,12 +18,12 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
   formatCurrency = formatGbp,
 }) => {
   const [sortBy, setSortBy] = useState<'progress' | 'raised' | 'goal' | 'name'>('progress');
-  
+
   const sortedCampaigns = sortCampaignProgress(campaigns, sortBy);
 
   const getStatusIcon = (status: CampaignProgress['status']) => {
     switch (status) {
-      case 'completed':
+      case 'exceeded':
         return <CheckCircle2 className="w-4 h-4" />;
       case 'good':
         return <TrendingUp className="w-4 h-4" />;
@@ -32,7 +35,12 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
   };
 
   const handleSort = () => {
-    const sortOrder: Array<'progress' | 'raised' | 'goal' | 'name'> = ['progress', 'raised', 'goal', 'name'];
+    const sortOrder: Array<'progress' | 'raised' | 'goal' | 'name'> = [
+      'progress',
+      'raised',
+      'goal',
+      'name',
+    ];
     const currentIndex = sortOrder.indexOf(sortBy);
     const nextIndex = (currentIndex + 1) % sortOrder.length;
     setSortBy(sortOrder[nextIndex]);
@@ -56,7 +64,9 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
       <div className="text-center py-8 text-gray-500">
         <TrendingUp className="mx-auto h-12 w-12 text-gray-400 mb-3" />
         <p className="text-lg font-medium mb-2">No Campaigns Yet</p>
-        <p className="text-sm">Start by creating your first fundraising campaign to track progress.</p>
+        <p className="text-sm">
+          Start by creating your first fundraising campaign to track progress.
+        </p>
       </div>
     );
   }
@@ -90,12 +100,8 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
             {/* Campaign Name and Status */}
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-2 flex-1 min-w-0">
-                <div className={campaign.statusColor}>
-                  {getStatusIcon(campaign.status)}
-                </div>
-                <h4 className="text-sm font-semibold text-gray-900 truncate">
-                  {campaign.name}
-                </h4>
+                <div className={campaign.statusColor}>{getStatusIcon(campaign.status)}</div>
+                <h4 className="text-sm font-semibold text-gray-900 truncate">{campaign.name}</h4>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                 <span className={`text-sm font-bold ${campaign.statusColor}`}>
@@ -111,7 +117,7 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
                 style={{ width: `${Math.min(100, campaign.percentage)}%` }}
               >
                 {/* Shimmer effect for active campaigns */}
-                {campaign.status !== 'completed' && (
+                {campaign.status !== 'exceeded' && (
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
                 )}
               </div>
@@ -120,11 +126,12 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
             {/* Amount Details */}
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-600 font-medium">
-                Raised: <span className="text-gray-900 font-semibold">{formatCurrency(campaign.raised)}</span>
+                Raised:{' '}
+                <span className="text-gray-900 font-semibold">
+                  {formatCurrency(campaign.raised)}
+                </span>
               </span>
-              <span className="text-gray-500">
-                Goal: {formatGbpMajor(campaign.goal)}
-              </span>
+              <span className="text-gray-500">Goal: {formatGbpMajor(campaign.goal)}</span>
             </div>
 
             {/* Hover indicator */}
@@ -152,8 +159,8 @@ export const CampaignProgressBars: React.FC<CampaignProgressBarsProps> = ({
           <span className="text-xs text-gray-600">67-99% Good</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-blue-600" />
-          <span className="text-xs text-gray-600">100%+ Completed</span>
+          <div className="w-3 h-3 rounded-full bg-emerald-600" />
+          <span className="text-xs text-gray-600">100%+ Exceeded</span>
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ data class Campaign(
     val predefinedAmounts: List<Long> = emptyList(), // in major units
     val currency: String = "USD",
     val enableRecurring: Boolean = false,
+    val isGiftAid: Boolean = false, // Campaign has Gift Aid enabled
     val organizationName: String = "",
     val organizationId: String = "" // Organization ID for payment metadata
 ) {

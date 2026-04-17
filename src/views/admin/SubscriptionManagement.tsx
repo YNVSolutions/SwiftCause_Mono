@@ -260,7 +260,7 @@ export function SubscriptionManagement({
   }, [tableData]);
 
   const handleExport = async () => {
-    if (!hasPermission('export_donations')) return;
+    if (!hasPermission('export_subscriptions')) return;
     if (!organizationId) return;
 
     if (exportRange === 'custom' && (!exportStartDate || !exportEndDate)) {
@@ -319,7 +319,7 @@ export function SubscriptionManagement({
       onHeaderSearchChange={setSearchTerm}
       headerTopRightActions={
         <div className="flex items-center gap-2">
-          {hasPermission('export_donations') ? (
+          {hasPermission('export_subscriptions') ? (
             <>
               <div className="relative sm:hidden">
                 <Button

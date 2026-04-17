@@ -31,13 +31,13 @@ fun KioskLoginScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
-    
+
     LaunchedEffect(uiState.isAuthenticated, uiState.kioskSession) {
         if (uiState.isAuthenticated && uiState.kioskSession != null) {
             onLoginSuccess(uiState.kioskSession!!)
         }
     }
-    
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -47,11 +47,19 @@ fun KioskLoginScreen(
             contentAlignment = Alignment.Center
         ) {
             if (uiState.isAuthenticated && uiState.kioskSession != null) {
-                // Success Screen
-                KioskSuccessScreen(
-                    kioskName = uiState.kioskSession!!.kioskName,
-                    onContinue = { onLoginSuccess(uiState.kioskSession!!) }
-                )
+                // Avoid flashing an intermediate "Continue" screen before navigation
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Signing you in...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             } else {
                 // Login Form
                 Column(
@@ -68,25 +76,25 @@ fun KioskLoginScreen(
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
-                    
+
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+
                     Text(
                         text = "SwiftCause Kiosk",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Text(
                         text = "Sign in to start accepting donations",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    
+
                     Spacer(modifier = Modifier.height(32.dp))
-                    
+
                     // Kiosk ID Field
                     OutlinedTextField(
                         value = uiState.kioskId,
@@ -110,9 +118,9 @@ fun KioskLoginScreen(
                             onNext = { focusManager.moveFocus(FocusDirection.Down) }
                         )
                     )
-                    
+
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+
                     // Access Code Field
                     OutlinedTextField(
                         value = uiState.accessCode,
@@ -140,9 +148,9 @@ fun KioskLoginScreen(
                             }
                         )
                     )
-                    
+
                     Spacer(modifier = Modifier.height(24.dp))
-                    
+
                     // Error Message
                     if (uiState.error != null) {
                         Card(
@@ -160,7 +168,7 @@ fun KioskLoginScreen(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
-                    
+
                     // Login Button
                     Button(
                         onClick = { viewModel.login() },
@@ -181,7 +189,7 @@ fun KioskLoginScreen(
                             )
                         }
                     }
-                    
+
                 }
             }
         }
@@ -207,25 +215,25 @@ fun KioskSuccessScreen(
             modifier = Modifier.size(80.dp),
             tint = MaterialTheme.colorScheme.primary
         )
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
+
         Text(
             text = "Welcome!",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         Text(
             text = kioskName,
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.primary
         )
-        
+
         Spacer(modifier = Modifier.height(32.dp))
-        
+
         Button(
             onClick = onContinue,
             modifier = Modifier

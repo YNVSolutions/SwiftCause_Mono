@@ -8,6 +8,13 @@ export interface DonationExportRequest {
   range: DonationExportRange;
   startDate?: string;
   endDate?: string;
+  filters?: {
+    searchTerm?: string;
+    status?: string;
+    campaignId?: string;
+    recurring?: string;
+    date?: string;
+  };
 }
 
 const getCurrentUserToken = async () => {

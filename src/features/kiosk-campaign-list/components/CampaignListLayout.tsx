@@ -13,6 +13,7 @@ export const CampaignListLayout: React.FC<CampaignListLayoutProps> = ({
 }) => {
   const accentColor = resolveAccentColor(accentColorHex);
   const accentColorDark = darkenHexColor(accentColor, 0.12);
+
   const getFloatStyle = (seedValue: string) => {
     let hash = 0;
     for (let i = 0; i < seedValue.length; i += 1) {
@@ -30,7 +31,6 @@ export const CampaignListLayout: React.FC<CampaignListLayoutProps> = ({
     } as React.CSSProperties;
   };
 
-  // Format amount without decimals
   const formatRaised = (amount: number) => formatCurrency(amount, currency);
   const formatPredefined = (amount: number) => formatCurrencyFromMajor(amount, currency);
   const formatGoal = (amount: number) => formatCurrencyFromMajor(amount, currency);
@@ -63,7 +63,6 @@ export const CampaignListLayout: React.FC<CampaignListLayoutProps> = ({
 
           const handleDonateClick = (e: React.MouseEvent) => {
             e.stopPropagation();
-            // Go to details page
             onViewDetails(campaign);
           };
 
@@ -73,7 +72,6 @@ export const CampaignListLayout: React.FC<CampaignListLayoutProps> = ({
                 onClick={() => onViewDetails(campaign)}
                 className="group bg-white rounded-2xl overflow-hidden shadow-sm border border-[rgba(15,23,42,0.08)] cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
               >
-                {/* Campaign Image */}
                 <div className="relative h-48 overflow-hidden">
                   <img
                     src={campaign.coverImageUrl || '/campaign-fallback.svg'}
@@ -83,13 +81,11 @@ export const CampaignListLayout: React.FC<CampaignListLayoutProps> = ({
                   <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </div>
 
-                {/* Campaign Info */}
                 <div className="p-6">
                   <h2 className="text-lg font-semibold text-[#0A0A0A] mb-2 line-clamp-1">
                     {campaign.title}
                   </h2>
 
-                  {/* Progress Info */}
                   <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
                     <span className="font-medium text-gray-900">
                       {formatRaised(campaign.raised || 0)}
@@ -100,15 +96,13 @@ export const CampaignListLayout: React.FC<CampaignListLayoutProps> = ({
                     </span>
                   </div>
 
-                  {/* Progress Bar */}
                   <div className="w-full bg-gray-200 rounded-full h-2 mb-5">
                     <div
                       className="h-2 rounded-full transition-all duration-300"
-                      style={{ backgroundColor: accentColor, width: `${progress}%` }}
+                      style={{ backgroundColor: accentColor, width: `${Math.min(100, progress)}%` }}
                     />
                   </div>
 
-                  {/* Amount Buttons */}
                   <div className="grid grid-cols-3 gap-2 mb-5">
                     {top3Amounts.map((amount, index) => (
                       <button
@@ -122,7 +116,6 @@ export const CampaignListLayout: React.FC<CampaignListLayoutProps> = ({
                     ))}
                   </div>
 
-                  {/* Donate Button */}
                   <button
                     onClick={handleDonateClick}
                     className="w-full h-11 rounded-lg font-medium text-white shadow-lg shadow-green-200/60 transition-all duration-200"

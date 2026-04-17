@@ -374,6 +374,13 @@ export function DonationManagement({
         range: exportRange,
         startDate: exportRange === 'custom' ? exportStartDate : undefined,
         endDate: exportRange === 'custom' ? exportEndDate : undefined,
+        filters: {
+          searchTerm,
+          status: statusFilter,
+          campaignId: campaignFilter,
+          recurring: recurringFilter,
+          date: dateFilter ? dateFilter.toISOString().slice(0, 10) : undefined,
+        },
       });
       setIsMobileExportMenuOpen(false);
       showToast('Donation export started. Your download should begin shortly.', 'success');

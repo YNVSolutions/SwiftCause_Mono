@@ -82,8 +82,8 @@ function reconcileCampaignStatus(
 ): CampaignStatusResolution {
   const status = campaign.status;
 
-  if (status === 'completed') {
-    return { status: 'completed' };
+  if (status === 'completed' || status === 'exceeded') {
+    return { status };
   }
 
   const startDate = parseCampaignDate(campaign.startDate);

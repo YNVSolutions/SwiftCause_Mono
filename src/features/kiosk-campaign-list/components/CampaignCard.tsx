@@ -69,7 +69,7 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
           <div className="w-full bg-gray-200 rounded-full h-[5px]">
             <div
               className="h-[5px] rounded-full transition-all duration-300"
-              style={{ backgroundColor: accentColor, width: `${progress}%` }}
+              style={{ backgroundColor: accentColor, width: `${Math.min(100, progress)}%` }}
             />
           </div>
 

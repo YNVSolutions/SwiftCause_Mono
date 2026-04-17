@@ -6,7 +6,7 @@ export interface CampaignProgress {
   raised: number;
   goal: number;
   percentage: number;
-  status: 'critical' | 'warning' | 'good' | 'completed';
+  status: 'critical' | 'warning' | 'good' | 'exceeded';
   statusColor: string;
   progressColor: string;
 }
@@ -21,9 +21,9 @@ export function getProgressStatus(percentage: number): {
 } {
   if (percentage >= 100) {
     return {
-      status: 'completed',
-      statusColor: 'text-blue-600',
-      progressColor: 'bg-blue-600',
+      status: 'exceeded',
+      statusColor: 'text-emerald-600',
+      progressColor: 'bg-emerald-600',
     };
   } else if (percentage >= 67) {
     return {
@@ -50,10 +50,11 @@ export function getProgressStatus(percentage: number): {
  * Transform campaigns into progress data
  */
 export function transformCampaignsToProgress(campaigns: Campaign[]): CampaignProgress[] {
-  return campaigns.map(campaign => {
+  return campaigns.map((campaign) => {
     const raised = campaign.raised || 0;
     const goal = campaign.goal || 1;
-    const percentage = Math.min(100, Math.round(((raised / 100) / goal) * 100));
+    // Allow percentage to exceed 100% for over-funded campaigns
+    const percentage = Math.round((raised / 100 / goal) * 100);
     const { status, statusColor, progressColor } = getProgressStatus(percentage);
 
     return {
@@ -74,10 +75,10 @@ export function transformCampaignsToProgress(campaigns: Campaign[]): CampaignPro
  */
 export function sortCampaignProgress(
   campaigns: CampaignProgress[],
-  sortBy: 'progress' | 'raised' | 'goal' | 'name'
+  sortBy: 'progress' | 'raised' | 'goal' | 'name',
 ): CampaignProgress[] {
   const sorted = [...campaigns];
-  
+
   switch (sortBy) {
     case 'progress':
       return sorted.sort((a, b) => b.percentage - a.percentage);

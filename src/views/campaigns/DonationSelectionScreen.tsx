@@ -322,7 +322,7 @@ export function DonationSelectionScreen({
     setDonorInfo((prev) => ({ ...prev, ...updates }));
   };
 
-  const progress = ((campaign.raised / 100) / campaign.goal) * 100;
+  const progress = (campaign.raised / 100 / campaign.goal) * 100;
   const intervalLabel = intervalLabelMap[recurringInterval];
   const discountedAmount = getDiscountedAmount();
   const annualizedAmount = getAnnualAmount(discountedAmount, recurringInterval);
@@ -387,7 +387,7 @@ export function DonationSelectionScreen({
                     <span>Raised: {formatCurrency(campaign.raised)}</span>
                     <span>Goal: {formatCurrencyFromMajor(campaign.goal)}</span>
                   </div>
-                  <Progress value={progress} className="h-2" />
+                  <Progress value={Math.min(progress, 100)} className="h-2" />
                   <p className="text-sm text-gray-600">{progress.toFixed(1)}% funded</p>
                 </div>
               )}

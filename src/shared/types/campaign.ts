@@ -6,10 +6,10 @@ export interface CampaignConfiguration {
   maxCustomAmount: number;
   suggestedAmounts: number[];
   enableRecurring: boolean;
-  recurringIntervals: ("monthly" | "quarterly" | "yearly")[];
-  defaultRecurringInterval: "monthly" | "quarterly" | "yearly";
+  recurringIntervals: ('monthly' | 'quarterly' | 'yearly')[];
+  defaultRecurringInterval: 'monthly' | 'quarterly' | 'yearly';
   recurringDiscount?: number;
-  displayStyle: "grid" | "list" | "carousel";
+  displayStyle: 'grid' | 'list' | 'carousel';
   showProgressBar: boolean;
   showDonorCount: boolean;
   showRecentDonations: boolean;
@@ -19,9 +19,9 @@ export interface CampaignConfiguration {
   urgencyMessage?: string;
   accentColor?: string;
   backgroundImage?: string;
-  theme: "default" | "minimal" | "vibrant" | "elegant";
-  requiredFields: ("email" | "name" | "phone" | "address")[];
-  optionalFields: ("email" | "name" | "phone" | "address" | "message")[];
+  theme: 'default' | 'minimal' | 'vibrant' | 'elegant';
+  requiredFields: ('email' | 'name' | 'phone' | 'address')[];
+  optionalFields: ('email' | 'name' | 'phone' | 'address' | 'message')[];
   enableAnonymousDonations: boolean;
   enableSocialSharing: boolean;
   shareMessage?: string;
@@ -39,7 +39,7 @@ export interface Campaign {
   coverImageUrl: string;
   category: string;
   tags?: string[];
-  status?: "active" | "paused" | "completed";
+  status?: 'active' | 'paused' | 'completed' | 'exceeded';
   createdAt?: string;
   startDate?: string | Date | { seconds: number; nanoseconds?: number; toDate?: () => Date };
   endDate?: string | Date | { seconds: number; nanoseconds?: number; toDate?: () => Date };

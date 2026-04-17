@@ -158,6 +158,53 @@ const getCampaignDisplayName = (donation) => {
   return snapshotTitle || 'Deleted Campaign';
 };
 
+const normalizeExportFilters = (rawFilters) => {
+  const filters = rawFilters && typeof rawFilters === 'object' ? rawFilters : {};
+  const searchTerm = typeof filters.searchTerm === 'string' ? filters.searchTerm.trim() : '';
+  const status = typeof filters.status === 'string' ? filters.status.trim() : 'all';
+  const campaignId = typeof filters.campaignId === 'string' ? filters.campaignId.trim() : 'all';
+  const recurring = typeof filters.recurring === 'string' ? filters.recurring.trim() : 'all';
+  const date = typeof filters.date === 'string' ? filters.date.trim() : '';
+
+  return {
+    searchTerm: searchTerm.toLowerCase(),
+    status: status || 'all',
+    campaignId: campaignId || 'all',
+    recurring: recurring.toLowerCase() || 'all',
+    date,
+  };
+};
+
+const donationMatchesFilters = (donation, filters) => {
+  const donorName = String(donation?.donorName || '').toLowerCase();
+  const paymentIntentId = String(donation?.stripePaymentIntentId || '').toLowerCase();
+  const transactionId = String(donation?.transactionId || '').toLowerCase();
+  const campaignName = getCampaignDisplayName(donation).toLowerCase();
+  const donationDate = getEffectiveTimestamp(donation);
+
+  const matchesSearch =
+    !filters.searchTerm ||
+    donorName.includes(filters.searchTerm) ||
+    paymentIntentId.includes(filters.searchTerm) ||
+    transactionId.includes(filters.searchTerm) ||
+    campaignName.includes(filters.searchTerm);
+  const matchesStatus = filters.status === 'all' || donation.paymentStatus === filters.status;
+  const matchesCampaign =
+    filters.campaignId === 'all' || String(donation.campaignId || '') === filters.campaignId;
+
+  const recurring = isRecurringDonation(donation);
+  const matchesRecurring =
+    filters.recurring === 'all' ||
+    (filters.recurring === 'recurring' && recurring) ||
+    (filters.recurring === 'one_time' && !recurring);
+
+  const matchesDate =
+    !filters.date ||
+    (donationDate ? donationDate.toISOString().slice(0, 10) === filters.date : false);
+
+  return matchesSearch && matchesStatus && matchesCampaign && matchesRecurring && matchesDate;
+};
+
 const sanitizeSpreadsheetFormula = (value) => {
   if (typeof value !== 'string') return value;
   if (/^[\t\r\n ]*[=+\-@]/.test(value)) {
@@ -244,6 +291,7 @@ const exportDonations = (req, res) => {
       await ensureDonationExportAccess(auth, organizationId);
 
       const range = typeof req.body?.range === 'string' ? req.body.range : '';
+      const requestedFilters = normalizeExportFilters(req.body?.filters);
       const { start, end } = resolveDateRange({
         range,
         startDate: req.body?.startDate,
@@ -261,7 +309,8 @@ const exportDonations = (req, res) => {
       const filtered = donations.filter((donation) => {
         const effectiveDate = getEffectiveTimestamp(donation);
         if (!effectiveDate) return false;
-        return effectiveDate >= start && effectiveDate <= end;
+        if (effectiveDate < start || effectiveDate > end) return false;
+        return donationMatchesFilters(donation, requestedFilters);
       });
 
       const rows = buildExportRows(filtered);

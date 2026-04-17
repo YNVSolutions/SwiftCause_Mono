@@ -107,7 +107,10 @@ export const CampaignCarousel: React.FC<CampaignCarouselProps> = ({
                     <div className="w-full bg-gray-200 rounded-full h-2 mb-5">
                       <div
                         className="h-2 rounded-full transition-all duration-300"
-                        style={{ backgroundColor: accentColor, width: `${progress}%` }}
+                        style={{
+                          backgroundColor: accentColor,
+                          width: `${Math.min(100, progress)}%`,
+                        }}
                       />
                     </div>
 

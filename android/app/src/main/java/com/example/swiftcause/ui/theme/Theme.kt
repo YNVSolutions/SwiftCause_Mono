@@ -2,7 +2,6 @@ package com.example.swiftcause.ui.theme
 
 import android.app.Activity
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -25,20 +24,20 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = PrimaryGreen,
-    secondary = AccentGreen,
+    primary = PremiumPrimary,
+    secondary = PremiumPrimaryPressed,
     tertiary = ProgressGreen,
-    background = BackgroundGray,
-    surface = CardBackground,
+    background = PremiumPageBackground,
+    surface = PremiumPanelSurface,
     onPrimary = Color.White,
     onSecondary = Color.White,
-    onBackground = TextPrimary,
-    onSurface = TextPrimary
+    onBackground = PremiumHeadline,
+    onSurface = PremiumHeadline
 )
 
 @Composable
 fun SwiftCauseTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false,
     // Dynamic color disabled to use brand colors
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
