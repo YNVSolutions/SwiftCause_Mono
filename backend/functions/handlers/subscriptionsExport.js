@@ -9,7 +9,7 @@ const isSystemAdmin = (callerData) => {
 
 const hasSubscriptionExportPermission = (callerData) => {
   const permissions = Array.isArray(callerData?.permissions) ? callerData.permissions : [];
-  return permissions.includes('export_donations') || permissions.includes('system_admin');
+  return permissions.includes('export_subscriptions') || permissions.includes('system_admin');
 };
 
 const getCallerProfile = async (uid) => {

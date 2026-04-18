@@ -9,7 +9,7 @@ const isSystemAdmin = (callerData) => {
 
 const hasKioskExportPermission = (callerData) => {
   const permissions = Array.isArray(callerData?.permissions) ? callerData.permissions : [];
-  return permissions.includes('view_kiosks') || permissions.includes('system_admin');
+  return permissions.includes('export_kiosks') || permissions.includes('system_admin');
 };
 
 const getCallerProfile = async (uid) => {

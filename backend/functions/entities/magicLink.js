@@ -20,7 +20,10 @@ const isTrue = (val) => val === true || val === 'true';
  */
 const determinePurpose = (metadata) => {
   // Campaign has Gift Aid enabled (NOT whether donor opted in)
-  const campaignHasGiftAid = isTrue(metadata.giftAidEnabled);
+  // Support both keys for backwards compatibility across clients.
+  const campaignHasGiftAid =
+    isTrue(metadata.giftAidEnabled) ||
+    isTrue(metadata.isGiftAid);
 
   // Donor expressed interest in recurring donations
   // Check both 'recurringInterest' (future) and 'isRecurring' (current implementation)

@@ -51,7 +51,13 @@ data class PaymentMetadata(
     val donorEmail: String? = null,
     
     @SerializedName("isAnonymous")
-    val isAnonymous: Boolean = false
+    val isAnonymous: Boolean = false,
+    
+    @SerializedName("isGiftAid")
+    val isGiftAid: Boolean = false,
+    
+    @SerializedName("recurringInterest")
+    val recurringInterest: Boolean = false
 )
 
 /**

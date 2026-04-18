@@ -59,7 +59,11 @@ data class CampaignConfigurationDto(
     @SerializedName("primaryCTAText")
     val primaryCTAText: String = "Donate",
     @SerializedName("accentColor")
-    val accentColor: String? = null
+    val accentColor: String? = null,
+    @SerializedName("isGiftAid")
+    val isGiftAid: Boolean = false,
+    @SerializedName("enableGiftAid")
+    val enableGiftAid: Boolean = false
 )
 
 data class OrganizationInfoDto(

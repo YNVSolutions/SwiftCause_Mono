@@ -2333,6 +2333,7 @@ const CampaignManagement = ({
   });
 
   const handleExportCampaigns = async () => {
+    if (!hasPermission('export_campaigns')) return;
     if (!userSession.user.organizationId) {
       showToast('Organization ID is required to export campaigns.', 'warning');
       return;
@@ -2385,16 +2386,18 @@ const CampaignManagement = ({
       headerSearchValue={searchTerm}
       onHeaderSearchChange={setSearchTerm}
       headerTopRightActions={
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-2xl border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-5"
-          onClick={handleExportCampaigns}
-          disabled={isExporting}
-        >
-          <Download className="h-4 w-4 sm:hidden" />
-          <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export'}</span>
-        </Button>
+        hasPermission('export_campaigns') ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-2xl border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-5"
+            onClick={handleExportCampaigns}
+            disabled={isExporting}
+          >
+            <Download className="h-4 w-4 sm:hidden" />
+            <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export'}</span>
+          </Button>
+        ) : null
       }
       headerInlineActions={
         hasPermission('create_campaign') ? (
