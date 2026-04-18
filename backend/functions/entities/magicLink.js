@@ -93,29 +93,33 @@ const generateMagicLinkToken = async ({
     };
   }
 
-  // References
-  const tokenRef = db.collection('magicLinkTokens').doc(paymentIntentId);
-  const ephemeralRef = db.collection('magicLinkEphemeral').doc(paymentIntentId);
-  const donationRef = db.collection('donations').doc(donationId);
+  // References - Check idempotency FIRST using paymentIntentId
+  // We use a separate collection for idempotency to keep magicLinkTokens clean
+  const idempotencyRef = db.collection('magicLinkTokenByPaymentIntent').doc(paymentIntentId);
 
   console.log('🔵 [Magic Link] Starting transaction', { paymentIntentId });
 
   // Execute SINGLE TRANSACTION for full atomicity and idempotency
   try {
     const result = await db.runTransaction(async (transaction) => {
-      console.log('🔵 [Magic Link] Transaction: Checking if token exists', { paymentIntentId });
+      console.log('🔵 [Magic Link] Transaction: Checking idempotency', {
+        paymentIntentId,
+      });
 
-      // 1. CHECK IF TOKEN ALREADY EXISTS (idempotency)
-      const existingToken = await transaction.get(tokenRef);
+      // 1. CHECK IDEMPOTENCY using paymentIntentId (stable key)
+      const existingIdempotency = await transaction.get(idempotencyRef);
 
-      if (existingToken.exists) {
+      if (existingIdempotency.exists) {
+        const existingData = existingIdempotency.data();
         console.log('✅ [Magic Link] Token already exists (idempotent)', {
           paymentIntentId,
           donationId,
           purpose,
+          tokenHash: existingData.tokenHash,
         });
         return {
-          id: paymentIntentId,
+          id: existingData.tokenHash,
+          paymentIntentId: paymentIntentId,
           alreadyExists: true,
         };
       }
@@ -130,6 +134,7 @@ const generateMagicLinkToken = async ({
 
       console.log('🔵 [Magic Link] Transaction: Token generated and hashed', {
         paymentIntentId,
+        tokenHash,
         tokenLength: plainToken.length,
         hashLength: tokenHash.length,
       });
@@ -143,16 +148,22 @@ const generateMagicLinkToken = async ({
 
       console.log('🔵 [Magic Link] Transaction: Expiry set', {
         paymentIntentId,
+        tokenHash,
         expiresAt: expiresAt.toDate().toISOString(),
         ephemeralExpiresAt: ephemeralExpiresAt.toDate().toISOString(),
       });
 
-      // 4. CREATE CONSENT EVENT REFERENCE (auto-generated ID)
+      // 4. CREATE REFERENCES
+      const tokenRef = db.collection('magicLinkTokens').doc(tokenHash);
+      const ephemeralRef = db.collection('magicLinkEphemeral').doc(paymentIntentId);
+      const donationRef = db.collection('donations').doc(donationId);
       const consentRef = donationRef.collection('ConsentEvents').doc();
 
-      console.log('🔵 [Magic Link] Transaction: Writing 4 documents atomically', {
+      console.log('🔵 [Magic Link] Transaction: Writing 5 documents atomically', {
         paymentIntentId,
-        tokenDocId: paymentIntentId,
+        tokenHash,
+        idempotencyDocId: paymentIntentId,
+        tokenDocId: tokenHash,
         ephemeralDocId: paymentIntentId,
         consentEventId: consentRef.id,
         donationId,
@@ -160,9 +171,20 @@ const generateMagicLinkToken = async ({
 
       // 5. ATOMIC WRITES - ALL IN ONE TRANSACTION
 
-      // 5a. Create secure token document (backend only)
+      // 5a. Create idempotency pointer (separate collection for clean schema)
+      transaction.set(idempotencyRef, {
+        tokenHash: tokenHash,
+        transactionId: paymentIntentId,
+        paymentIntentId: paymentIntentId,
+        donationId: donationId,
+        purpose: purpose,
+        createdAt: now,
+      });
+
+      // 5b. Create secure token document (keyed by tokenHash for O(1) lookup)
       transaction.set(tokenRef, {
         tokenHash: tokenHash,
+        transactionId: paymentIntentId,
         paymentIntentId: paymentIntentId,
         donationId: donationId,
         amount: amount,
@@ -182,14 +204,14 @@ const generateMagicLinkToken = async ({
         lastAttemptIp: null,
       });
 
-      // 5b. Create ephemeral document (public, time-restricted)
+      // 5c. Create ephemeral document (public, time-restricted)
       transaction.set(ephemeralRef, {
         plainToken: plainToken,
         expiresAt: ephemeralExpiresAt,
         createdAt: now,
       });
 
-      // 5c. Create consent event (implicit consent from kiosk T&Cs)
+      // 5d. Create consent event (implicit consent from kiosk T&Cs)
       transaction.set(consentRef, {
         id: consentRef.id,
         type: 'implicit',
@@ -203,11 +225,11 @@ const generateMagicLinkToken = async ({
         userAgent: 'kiosk',
       });
 
-      // 5d. Update donation document (merge to prevent failure if doesn't exist)
+      // 5e. Update donation document (merge to prevent failure if doesn't exist)
       transaction.set(
         donationRef,
         {
-          magicLinkTokenId: paymentIntentId,
+          magicLinkTokenId: tokenHash, // Store tokenHash instead of paymentIntentId
           magicLinkPurpose: purpose,
           magicLinkExpiresAt: expiresAt,
           hasConsentEvents: true,
@@ -218,13 +240,15 @@ const generateMagicLinkToken = async ({
       // 6. RETURN RESULT (transaction will commit all writes atomically)
       console.log('✅ [Magic Link] Transaction: All writes prepared, committing', {
         paymentIntentId,
+        tokenHash,
         donationId,
         purpose,
       });
 
       // Note: Plain token is returned here but NEVER stored in database or logged
       return {
-        id: paymentIntentId,
+        id: tokenHash, // Return tokenHash as the ID
+        paymentIntentId: paymentIntentId,
         plainToken: plainToken,
         donationId: donationId,
         purpose: purpose,
@@ -234,7 +258,8 @@ const generateMagicLinkToken = async ({
     });
 
     console.log('✅ [Magic Link] Token created successfully', {
-      paymentIntentId: result.id,
+      tokenHash: result.id,
+      paymentIntentId: result.paymentIntentId,
       donationId: result.donationId,
       purpose: result.purpose,
       expiresAt: result.expiresAt?.toDate().toISOString(),
