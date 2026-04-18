@@ -1529,6 +1529,11 @@ export function AdminLayout({
                       view campaigns
                     </span>
                   )}
+                  {hasPermission('export_campaigns') && (
+                    <span className="px-2.5 py-1 bg-emerald-100/80 backdrop-blur-xl text-emerald-700 text-xs font-medium rounded-md border border-emerald-200/50">
+                      export campaigns
+                    </span>
+                  )}
                   {hasPermission('create_campaign') && (
                     <span className="px-2.5 py-1 bg-emerald-100/80 backdrop-blur-xl text-emerald-700 text-xs font-medium rounded-md border border-emerald-200/50">
                       create campaign
@@ -1547,6 +1552,11 @@ export function AdminLayout({
                   {hasPermission('view_kiosks') && (
                     <span className="px-2.5 py-1 bg-purple-100/80 backdrop-blur-xl text-purple-700 text-xs font-medium rounded-md border border-purple-200/50">
                       view kiosks
+                    </span>
+                  )}
+                  {hasPermission('export_kiosks') && (
+                    <span className="px-2.5 py-1 bg-violet-100/80 backdrop-blur-xl text-violet-700 text-xs font-medium rounded-md border border-violet-200/50">
+                      export kiosks
                     </span>
                   )}
                   {hasPermission('create_kiosk') && (
@@ -1577,6 +1587,11 @@ export function AdminLayout({
                   {hasPermission('export_donations') && (
                     <span className="px-2.5 py-1 bg-sky-100/80 backdrop-blur-xl text-sky-700 text-xs font-medium rounded-md border border-sky-200/50">
                       export donations
+                    </span>
+                  )}
+                  {hasPermission('export_subscriptions') && (
+                    <span className="px-2.5 py-1 bg-cyan-100/80 backdrop-blur-xl text-cyan-700 text-xs font-medium rounded-md border border-cyan-200/50">
+                      export subscriptions
                     </span>
                   )}
                   {hasPermission('view_users') && (

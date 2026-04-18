@@ -194,6 +194,10 @@ class CampaignRepository(
             predefinedAmounts = predefinedAmounts,
             currency = organizationInfo?.get("currency") as? String ?: data["currency"] as? String ?: "USD",
             enableRecurring = configuration?.get("enableRecurring") as? Boolean ?: false,
+            isGiftAid = configuration?.get("isGiftAid") as? Boolean 
+                ?: configuration?.get("enableGiftAid") as? Boolean 
+                ?: configuration?.get("giftAidEnabled") as? Boolean 
+                ?: false,
             organizationName = organizationInfo?.get("name") as? String ?: "",
             organizationId = data["organizationId"] as? String ?: ""
         )

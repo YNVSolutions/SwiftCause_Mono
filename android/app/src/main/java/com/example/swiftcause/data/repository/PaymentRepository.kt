@@ -27,7 +27,7 @@ class PaymentRepository(
     /**
      * Creates a payment intent for one-time or recurring donations
      * Uses raw HTTP POST (exactly like web) instead of Firebase SDK
-     * 
+     *
      * @param request Payment intent request with amount, currency, and metadata
      * @return CreatePaymentIntentResponse with clientSecret
      */
@@ -44,8 +44,10 @@ class PaymentRepository(
             Log.d(TAG, "Platform: ${request.metadata.platform}")
             Log.d(TAG, "Frequency: ${request.frequency ?: "one-time"}")
             Log.d(TAG, "Is Anonymous: ${request.metadata.isAnonymous}")
-            
-            // Build request JSON (exactly matching web implementation)
+            Log.d(TAG, "Is Gift Aid (metadata): ${request.metadata.isGiftAid}")
+            Log.d(TAG, "Recurring Interest (metadata): ${request.metadata.recurringInterest}")
+
+            // Build request JSON
             val requestJson = JSONObject().apply {
                 put("amount", request.amount)
                 put("currency", request.currency)
@@ -58,47 +60,49 @@ class PaymentRepository(
                     put("donorName", request.metadata.donorName ?: JSONObject.NULL)
                     put("donorEmail", request.metadata.donorEmail ?: JSONObject.NULL)
                     put("isAnonymous", request.metadata.isAnonymous)
+                    put("isGiftAid", request.metadata.isGiftAid)
+                    put("recurringInterest", request.metadata.recurringInterest)
                 })
             }
-            
+
             Log.d(TAG, "Calling Cloud Function: $FUNCTION_URL")
             Log.d(TAG, "Request payload: $requestJson")
-            
+
             // Build HTTP request (exactly like web fetch)
             val requestBody = requestJson.toString()
                 .toRequestBody("application/json; charset=utf-8".toMediaType())
-            
+
             val httpRequest = Request.Builder()
                 .url(FUNCTION_URL)
                 .post(requestBody)
                 .addHeader("Content-Type", "application/json")
                 .build()
-            
+
             // Execute request
             val response = httpClient.newCall(httpRequest).execute()
-            
+
             val responseBody = response.body?.string() ?: ""
             Log.d(TAG, "Response code: ${response.code}")
             Log.d(TAG, "Response body: $responseBody")
-            
+
             if (!response.isSuccessful) {
                 Log.e(TAG, "=== Payment Intent Creation Failed ===")
                 Log.e(TAG, "HTTP Status: ${response.code}")
                 Log.e(TAG, "Response: $responseBody")
                 throw IOException("HTTP ${response.code}: $responseBody")
             }
-            
+
             // Parse response
             val responseJson = JSONObject(responseBody)
             val clientSecret = responseJson.optString("clientSecret")
-            
+
             if (clientSecret.isEmpty()) {
                 throw Exception("Missing clientSecret in response")
             }
-            
+
             Log.d(TAG, "✓ Payment Intent Created Successfully")
             Log.d(TAG, "Client Secret: ${clientSecret.take(20)}...")
-            
+
             Result.success(
                 CreatePaymentIntentResponse(
                     clientSecret = clientSecret,
@@ -106,7 +110,7 @@ class PaymentRepository(
                     message = "Payment intent created"
                 )
             )
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "=== Payment Intent Creation Failed ===")
             Log.e(TAG, "Error type: ${e.javaClass.simpleName}")

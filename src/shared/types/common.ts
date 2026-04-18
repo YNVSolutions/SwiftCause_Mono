@@ -1,57 +1,54 @@
 // Global types and interfaces
 export type Screen =
-  | "home"
-  | "login"
-  | "signup"
-  | "campaigns"
-  | "campaign"
-  | "payment"
-  | "result"
-  | "email-confirmation"
-  | "admin"
-  | "admin-dashboard"
-  | "admin-campaigns"
-  | "admin-kiosks"
-  | "admin-donations"
-  | "admin-subscriptions"
-  | "admin-gift-aid"
-  | "admin-users"
-  | "admin-bank-details"
-  | "admin-stripe-account"
-  | "about"
-  | "contact"
-  | "docs"
-  | "terms";
+  | 'home'
+  | 'login'
+  | 'signup'
+  | 'campaigns'
+  | 'campaign'
+  | 'payment'
+  | 'result'
+  | 'email-confirmation'
+  | 'admin'
+  | 'admin-dashboard'
+  | 'admin-campaigns'
+  | 'admin-kiosks'
+  | 'admin-donations'
+  | 'admin-subscriptions'
+  | 'admin-gift-aid'
+  | 'admin-users'
+  | 'admin-bank-details'
+  | 'admin-stripe-account'
+  | 'about'
+  | 'contact'
+  | 'docs'
+  | 'terms';
 
-export type UserRole =
-  | "super_admin"
-  | "admin"
-  | "manager"
-  | "operator"
-  | "viewer"
-  | "kiosk";
+export type UserRole = 'super_admin' | 'admin' | 'manager' | 'operator' | 'viewer' | 'kiosk';
 
 export type Permission =
-  | "view_dashboard"
-  | "view_campaigns"
-  | "create_campaign"
-  | "edit_campaign"
-  | "delete_campaign"
-  | "view_kiosks"
-  | "create_kiosk"
-  | "edit_kiosk"
-  | "delete_kiosk"
-  | "assign_campaigns"
-  | "view_donations"
-  | "export_donations"
-  | "export_giftaid"
-  | "download_giftaid_exports"
-  | "view_users"
-  | "create_user"
-  | "edit_user"
-  | "delete_user"
-  | "manage_permissions"
-  | "system_admin";
+  | 'view_dashboard'
+  | 'view_campaigns'
+  | 'export_campaigns'
+  | 'create_campaign'
+  | 'edit_campaign'
+  | 'delete_campaign'
+  | 'view_kiosks'
+  | 'export_kiosks'
+  | 'create_kiosk'
+  | 'edit_kiosk'
+  | 'delete_kiosk'
+  | 'assign_campaigns'
+  | 'view_donations'
+  | 'export_donations'
+  | 'export_subscriptions'
+  | 'export_giftaid'
+  | 'download_giftaid_exports'
+  | 'view_users'
+  | 'create_user'
+  | 'edit_user'
+  | 'delete_user'
+  | 'manage_permissions'
+  | 'system_admin';
 
 export interface User {
   id: string;
@@ -96,13 +93,13 @@ export interface KioskSession {
   assignedCampaigns: string[];
   defaultCampaign?: string;
   settings: {
-    displayMode?: "grid" | "list" | "carousel";
+    displayMode?: 'grid' | 'list' | 'carousel';
     showAllCampaigns?: boolean;
     maxCampaignsDisplay?: number;
     autoRotateCampaigns?: boolean;
     rotationInterval?: number;
   };
-  loginMethod: "qr" | "manual";
+  loginMethod: 'qr' | 'manual';
   organizationId?: string;
   organizationCurrency?: string;
 }

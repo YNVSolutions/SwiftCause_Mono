@@ -4,8 +4,16 @@ import android.annotation.SuppressLint
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -50,18 +59,25 @@ import coil.compose.SubcomposeAsyncImageContent
 import com.example.swiftcause.R
 import com.example.swiftcause.ui.components.SkeletonBox
 import com.example.swiftcause.domain.models.Campaign
-import com.example.swiftcause.ui.theme.PrimaryGreen
-import com.example.swiftcause.ui.theme.WarmWhite
+import com.example.swiftcause.ui.theme.PremiumBody
+import com.example.swiftcause.ui.theme.PremiumBorder
+import com.example.swiftcause.ui.theme.PremiumCardSurface
+import com.example.swiftcause.ui.theme.PremiumHeadline
+import com.example.swiftcause.ui.theme.PremiumPageBackground
+import com.example.swiftcause.ui.theme.PremiumPanelSurface
+import com.example.swiftcause.ui.theme.PremiumPrimary
+import com.example.swiftcause.ui.theme.PremiumPrimaryPressed
+import com.example.swiftcause.ui.theme.PremiumUnselectedFill
 import com.example.swiftcause.utils.CurrencyFormatter
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import coil.request.ImageRequest
 
 @Composable
 fun CampaignDetailsScreen(
     campaign: Campaign,
     onBackClick: () -> Unit,
-    onDonateClick: (amount: Long, isRecurring: Boolean, interval: String?) -> Unit
+    onDonateClick: (amount: Long, isRecurring: Boolean, interval: String?, email: String?) -> Unit,
+    showBackButton: Boolean = true // New parameter to control back button visibility
 ) {
     android.util.Log.d("CampaignDetails", "Screen rendered for campaign: ${campaign.title}, videoUrl: '${campaign.videoUrl}'")
 
@@ -70,22 +86,18 @@ fun CampaignDetailsScreen(
     var customAmount by remember { mutableStateOf("") }
     var isRecurring by remember { mutableStateOf(false) }
     var selectedInterval by remember { mutableStateOf("monthly") }
+    var recurringEmail by remember { mutableStateOf("") }
     var currentImageIndex by remember { mutableIntStateOf(0) }
+    var isLongDescriptionExpanded by remember { mutableStateOf(false) }
 
     val images = campaign.getAllImages()
     val scrollState = rememberScrollState()
-
-    // Preload all carousel images using Coil's default caching
-    LaunchedEffect(images) {
-        val imageLoader = coil.ImageLoader(context)
-        images.forEach { imageUrl ->
-            val request = ImageRequest.Builder(context)
-                .data(imageUrl)
-                .build()
-            imageLoader.enqueue(request)
-        }
-        android.util.Log.d("CampaignDetails", "Preloading ${images.size} images")
-    }
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    val panelLift by animateDpAsState(
+        targetValue = if (imeBottom > 0) 72.dp else 0.dp,
+        animationSpec = tween(durationMillis = 220),
+        label = "panel-lift"
+    )
 
     // Auto-rotate carousel
     LaunchedEffect(images.size) {
@@ -100,40 +112,41 @@ fun CampaignDetailsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(WarmWhite)
+                .background(PremiumPageBackground)
                 .verticalScroll(scrollState)
-                .padding(bottom = 320.dp) // Space for fixed bottom panel
+                .padding(bottom = 340.dp)
         ) {
             // Header with back button
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Row(
+            if (showBackButton) {
+                Box(
                     modifier = Modifier
-                        .clickable { onBackClick() }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.content_description_back_button),
-                        tint = PrimaryGreen,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.back),
-                        color = PrimaryGreen,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        modifier = Modifier
+                            .clickable { onBackClick() }
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.content_description_back_button),
+                            tint = PremiumPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.back),
+                            color = PremiumPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
 
@@ -150,101 +163,71 @@ fun CampaignDetailsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Campaign Info Card
-            Card(
+            // Campaign Title + Summary
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    .padding(horizontal = 16.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-                ) {
-                    // Title
-                    Text(
-                        text = campaign.title,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF0F172A),
-                        lineHeight = 31.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Short Description
-                    if (campaign.shortDescription.isNotEmpty()) {
-                        Text(
-                            text = campaign.shortDescription,
-                            fontSize = 15.sp,
-                            color = Color(0xFF334155),
-                            lineHeight = 23.sp
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                    }
-
-                    // Progress Section
-                    ProgressSection(campaign = campaign)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Long Description Card
-            if (campaign.longDescription.isNotEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.about_campaign),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF0F172A)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Render HTML content
-                        RichTextContent(
-                            htmlContent = campaign.longDescription,
-                            textColor = Color(0xFF334155)
-                        )
-                    }
-                }
-            }
-
-            // YouTube Video Section
-            android.util.Log.d("CampaignDetails", "Video URL check: '${campaign.videoUrl}', isEmpty: ${campaign.videoUrl.isNullOrEmpty()}")
-            if (!campaign.videoUrl.isNullOrEmpty()) {
-                android.util.Log.d("CampaignDetails", "Rendering YouTube player for: ${campaign.videoUrl}")
-                Spacer(modifier = Modifier.height(16.dp))
-
-                YouTubeVideoPlayer(
-                    videoUrl = campaign.videoUrl!!,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
+                Text(
+                    text = campaign.title,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = PremiumHeadline,
+                    lineHeight = 28.sp
                 )
-            } else {
-                android.util.Log.d("CampaignDetails", "Video URL is null or empty, skipping video player")
+
+                if (campaign.shortDescription.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = campaign.shortDescription,
+                        fontSize = 14.sp,
+                        color = PremiumBody,
+                        lineHeight = 20.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                ProgressSection(campaign = campaign)
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Collapsible long description
+            if (campaign.longDescription.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = if (isLongDescriptionExpanded) "Hide details" else stringResource(R.string.about_campaign),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isLongDescriptionExpanded = !isLongDescriptionExpanded }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = PremiumPrimary
+                )
+
+                if (isLongDescriptionExpanded) {
+                    RichTextContent(
+                        htmlContent = campaign.longDescription,
+                        textColor = PremiumBody,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    )
+                }
             }
         }
 
-        // Fixed Bottom Donation Panel
+        // Fixed Bottom Donation Panel (primary focus)
         DonationPanel(
             campaign = campaign,
             selectedAmount = selectedAmount,
             customAmount = customAmount,
             isRecurring = isRecurring,
             selectedInterval = selectedInterval,
+            recurringEmail = recurringEmail,
             onAmountSelected = {
                 selectedAmount = it
                 customAmount = ""
@@ -255,15 +238,18 @@ fun CampaignDetailsScreen(
             },
             onRecurringToggle = { isRecurring = it },
             onIntervalSelected = { selectedInterval = it },
-            onDonateClick = {
-                val amountInMajorUnits = if (selectedAmount > 0) selectedAmount else customAmount.toLongOrNull() ?: 0L
-                if (amountInMajorUnits > 0) {
-                    // Convert to minor units (cents/pence) by multiplying by 100
-                    val amountInMinorUnits = amountInMajorUnits * 100
-                    onDonateClick(amountInMinorUnits, isRecurring, if (isRecurring) selectedInterval else null)
-                }
+            onRecurringEmailChanged = { recurringEmail = it },
+            onAmountDonateClick = { amountInMinorUnits ->
+                onDonateClick(
+                    amountInMinorUnits,
+                    isRecurring,
+                    if (isRecurring) selectedInterval else null,
+                    if (isRecurring) recurringEmail else null
+                )
             },
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = -panelLift)
         )
     }
 }
@@ -282,7 +268,7 @@ private fun ImageCarousel(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(280.dp),
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(10.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Box {
@@ -336,7 +322,7 @@ private fun ImageCarousel(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                             contentDescription = stringResource(R.string.content_description_previous_image),
-                            tint = PrimaryGreen
+                            tint = PremiumPrimary
                         )
                     }
 
@@ -355,7 +341,7 @@ private fun ImageCarousel(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = stringResource(R.string.content_description_next_image),
-                            tint = PrimaryGreen
+                            tint = PremiumPrimary
                         )
                     }
 
@@ -372,7 +358,7 @@ private fun ImageCarousel(
                                     .size(10.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (index == currentIndex) PrimaryGreen
+                                        if (index == currentIndex) PremiumPrimary
                                         else Color.White.copy(alpha = 0.6f)
                                     )
                                     .clickable { onIndexChange(index) }
@@ -399,7 +385,8 @@ private fun ProgressSection(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
+            .background(PremiumCardSurface, RoundedCornerShape(12.dp))
+            .border(1.dp, PremiumBorder, RoundedCornerShape(12.dp))
             .padding(12.dp)
     ) {
         Row(
@@ -411,13 +398,13 @@ private fun ProgressSection(
                 text = stringResource(R.string.community_support),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF64748B)
+                color = PremiumBody
             )
             Text(
                 text = "${progress.toInt()}%",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = PrimaryGreen
+                color = PremiumPrimary
             )
         }
 
@@ -429,14 +416,14 @@ private fun ProgressSection(
                 .fillMaxWidth()
                 .height(8.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(Color(0xFFE2E8F0))
+                .background(PremiumBorder)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(animatedProgress)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(4.dp))
-                    .background(PrimaryGreen)
+                    .background(PremiumPrimary)
             )
         }
 
@@ -450,7 +437,7 @@ private fun ProgressSection(
             ),
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
-            color = Color(0xFF334155)
+            color = PremiumBody
         )
     }
 }
@@ -462,40 +449,46 @@ private fun DonationPanel(
     customAmount: String,
     isRecurring: Boolean,
     selectedInterval: String,
+    recurringEmail: String,
     onAmountSelected: (Long) -> Unit,
     onCustomAmountChanged: (String) -> Unit,
     onRecurringToggle: (Boolean) -> Unit,
     onIntervalSelected: (String) -> Unit,
-    onDonateClick: () -> Unit,
+    onRecurringEmailChanged: (String) -> Unit,
+    onAmountDonateClick: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val amounts = campaign.predefinedAmounts.ifEmpty { listOf(10L, 25L, 50L, 100L, 250L, 500L) }
-    val isDonateEnabled = selectedAmount > 0 || (customAmount.toLongOrNull() ?: 0) > 0
+
+    // Validate: amount > 0, and if recurring, email must be valid
+    val isValidEmail = recurringEmail.contains("@") && recurringEmail.contains(".")
+    val customAmountMajor = customAmount.toLongOrNull() ?: 0L
+    val canConfirmCustomAmount = customAmountMajor > 0L && (!isRecurring || isValidEmail)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 16.dp,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                spotColor = Color(0xFF0F172A).copy(alpha = 0.08f)
+                elevation = 10.dp,
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                spotColor = Color.Black.copy(alpha = 0.08f)
             ),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        color = WarmWhite,
-        tonalElevation = 8.dp
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        color = PremiumPanelSurface,
+        tonalElevation = 2.dp,
+        border = BorderStroke(1.dp, PremiumBorder)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
             // Amount label
             Text(
                 text = stringResource(R.string.choose_amount),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF64748B)
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PremiumPrimary
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -510,7 +503,12 @@ private fun DonationPanel(
                         amount = amount,
                         currency = campaign.currency,
                         isSelected = selectedAmount == amount,
-                        onClick = { onAmountSelected(amount) },
+                        onClick = {
+                            onAmountSelected(amount)
+                            if (!isRecurring || isValidEmail) {
+                                onAmountDonateClick(amount * 100)
+                            }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -528,7 +526,12 @@ private fun DonationPanel(
                             amount = amount,
                             currency = campaign.currency,
                             isSelected = selectedAmount == amount,
-                            onClick = { onAmountSelected(amount) },
+                            onClick = {
+                                onAmountSelected(amount)
+                                if (!isRecurring || isValidEmail) {
+                                    onAmountDonateClick(amount * 100)
+                                }
+                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -545,28 +548,65 @@ private fun DonationPanel(
                         onCustomAmountChanged(it)
                     }
                 },
+                textStyle = LocalTextStyle.current.copy(
+                    fontSize = 16.sp,
+                    lineHeight = 20.sp,
+                    color = PremiumHeadline
+                ),
                 placeholder = {
                     Text(
                         text = stringResource(R.string.custom_amount),
-                        color = Color(0xFF9CA3AF)
+                        color = PremiumBody.copy(alpha = 0.75f),
+                        fontSize = 16.sp,
+                        lineHeight = 20.sp
                     )
                 },
-                prefix = {
+                leadingIcon = {
                     Text(
                         text = CurrencyFormatter.getCurrencySymbol(campaign.currency),
                         fontSize = 18.sp,
-                        color = Color(0xFF9CA3AF)
+                        fontWeight = FontWeight.SemiBold,
+                        color = PremiumBody
                     )
+                },
+                trailingIcon = {
+                    AnimatedVisibility(
+                        visible = canConfirmCustomAmount,
+                        enter = fadeIn() + scaleIn(initialScale = 0.85f),
+                        exit = fadeOut() + scaleOut(targetScale = 0.85f)
+                    ) {
+                        Button(
+                            onClick = { onAmountDonateClick(customAmountMajor * 100) },
+                            modifier = Modifier.height(44.dp).padding(end = 6.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PremiumPrimary,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                text = stringResource(R.string.donate),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Color(0xFFE5E7EB),
-                    focusedBorderColor = PrimaryGreen,
-                    unfocusedContainerColor = WarmWhite,
-                    focusedContainerColor = WarmWhite
+                    unfocusedBorderColor = PremiumBorder,
+                    focusedBorderColor = PremiumPrimary,
+                    unfocusedContainerColor = PremiumCardSurface,
+                    focusedContainerColor = PremiumCardSurface,
+                    focusedLeadingIconColor = PremiumBody,
+                    unfocusedLeadingIconColor = PremiumBody,
+                    unfocusedTextColor = PremiumHeadline,
+                    focusedTextColor = PremiumHeadline
                 ),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true
@@ -585,16 +625,16 @@ private fun DonationPanel(
                         text = stringResource(R.string.make_recurring),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFF334155)
+                        color = PremiumHeadline
                     )
                     Switch(
                         checked = isRecurring,
                         onCheckedChange = onRecurringToggle,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
-                            checkedTrackColor = PrimaryGreen,
+                            checkedTrackColor = PremiumPrimary,
                             uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFD1D5DB)
+                            uncheckedTrackColor = PremiumBorder
                         )
                     )
                 }
@@ -625,35 +665,36 @@ private fun DonationPanel(
                             modifier = Modifier.weight(1f)
                         )
                     }
+
+                    // Email input for recurring donations
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = recurringEmail,
+                        onValueChange = onRecurringEmailChanged,
+                        label = { Text("Email Address *") },
+                        placeholder = { Text("Required to manage your subscription") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PremiumPrimary,
+                            focusedLabelColor = PremiumPrimary,
+                            unfocusedBorderColor = PremiumBorder,
+                            unfocusedContainerColor = PremiumCardSurface,
+                            focusedContainerColor = PremiumCardSurface,
+                            unfocusedTextColor = PremiumHeadline,
+                            focusedTextColor = PremiumHeadline
+                        )
+                    )
+                    Text(
+                        text = "We need your email to send you subscription management links",
+                        fontSize = 12.sp,
+                        color = PremiumBody,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Donate button
-            Button(
-                onClick = onDonateClick,
-                enabled = isDonateEnabled,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(26.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = PrimaryGreen,
-                    disabledContainerColor = PrimaryGreen.copy(alpha = 0.5f)
-                ),
-                elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = 8.dp,
-                    pressedElevation = 4.dp
-                )
-            ) {
-                Text(
-                    text = stringResource(R.string.donate),
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp
-                )
-            }
         }
     }
 }
@@ -667,11 +708,11 @@ private fun AmountButton(
     modifier: Modifier = Modifier
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) PrimaryGreen else WarmWhite,
+        targetValue = if (isSelected) PremiumPrimaryPressed else PremiumPrimary,
         label = "bg"
     )
     val textColor by animateColorAsState(
-        targetValue = if (isSelected) Color.White else PrimaryGreen,
+        targetValue = Color.White,
         label = "text"
     )
     val scale by animateFloatAsState(
@@ -682,22 +723,22 @@ private fun AmountButton(
     Box(
         modifier = modifier
             .scale(scale)
-            .height(52.dp)
+            .height(64.dp)
             .widthIn(min = 80.dp)
-            .clip(RoundedCornerShape(26.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(backgroundColor)
             .border(
-                width = if (isSelected) 0.dp else 1.dp,
-                color = if (isSelected) Color.Transparent else Color(0xFFE5E7EB),
-                shape = RoundedCornerShape(26.dp)
+                width = if (isSelected) 2.dp else 0.dp,
+                color = if (isSelected) PremiumPrimary else Color.Transparent,
+                shape = RoundedCornerShape(12.dp)
             )
             .clickable { onClick() }
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = CurrencyFormatter.formatCurrencyFromMajor(amount, currency),
-            fontSize = 17.sp,
+            fontSize = 19.sp,
             fontWeight = FontWeight.SemiBold,
             color = textColor
         )
@@ -712,11 +753,11 @@ private fun IntervalButton(
     modifier: Modifier = Modifier
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) PrimaryGreen else Color.White,
+        targetValue = if (isSelected) PremiumPrimary else PremiumCardSurface,
         label = "bg"
     )
     val textColor by animateColorAsState(
-        targetValue = if (isSelected) Color.White else Color(0xFF334155),
+        targetValue = if (isSelected) Color.White else PremiumBody,
         label = "text"
     )
 
@@ -727,7 +768,7 @@ private fun IntervalButton(
             .background(backgroundColor)
             .border(
                 width = if (isSelected) 0.dp else 1.dp,
-                color = if (isSelected) Color.Transparent else Color(0xFFE5E7EB),
+                color = if (isSelected) Color.Transparent else PremiumBorder,
                 shape = RoundedCornerShape(8.dp)
             )
             .clickable { onClick() },
@@ -910,8 +951,7 @@ private fun YouTubeVideoPlayer(
                                                                 var errors = {2: 'Invalid ID', 5: 'HTML5 error', 100: 'Not found', 101: 'Not embeddable', 150: 'Not embeddable', 152: 'Cannot play in embedded players'};
                                                                 Android.onError(errors[event.data] || 'Error: ' + event.data);
                                                             }
-                                                        }
-                                                    });
+                                                        });
                                                 }
                                             </script>
                                         </body>
@@ -981,12 +1021,12 @@ private fun RichTextContent(
         .replace(Regex("<iframe[^>]*>.*?</iframe>", RegexOption.IGNORE_CASE), "")
         .replace(Regex("on\\w+=\"[^\"]*\"", RegexOption.IGNORE_CASE), "")
         .trim()
-    
+
     if (sanitizedHtml.isEmpty()) return
-    
+
     // Check if it contains HTML tags
     val containsHtml = Regex("<[^>]+>").containsMatchIn(sanitizedHtml)
-    
+
     if (containsHtml) {
         // Render as HTML using TextView
         RenderHtmlContent(sanitizedHtml, textColor, modifier)
@@ -1009,7 +1049,7 @@ private fun RenderHtmlContent(
                 textSize = 15f
                 setTextColor(textColor.toArgb())
                 setLineSpacing(8f, 1f)
-                
+
                 // Parse and set HTML content
                 val spanned = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                     android.text.Html.fromHtml(htmlContent, android.text.Html.FROM_HTML_MODE_LEGACY)
@@ -1018,8 +1058,8 @@ private fun RenderHtmlContent(
                     android.text.Html.fromHtml(htmlContent)
                 }
                 text = spanned
-                
-                setLinkTextColor(PrimaryGreen.toArgb())
+
+                setLinkTextColor(PremiumPrimary.toArgb())
                 movementMethod = android.text.method.LinkMovementMethod.getInstance()
             }
         },
@@ -1043,7 +1083,7 @@ private fun RenderLegacyFormat(
 ) {
     // Split by <hr> tags first
     val hrParts = text.split(Regex("<hr\\s*/?>", RegexOption.IGNORE_CASE))
-    
+
     Column(modifier = modifier.fillMaxWidth()) {
         hrParts.forEachIndexed { hrIndex, hrPart ->
             if (hrIndex > 0) {
@@ -1055,15 +1095,15 @@ private fun RenderLegacyFormat(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
-            
+
             // Split by <br> tags
             val brParts = hrPart.split(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE))
-            
+
             brParts.forEachIndexed { brIndex, brPart ->
                 if (brIndex > 0) {
                     Spacer(modifier = Modifier.height(4.dp))
                 }
-                
+
                 // Parse **bold** text
                 if (brPart.trim().isNotEmpty()) {
                     RenderBoldText(brPart.trim(), textColor)
@@ -1082,7 +1122,7 @@ private fun RenderBoldText(
     // The pattern in parentheses creates a capturing group, so matches are included in results
     val boldPattern = Regex("(\\*\\*.+?\\*\\*)")
     val parts = text.split(boldPattern)
-    
+
     Text(
         text = buildAnnotatedString {
             parts.forEach { part ->
