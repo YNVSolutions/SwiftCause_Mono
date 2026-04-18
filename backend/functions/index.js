@@ -852,9 +852,13 @@ exports.completeGiftAidFlow = functions.https.onRequest(async (req, res) => {
       // STEP 7: LINK DONATION & CLEAR LOCK
       // ----------------------------------------
 
+      // Construct full donor name from form data
+      const donorFullName = `${formData.firstName.trim()} ${formData.surname.trim()}`;
+
       transaction.update(donationRef, {
         isGiftAid: true,
         giftAidDeclarationId: declarationId,
+        donorName: donorFullName, // Update donor name from Gift Aid form
         processing: false,
         processingCompletedAt: timestamp,
         updatedAt: timestamp,
