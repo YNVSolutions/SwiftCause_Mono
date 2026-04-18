@@ -16,6 +16,7 @@ interface ThankYouData {
 export default function GiftAidThankYouPage() {
   const router = useRouter();
   const [data, setData] = useState<ThankYouData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const storedData = sessionStorage.getItem('giftAidThankYou');
@@ -24,18 +25,50 @@ export default function GiftAidThankYouPage() {
       // Clear the data after reading
       sessionStorage.removeItem('giftAidThankYou');
     }
+    setLoading(false);
   }, []);
 
   const handleDone = () => {
     router.push('/campaigns');
   };
 
-  if (!data) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-50 to-white">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
           <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback for missing data (refresh or direct navigation)
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden">
+          <div className="bg-gradient-to-r from-green-600 to-green-700 p-8 text-center">
+            <div className="flex justify-center mb-4">
+              <div className="bg-white rounded-full p-4">
+                <CheckCircle className="w-16 h-16 text-green-600" />
+              </div>
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-2">Thank You!</h1>
+            <p className="text-green-100 text-lg">Your Gift Aid declaration has been submitted</p>
+          </div>
+          <div className="p-8 text-center">
+            <p className="text-gray-600 mb-6">
+              Your Gift Aid declaration has been successfully processed. The charity will be able to
+              claim an extra 25% on your donation.
+            </p>
+            <button
+              onClick={handleDone}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-xl transition-colors text-lg shadow-lg"
+            >
+              Browse Campaigns
+            </button>
+          </div>
         </div>
       </div>
     );

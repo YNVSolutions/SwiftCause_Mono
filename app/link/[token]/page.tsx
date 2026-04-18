@@ -70,24 +70,11 @@ export default function MagicLinkPage({ params }: { params: Promise<{ token: str
         return;
       }
 
-      // Validate required fields
-      const { tokenId, campaignId, amount } = data;
-
-      if (!campaignId || !amount) {
-        console.error('Missing required fields:', { campaignId, amount });
-        throw new Error('Invalid token data. Please contact support.');
-      }
-
-      // Convert amount from pence to pounds
-      const amountInPounds = amount / 100;
-
       // Small delay for UX polish (show success state briefly)
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Redirect to existing Gift Aid flow with dynamic values
-      const redirectUrl = `/campaign/${campaignId}?amount=${amountInPounds}&giftaid=true&from=magiclink&tokenId=${tokenId}`;
-
-      router.push(redirectUrl);
+      // Redirect to Gift Aid form with the plain token
+      router.push(`/gift-aid?token=${token}`);
     } catch (err) {
       clearTimeout(timeoutId);
 

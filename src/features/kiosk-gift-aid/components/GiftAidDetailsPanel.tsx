@@ -38,6 +38,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
   const [town, setTown] = useState('');
   const [postcode, setPostcode] = useState('');
 
+  const [giftAidConsent, setGiftAidConsent] = useState(false);
+  const [ukTaxpayerConfirmation, setUkTaxpayerConfirmation] = useState(false);
+  const [dataProcessingConsent, setDataProcessingConsent] = useState(false);
+  const [homeAddressConfirmed, setHomeAddressConfirmed] = useState(false);
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
   const [usingSavedConsent, setUsingSavedConsent] = useState(false);
   const [savedConsentDate, setSavedConsentDate] = useState<string | null>(null);
@@ -52,7 +56,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
     addressLine1?: string;
     town?: string;
     postcode?: string;
-    consent?: string;
+    giftAidConsent?: string;
+    ukTaxpayerConfirmation?: string;
+    dataProcessingConsent?: string;
+    homeAddressConfirmed?: string;
   }>({});
 
   const giftAidAmount = amount * 0.25;
@@ -83,6 +90,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
         setTown(profile.town || '');
         setPostcode(profile.postcode || '');
         setDonorEmail(profile.donorEmail || normalizedEmail);
+        setGiftAidConsent(true);
+        setUkTaxpayerConfirmation(true);
+        setDataProcessingConsent(true);
+        setHomeAddressConfirmed(true);
         setDeclarationAccepted(true);
         setUsingSavedConsent(true);
         setSavedConsentDate(profile.declarationDate || null);
@@ -147,7 +158,18 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
     }
 
     if (!declarationAccepted && !usingSavedConsent) {
-      newErrors.consent = 'You must accept the Gift Aid declaration to proceed';
+      if (!giftAidConsent) {
+        newErrors.giftAidConsent = 'Gift Aid consent is required';
+      }
+      if (!ukTaxpayerConfirmation) {
+        newErrors.ukTaxpayerConfirmation = 'UK taxpayer confirmation is required';
+      }
+      if (!dataProcessingConsent) {
+        newErrors.dataProcessingConsent = 'Data processing consent is required';
+      }
+      if (!homeAddressConfirmed) {
+        newErrors.homeAddressConfirmed = 'Home address confirmation is required';
+      }
     }
 
     setErrors(newErrors);
@@ -185,8 +207,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
       town: town.trim(),
       postcode: normalizedPostcode,
       donorEmail: donorEmail.trim() || undefined,
-      giftAidConsent: usingSavedConsent ? true : declarationAccepted,
-      ukTaxpayerConfirmation: usingSavedConsent ? true : declarationAccepted,
+      giftAidConsent: usingSavedConsent ? true : giftAidConsent,
+      ukTaxpayerConfirmation: usingSavedConsent ? true : ukTaxpayerConfirmation,
+      dataProcessingConsent: usingSavedConsent ? true : dataProcessingConsent,
+      homeAddressConfirmed: usingSavedConsent ? true : homeAddressConfirmed,
       declarationText,
       declarationTextVersion: HMRC_DECLARATION_TEXT_VERSION,
       declarationDate: currentDate,
@@ -257,10 +281,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
             </div>
           )}
 
-          <div className="space-y-2.5">
+          <div className="space-y-5">
             {/* Section 1: Donor details */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 pb-1">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 pb-2">
                 <User className="w-4 h-4 text-[#0E8F5A]" />
                 <h3 className="text-[16px] sm:text-[17px] font-semibold text-slate-900 tracking-[-0.01em]">
                   Donor details
@@ -268,25 +292,35 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 sm:grid-cols-[112px_minmax(0,1fr)]">
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="block text-[12px] sm:text-[14px] font-medium text-slate-600">
                     Title
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={donorTitle}
-                    onChange={(e) => setDonorTitle(e.target.value.slice(0, 4))}
-                    className="w-full h-10 px-4 rounded-[14px] border border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10 text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-white"
-                    placeholder="Mr"
-                    maxLength={4}
-                  />
-                  <p className="text-[11px] sm:text-[12px] text-slate-500">Max 4 chars</p>
+                    onChange={(e) => setDonorTitle(e.target.value)}
+                    className={`w-full h-10 px-2 border-0 border-b-2 border-slate-200 focus:border-[#0E8F5A] focus:ring-0 text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-transparent appearance-none cursor-pointer ${!donorTitle ? 'text-slate-400' : 'text-slate-900'}`}
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'right 0.5rem center',
+                      backgroundSize: '12px',
+                    }}
+                  >
+                    <option value="" disabled>
+                      Select
+                    </option>
+                    <option value="Mr">Mr</option>
+                    <option value="Ms">Ms</option>
+                    <option value="Mrs">Mrs</option>
+                    <option value="Dr">Dr</option>
+                  </select>
                 </div>
 
                 {/* Full Name */}
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="block text-[12px] sm:text-[14px] font-medium text-slate-600">
-                    Full Name <span className="text-red-500">*</span>
+                    Full Name <span className="text-slate-900">*</span>
                   </label>
                   <input
                     type="text"
@@ -295,10 +329,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                       setFullName(e.target.value);
                       if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: undefined }));
                     }}
-                    className={`w-full h-10 px-4 rounded-[14px] border text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-white ${
+                    className={`w-full h-10 px-2 border-0 border-b-2 text-[14px] sm:text-[15px] font-normal focus:outline-none focus:ring-0 transition-all bg-transparent ${
                       errors.fullName
-                        ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                        : 'border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10'
+                        ? 'border-red-400 focus:border-red-500'
+                        : 'border-slate-200 focus:border-[#0E8F5A]'
                     }`}
                     placeholder="e.g. John Smith"
                   />
@@ -311,9 +345,9 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
               </div>
 
               {collectDonorEmail && (
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="block text-[12px] sm:text-[14px] font-medium text-slate-600">
-                    Email Address <span className="text-red-500">*</span>
+                    Email Address <span className="text-slate-900">*</span>
                   </label>
                   <input
                     type="email"
@@ -332,10 +366,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                     onBlur={() => {
                       void loadReusableGiftAidProfile(donorEmail);
                     }}
-                    className={`w-full h-10 px-4 rounded-[14px] border text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-white ${
+                    className={`w-full h-10 px-2 border-0 border-b-2 text-[14px] sm:text-[15px] font-normal focus:outline-none focus:ring-0 transition-all bg-transparent ${
                       errors.donorEmail
-                        ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                        : 'border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10'
+                        ? 'border-red-400 focus:border-red-500'
+                        : 'border-slate-200 focus:border-[#0E8F5A]'
                     }`}
                     placeholder="e.g. your@email.com"
                   />
@@ -349,7 +383,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
 
               {/* House Number and Address Line 1 - side by side */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="block text-[12px] sm:text-[14px] font-medium text-slate-600">
                     House Number
                   </label>
@@ -361,10 +395,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                       if (errors.houseNumber)
                         setErrors((prev) => ({ ...prev, houseNumber: undefined }));
                     }}
-                    className={`w-full h-10 px-4 rounded-[14px] border text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-white ${
+                    className={`w-full h-10 px-2 border-0 border-b-2 text-[14px] sm:text-[15px] font-normal focus:outline-none focus:ring-0 transition-all bg-transparent ${
                       errors.houseNumber
-                        ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                        : 'border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10'
+                        ? 'border-red-400 focus:border-red-500'
+                        : 'border-slate-200 focus:border-[#0E8F5A]'
                     }`}
                     placeholder="e.g. 123"
                   />
@@ -375,9 +409,9 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                   )}
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="block text-[12px] sm:text-[14px] font-medium text-slate-600">
-                    Street Address <span className="text-red-500">*</span>
+                    Street Address <span className="text-slate-900">*</span>
                   </label>
                   <input
                     type="text"
@@ -387,10 +421,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                       if (errors.addressLine1)
                         setErrors((prev) => ({ ...prev, addressLine1: undefined }));
                     }}
-                    className={`w-full h-10 px-4 rounded-[14px] border text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-white ${
+                    className={`w-full h-10 px-2 border-0 border-b-2 text-[14px] sm:text-[15px] font-normal focus:outline-none focus:ring-0 transition-all bg-transparent ${
                       errors.addressLine1
-                        ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                        : 'border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10'
+                        ? 'border-red-400 focus:border-red-500'
+                        : 'border-slate-200 focus:border-[#0E8F5A]'
                     }`}
                     placeholder="e.g. Main Street"
                   />
@@ -404,7 +438,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
 
               {/* Address Line 2 and Town - side by side */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="block text-[12px] sm:text-[14px] font-medium text-slate-600">
                     Address Line 2
                   </label>
@@ -412,14 +446,14 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                     type="text"
                     value={addressLine2}
                     onChange={(e) => setAddressLine2(e.target.value)}
-                    className="w-full h-10 px-4 rounded-[14px] border border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10 text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-white"
+                    className="w-full h-10 px-2 border-0 border-b-2 border-slate-200 focus:border-[#0E8F5A] focus:ring-0 text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-transparent"
                     placeholder="Apartment, suite, etc."
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="block text-[12px] sm:text-[14px] font-medium text-slate-600">
-                    Town/City <span className="text-red-500">*</span>
+                    Town/City <span className="text-slate-900">*</span>
                   </label>
                   <input
                     type="text"
@@ -428,10 +462,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                       setTown(e.target.value);
                       if (errors.town) setErrors((prev) => ({ ...prev, town: undefined }));
                     }}
-                    className={`w-full h-10 px-4 rounded-[14px] border text-[14px] sm:text-[15px] font-normal focus:outline-none transition-all bg-white ${
+                    className={`w-full h-10 px-2 border-0 border-b-2 text-[14px] sm:text-[15px] font-normal focus:outline-none focus:ring-0 transition-all bg-transparent ${
                       errors.town
-                        ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                        : 'border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10'
+                        ? 'border-red-400 focus:border-red-500'
+                        : 'border-slate-200 focus:border-[#0E8F5A]'
                     }`}
                     placeholder="e.g. London"
                   />
@@ -445,11 +479,11 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
 
               {/* UK Postcode */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="flex items-center gap-2 text-[12px] sm:text-[14px] font-medium text-slate-600">
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
                     <span>
-                      UK Postcode <span className="text-red-500">*</span>
+                      UK Postcode <span className="text-slate-900">*</span>
                     </span>
                   </label>
                   <input
@@ -460,10 +494,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                       setPostcode(normalizedPostcode);
                       if (errors.postcode) setErrors((prev) => ({ ...prev, postcode: undefined }));
                     }}
-                    className={`w-full h-10 px-4 rounded-[14px] border text-[14px] sm:text-[15px] font-normal uppercase focus:outline-none transition-all bg-white ${
+                    className={`w-full h-10 px-2 border-0 border-b-2 text-[14px] sm:text-[15px] font-normal uppercase focus:outline-none focus:ring-0 transition-all bg-transparent ${
                       errors.postcode
-                        ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                        : 'border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10'
+                        ? 'border-red-400 focus:border-red-500'
+                        : 'border-slate-200 focus:border-[#0E8F5A]'
                     }`}
                     placeholder="E.G. SW1A 1AA"
                     maxLength={8}
@@ -475,7 +509,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                   )}
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="block text-[12px] sm:text-[14px] font-medium text-slate-600">
                     Country
                   </label>
@@ -483,68 +517,203 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                     type="text"
                     value="United Kingdom"
                     disabled
-                    className="w-full h-10 px-4 rounded-[14px] border border-slate-200 bg-slate-50 text-gray-500 cursor-not-allowed text-[14px] sm:text-[15px] font-normal"
+                    className="w-full h-10 px-2 border-0 border-b-2 border-slate-200 bg-transparent text-gray-500 cursor-not-allowed text-[14px] sm:text-[15px] font-normal"
                   />
                 </div>
               </div>
             </div>
 
             {/* Section 2: Gift Aid declaration */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 pb-1">
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-3 pb-2">
                 <CheckCircle className="w-4 h-4 text-[#0E8F5A]" />
                 <h3 className="text-[16px] sm:text-[17px] font-semibold text-slate-900 tracking-[-0.01em]">
-                  Gift Aid declaration
+                  Gift Aid Declaration
                 </h3>
               </div>
 
-              {/* Declaration */}
+              {/* Gift Aid Consent */}
               <div
+                className={`p-4 sm:p-5 rounded-xl transition-all cursor-pointer ${
+                  errors.giftAidConsent
+                    ? 'border-2 border-red-400 bg-red-50'
+                    : 'bg-blue-50/50 border border-blue-200'
+                }`}
                 onClick={() => {
                   if (usingSavedConsent) return;
-                  setDeclarationAccepted(!declarationAccepted);
-                  if (errors.consent) setErrors((prev) => ({ ...prev, consent: undefined }));
+                  setGiftAidConsent(!giftAidConsent);
+                  if (errors.giftAidConsent)
+                    setErrors((prev) => ({ ...prev, giftAidConsent: undefined }));
                 }}
-                className={`flex items-start p-3 sm:p-4 rounded-xl transition-all ${
-                  usingSavedConsent
-                    ? 'bg-[#EEF7F2] border border-[#BFE2CF]'
-                    : errors.consent
-                      ? 'border-2 border-red-400 bg-red-50 cursor-pointer'
-                      : declarationAccepted
-                        ? 'bg-slate-100/80 border border-[rgba(15,23,42,0.08)] cursor-pointer'
-                        : 'bg-slate-100/80 border border-[rgba(15,23,42,0.08)] hover:bg-slate-100 cursor-pointer'
-                }`}
               >
-                <div
-                  className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all mt-0.5 ${
-                    declarationAccepted || usingSavedConsent
-                      ? 'bg-[#0E8F5A] border-[#0E8F5A]'
-                      : 'bg-white border-gray-300'
-                  }`}
-                >
-                  {(declarationAccepted || usingSavedConsent) && (
-                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                  )}
+                <div className="flex items-start">
+                  <div
+                    className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-all mt-0.5 ${
+                      giftAidConsent || usingSavedConsent
+                        ? 'bg-[#0E8F5A] border-[#0E8F5A]'
+                        : 'bg-white border-gray-300'
+                    }`}
+                  >
+                    {(giftAidConsent || usingSavedConsent) && (
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                    )}
+                  </div>
+                  <div className="ml-3 sm:ml-4 flex-1">
+                    <p className="text-[13px] sm:text-[14px] font-semibold text-slate-900 mb-1">
+                      Gift Aid Declaration
+                    </p>
+                    <p className="text-[12px] sm:text-[13px] text-slate-700 leading-[1.55]">
+                      I want to Gift Aid my donation and any donations I make in the future or have
+                      made in the past 4 years to{' '}
+                      <span className="font-semibold">{campaignTitle}</span>.
+                    </p>
+                  </div>
                 </div>
-                <div className="ml-3 sm:ml-4 flex-1">
-                  <span className="text-[13px] sm:text-[14px] text-slate-700 leading-[1.55] block font-normal">
-                    {declarationText}
-                  </span>
-                </div>
+                {errors.giftAidConsent && (
+                  <p className="text-red-500 text-xs mt-2 ml-8">{errors.giftAidConsent}</p>
+                )}
               </div>
-              {errors.consent && <p className="text-red-500 text-xs">{errors.consent}</p>}
+
+              {/* UK Taxpayer Confirmation */}
+              <div
+                className={`p-4 sm:p-5 rounded-xl transition-all cursor-pointer ${
+                  errors.ukTaxpayerConfirmation
+                    ? 'border-2 border-red-400 bg-red-50'
+                    : 'bg-yellow-50/50 border border-yellow-200'
+                }`}
+                onClick={() => {
+                  if (usingSavedConsent) return;
+                  setUkTaxpayerConfirmation(!ukTaxpayerConfirmation);
+                  if (errors.ukTaxpayerConfirmation)
+                    setErrors((prev) => ({ ...prev, ukTaxpayerConfirmation: undefined }));
+                }}
+              >
+                <div className="flex items-start">
+                  <div
+                    className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-all mt-0.5 ${
+                      ukTaxpayerConfirmation || usingSavedConsent
+                        ? 'bg-[#0E8F5A] border-[#0E8F5A]'
+                        : 'bg-white border-gray-300'
+                    }`}
+                  >
+                    {(ukTaxpayerConfirmation || usingSavedConsent) && (
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                    )}
+                  </div>
+                  <div className="ml-3 sm:ml-4 flex-1">
+                    <p className="text-[13px] sm:text-[14px] font-semibold text-slate-900 mb-1">
+                      UK Taxpayer Confirmation
+                    </p>
+                    <p className="text-[12px] sm:text-[13px] text-slate-700 leading-[1.55]">
+                      I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital
+                      Gains Tax than the amount of Gift Aid claimed on all my donations in that tax
+                      year it is my responsibility to pay any difference.
+                    </p>
+                  </div>
+                </div>
+                {errors.ukTaxpayerConfirmation && (
+                  <p className="text-red-500 text-xs mt-2 ml-8">{errors.ukTaxpayerConfirmation}</p>
+                )}
+              </div>
+
+              {/* Data Processing Consent */}
+              <div
+                className={`p-4 sm:p-5 rounded-xl transition-all cursor-pointer ${
+                  errors.dataProcessingConsent
+                    ? 'border-2 border-red-400 bg-red-50'
+                    : 'bg-purple-50/50 border border-purple-200'
+                }`}
+                onClick={() => {
+                  if (usingSavedConsent) return;
+                  setDataProcessingConsent(!dataProcessingConsent);
+                  if (errors.dataProcessingConsent)
+                    setErrors((prev) => ({ ...prev, dataProcessingConsent: undefined }));
+                }}
+              >
+                <div className="flex items-start">
+                  <div
+                    className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-all mt-0.5 ${
+                      dataProcessingConsent || usingSavedConsent
+                        ? 'bg-[#0E8F5A] border-[#0E8F5A]'
+                        : 'bg-white border-gray-300'
+                    }`}
+                  >
+                    {(dataProcessingConsent || usingSavedConsent) && (
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                    )}
+                  </div>
+                  <div className="ml-3 sm:ml-4 flex-1">
+                    <p className="text-[13px] sm:text-[14px] font-semibold text-slate-900 mb-1">
+                      Data Processing Consent
+                    </p>
+                    <p className="text-[12px] sm:text-[13px] text-slate-700 leading-[1.55]">
+                      I agree to my data being used to process this Gift Aid claim.
+                    </p>
+                  </div>
+                </div>
+                {errors.dataProcessingConsent && (
+                  <p className="text-red-500 text-xs mt-2 ml-8">{errors.dataProcessingConsent}</p>
+                )}
+              </div>
+
+              {/* Home Address Confirmation */}
+              <div
+                className={`p-4 sm:p-5 rounded-xl transition-all cursor-pointer ${
+                  errors.homeAddressConfirmed
+                    ? 'border-2 border-red-400 bg-red-50'
+                    : 'bg-gray-50 border border-gray-200'
+                }`}
+                onClick={() => {
+                  if (usingSavedConsent) return;
+                  setHomeAddressConfirmed(!homeAddressConfirmed);
+                  if (errors.homeAddressConfirmed)
+                    setErrors((prev) => ({ ...prev, homeAddressConfirmed: undefined }));
+                }}
+              >
+                <div className="flex items-start">
+                  <div
+                    className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-all mt-0.5 ${
+                      homeAddressConfirmed || usingSavedConsent
+                        ? 'bg-[#0E8F5A] border-[#0E8F5A]'
+                        : 'bg-white border-gray-300'
+                    }`}
+                  >
+                    {(homeAddressConfirmed || usingSavedConsent) && (
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                    )}
+                  </div>
+                  <div className="ml-3 sm:ml-4 flex-1">
+                    <p className="text-[13px] sm:text-[14px] font-semibold text-slate-900 mb-1">
+                      Home Address Confirmation
+                    </p>
+                    <p className="text-[12px] sm:text-[13px] text-slate-700 leading-[1.55]">
+                      I confirm this is my home address (not work or delivery address).
+                    </p>
+                  </div>
+                </div>
+                {errors.homeAddressConfirmed && (
+                  <p className="text-red-500 text-xs mt-2 ml-8">{errors.homeAddressConfirmed}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Sticky Footer Button */}
-        <div className="mt-3 sm:mt-4 space-y-2 sticky bottom-0 z-10 bg-[#FFFCF9] pt-2">
+        <div className="mt-4 sm:mt-5 space-y-2 sticky bottom-0 z-10 bg-[#FFFCF9] pt-3">
           <button
             type="submit"
-            disabled={submitting || (!declarationAccepted && !usingSavedConsent)}
-            className="w-full h-11 sm:h-12 rounded-[16px] font-semibold text-[15px] sm:text-[16px] text-white transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center bg-[#0E8F5A] hover:brightness-[1.02] active:brightness-[0.98] shadow-[0_10px_24px_rgba(14,143,90,0.28)] tracking-[0.005em]"
+            disabled={
+              submitting ||
+              ((!giftAidConsent ||
+                !ukTaxpayerConfirmation ||
+                !dataProcessingConsent ||
+                !homeAddressConfirmed) &&
+                !usingSavedConsent)
+            }
+            className="w-full h-12 sm:h-13 rounded-[16px] font-semibold text-[15px] sm:text-[16px] text-white transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center bg-[#0E8F5A] hover:brightness-[1.02] active:brightness-[0.98] shadow-[0_10px_24px_rgba(14,143,90,0.28)] tracking-[0.005em]"
           >
-            {submitting ? 'Processing...' : 'Continue to Payment'}
+            {submitting ? 'Sending...' : 'Send Declaration'}
             {!submitting && <ArrowRight className="w-4 h-4 ml-2" />}
           </button>
         </div>
