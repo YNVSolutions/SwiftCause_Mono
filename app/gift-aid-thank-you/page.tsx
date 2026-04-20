@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Heart } from 'lucide-react';
+import { CheckCircle, Heart, Leaf, ArrowRight, Mail, Send } from 'lucide-react';
+import { createThankYouMail } from '@/shared/api';
 
 interface ThankYouData {
   campaignTitle: string;
@@ -11,151 +12,265 @@ interface ThankYouData {
   totalImpact: number;
   donorName: string;
   declarationId: string;
+  transactionId?: string;
 }
 
+// ─── Shared spinner ───────────────────────────────────────────────────────────
+const Spinner = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="text-center space-y-3">
+      <div className="w-10 h-10 rounded-full border-2 border-green-600 border-t-transparent animate-spin mx-auto" />
+      <p className="text-sm text-gray-500">Loading…</p>
+    </div>
+  </div>
+);
+
+// ─── Fallback (no session data) ───────────────────────────────────────────────
+const Fallback = ({ onReturn }: { onReturn: () => void }) => (
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="max-w-md w-full bg-white rounded-2xl shadow-md overflow-hidden">
+      <div className="bg-green-700 px-6 py-8 text-center">
+        <div className="flex justify-center mb-4">
+          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+            <CheckCircle className="w-9 h-9 text-white" />
+          </div>
+        </div>
+        <h1 className="text-2xl font-bold text-white">Gift Aid Submitted</h1>
+        <p className="mt-2 text-sm text-green-100 leading-relaxed">
+          Your declaration has been successfully processed.
+        </p>
+      </div>
+      <div className="px-6 py-6 space-y-4">
+        <button
+          onClick={onReturn}
+          className="w-full min-h-[48px] rounded-full border-2 border-green-200 text-green-800 hover:bg-green-50 font-medium text-base tracking-wide flex items-center justify-center gap-2 transition-colors"
+        >
+          Browse Campaigns
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function GiftAidThankYouPage() {
   const router = useRouter();
   const [data, setData] = useState<ThankYouData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedData = sessionStorage.getItem('giftAidThankYou');
-    if (storedData) {
-      setData(JSON.parse(storedData));
-      // Clear the data after reading
+    const stored = sessionStorage.getItem('giftAidThankYou');
+    if (stored) {
+      const parsed = JSON.parse(stored) as ThankYouData;
+      setData(parsed);
       sessionStorage.removeItem('giftAidThankYou');
+    }
+    const storedEmail = sessionStorage.getItem('donorEmail');
+    if (storedEmail) {
+      setEmail(storedEmail);
     }
     setLoading(false);
   }, []);
 
-  const handleDone = () => {
-    router.push('/campaigns');
+  const handleReturn = () => router.push('/campaigns');
+
+  const handleEmailConfirmation = () => {
+    setShowEmailForm((current) => !current);
+    setEmailError(null);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-50 to-white">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleSendReceipt = async () => {
+    const normalizedEmail = email.trim();
+    const transactionId = data?.transactionId?.trim();
 
-  // Fallback for missing data (refresh or direct navigation)
-  if (!data) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden">
-          <div className="bg-gradient-to-r from-green-600 to-green-700 p-8 text-center">
-            <div className="flex justify-center mb-4">
-              <div className="bg-white rounded-full p-4">
-                <CheckCircle className="w-16 h-16 text-green-600" />
-              </div>
-            </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Thank You!</h1>
-            <p className="text-green-100 text-lg">Your Gift Aid declaration has been submitted</p>
-          </div>
-          <div className="p-8 text-center">
-            <p className="text-gray-600 mb-6">
-              Your Gift Aid declaration has been successfully processed. The charity will be able to
-              claim an extra 25% on your donation.
-            </p>
-            <button
-              onClick={handleDone}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-xl transition-colors text-lg shadow-lg"
-            >
-              Browse Campaigns
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    if (!normalizedEmail) {
+      setEmailError('Please enter an email address.');
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setEmailError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!transactionId) {
+      setEmailError('Receipt reference unavailable for this donation.');
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setEmailError(null);
+
+    try {
+      await createThankYouMail(normalizedEmail, data?.campaignTitle, transactionId);
+      setEmailSent(true);
+      setShowEmailForm(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setEmailError(
+        message.toLowerCase().includes('processing')
+          ? 'Your donation is still being finalized. Please try again in a few seconds.'
+          : 'We could not send the receipt right now. Please try again.',
+      );
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  if (loading) return <Spinner />;
+  if (!data) return <Fallback onReturn={handleReturn} />;
+
+  const firstName = data.donorName.split(' ')[0] || data.donorName;
+  const canSendReceipt = Boolean(data.transactionId?.trim());
+  // Strip any "Campaign Title:" prefix that may come from the backend
+  const campaignName = data.campaignTitle.replace(/^Campaign Title:\s*/i, '').trim();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-green-600 to-green-700 p-8 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="bg-white rounded-full p-4">
-              <CheckCircle className="w-16 h-16 text-green-600" />
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-md overflow-hidden">
+        {/* ── Header ────────────────────────────────────────────────────── */}
+        <div className="bg-green-700 px-6 py-5 text-center">
+          <div className="flex justify-center mb-3">
+            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+              <Heart className="w-7 h-7 text-white fill-white" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Thank You!</h1>
-          <p className="text-green-100 text-lg">Your Gift Aid declaration has been submitted</p>
+          <h1 className="text-xl font-bold text-white">Thank You, {firstName}!</h1>
         </div>
 
-        {/* Content */}
-        <div className="p-8">
-          {/* Campaign Info */}
-          <div className="mb-8 text-center">
-            <p className="text-gray-600 text-sm uppercase tracking-wide mb-2">Donating to</p>
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">{data.campaignTitle}</h2>
-            <div className="flex items-center justify-center text-green-600">
-              <Heart className="w-5 h-5 mr-2 fill-current" />
-              <span className="text-sm">Thank you, {data.donorName}</span>
+        {/* ── Body ──────────────────────────────────────────────────────── */}
+        <div className="px-6 py-6 space-y-4">
+          {/* Campaign card */}
+          <div className="border border-gray-200 rounded-xl px-5 py-4 shadow-sm">
+            <p className="text-sm text-gray-700 leading-relaxed">
+              Thank you for your generous gift. With your Gift Aid boost, your support for{' '}
+              <span className="font-semibold text-gray-900">{campaignName}</span> goes even further.
+            </p>
+          </div>
+
+          {/* Donation breakdown */}
+          <div className="border border-gray-200 rounded-xl px-5 py-4 shadow-sm space-y-3">
+            <p className="text-xs text-gray-400 uppercase tracking-wide">Donation breakdown</p>
+
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Donation Amount</span>
+              <span className="text-sm font-medium text-gray-700">
+                £{data.donationAmount.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-1.5">
+                <Leaf className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                <span className="text-sm text-gray-600">Gift Aid (25%)</span>
+              </div>
+              <span className="text-sm font-medium text-green-600">
+                +£{data.giftAidBonus.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
+              <span className="text-sm font-semibold text-gray-700">Total Impact</span>
+              <span className="text-xl font-bold text-green-700">
+                £{data.totalImpact.toFixed(2)}
+              </span>
             </div>
           </div>
 
-          {/* Impact Breakdown */}
-          <div className="bg-gray-50 rounded-2xl p-6 mb-6">
-            <div className="space-y-4">
-              {/* Donation Amount */}
-              <div className="flex justify-between items-center pb-4 border-b border-gray-200">
-                <span className="text-gray-700 font-medium">Donation Amount</span>
-                <span className="text-2xl font-bold text-gray-900">
-                  £{data.donationAmount.toFixed(2)}
-                </span>
-              </div>
+          {/* Action Buttons */}
+          <div className="space-y-4">
+            {!emailSent && !showEmailForm && (
+              <button
+                onClick={handleEmailConfirmation}
+                disabled={!canSendReceipt}
+                className="w-full min-h-[48px] rounded-full bg-green-700 hover:bg-green-800 active:bg-green-900 text-white font-medium text-base tracking-wide flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Mail className="w-4 h-4" />
+                Send Receipt to Email
+              </button>
+            )}
 
-              {/* Gift Aid Bonus */}
-              <div className="flex justify-between items-center pb-4 border-b border-gray-200">
-                <div className="flex items-center">
-                  <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-                  <span className="text-gray-700 font-medium">Gift Aid (25%)</span>
+            {showEmailForm && !emailSent && (
+              <div className="border border-green-200 rounded-2xl px-4 py-4 bg-green-50/70 space-y-3">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="receipt-email"
+                    className="block text-sm font-medium text-gray-800"
+                  >
+                    Email address
+                  </label>
+                  <input
+                    id="receipt-email"
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="name@example.com"
+                    disabled={isSendingEmail}
+                    className="w-full min-h-[48px] rounded-xl border border-green-200 bg-white px-4 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100 disabled:bg-gray-100"
+                  />
                 </div>
-                <span className="text-2xl font-bold text-green-600">
-                  +£{data.giftAidBonus.toFixed(2)}
-                </span>
+
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  We'll only use this email to send your receipt and contact you regarding this
+                  donation.
+                </p>
+
+                {emailError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                    <p className="text-sm text-red-700">{emailError}</p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleSendReceipt}
+                  disabled={isSendingEmail}
+                  className="w-full min-h-[48px] rounded-full bg-green-700 hover:bg-green-800 active:bg-green-900 text-white font-medium text-base tracking-wide flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSendingEmail ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Send Receipt
+                    </>
+                  )}
+                </button>
               </div>
+            )}
 
-              {/* Total Impact */}
-              <div className="flex justify-between items-center pt-2">
-                <span className="text-xl font-bold text-gray-900">Total Impact</span>
-                <span className="text-3xl font-bold text-green-600">
-                  £{data.totalImpact.toFixed(2)}
-                </span>
+            {emailSent && (
+              <div className="border border-green-200 rounded-2xl px-4 py-3 bg-green-50">
+                <p className="text-sm text-green-800 text-center">
+                  Receipt sent to <span className="font-medium">{email}</span>.
+                </p>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Declaration Info */}
-          <div className="bg-blue-50 rounded-xl p-4 mb-6">
-            <p className="text-sm text-gray-700 text-center">
-              <span className="font-semibold">Declaration:</span> I confirm I have paid enough UK
-              Income/Capital Gains Tax to cover all my Gift Aid donations.
-            </p>
-            <p className="text-xs text-gray-600 text-center mt-2">Details: {data.donorName}</p>
-          </div>
+            {!canSendReceipt && !emailSent && !showEmailForm && (
+              <p className="text-xs text-center text-gray-500">
+                Receipt email is unavailable for this session because the donation reference is
+                missing.
+              </p>
+            )}
 
-          {/* Info Box */}
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-            <p className="text-sm text-gray-700 text-center">
-              Your Gift Aid declaration means the charity can claim an extra 25p for every £1 you
-              donate at no extra cost to you. Thank you for maximizing your impact!
-            </p>
+            <button
+              onClick={handleReturn}
+              className="w-full min-h-[48px] rounded-full border-2 border-green-200 text-green-800 hover:bg-green-50 font-medium text-base tracking-wide flex items-center justify-center gap-2 transition-colors"
+            >
+              Browse Campaigns
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
-
-          {/* Action Button */}
-          <button
-            onClick={handleDone}
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-xl transition-colors text-lg shadow-lg"
-          >
-            Done
-          </button>
         </div>
       </div>
     </div>
