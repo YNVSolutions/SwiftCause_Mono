@@ -2,13 +2,17 @@ import React from 'react';
 import { formatCurrency, formatCurrencyFromMajor } from '@/shared/lib/currencyFormatter';
 import { CampaignCarouselProps } from '../types';
 import { getTop3Amounts, getProgressPercentage } from '../lib/campaignUtils';
+import { darkenHexColor, resolveAccentColor } from '../lib/brandUtils';
 
 export const CampaignCarousel: React.FC<CampaignCarouselProps> = ({
   campaigns,
   currency,
+  accentColorHex,
   onSelectCampaign,
   onViewDetails,
 }) => {
+  const accentColor = resolveAccentColor(accentColorHex);
+  const accentColorDark = darkenHexColor(accentColor, 0.12);
   if (campaigns.length === 0) return null;
 
   const getFloatStyle = (seedValue: string) => {
@@ -84,9 +88,7 @@ export const CampaignCarousel: React.FC<CampaignCarouselProps> = ({
 
                   {/* Campaign Info */}
                   <div className="p-6">
-                    <h2 className="text-lg font-semibold text-[#0A0A0A] mb-2">
-                      {campaign.title}
-                    </h2>
+                    <h2 className="text-lg font-semibold text-[#0A0A0A] mb-2">{campaign.title}</h2>
 
                     {/* Progress Info */}
                     <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
@@ -96,14 +98,19 @@ export const CampaignCarousel: React.FC<CampaignCarouselProps> = ({
                       <span className="text-xs text-gray-500">
                         Goal {formatGoal(campaign.goal)}
                       </span>
-                      <span className="text-[#0E8F5A] font-medium">{Math.round(progress)}%</span>
+                      <span className="font-medium" style={{ color: accentColor }}>
+                        {Math.round(progress)}%
+                      </span>
                     </div>
 
                     {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2 mb-5">
                       <div
-                        className="bg-[#0E8F5A] h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, progress)}%` }}
+                        className="h-2 rounded-full transition-all duration-300"
+                        style={{
+                          backgroundColor: accentColor,
+                          width: `${Math.min(100, progress)}%`,
+                        }}
                       />
                     </div>
 
@@ -113,7 +120,8 @@ export const CampaignCarousel: React.FC<CampaignCarouselProps> = ({
                         <button
                           key={index}
                           onClick={(e) => handleAmountClick(e, amount)}
-                          className="h-10 rounded-lg bg-gray-100/50 text-[#0E8F5A] border border-[rgba(15,23,42,0.08)] font-medium text-sm hover:bg-gray-100/70 hover:border-[rgba(15,23,42,0.12)] transition-colors duration-200"
+                          className="h-10 rounded-lg bg-gray-100/50 border border-[rgba(15,23,42,0.08)] font-medium text-sm hover:bg-gray-100/70 hover:border-[rgba(15,23,42,0.12)] transition-colors duration-200"
+                          style={{ color: accentColor }}
                         >
                           {formatPredefined(amount)}
                         </button>
@@ -123,7 +131,14 @@ export const CampaignCarousel: React.FC<CampaignCarouselProps> = ({
                     {/* Donate Button */}
                     <button
                       onClick={handleDonateClick}
-                      className="w-full h-11 rounded-lg font-medium text-white bg-[#0E8F5A] hover:bg-[#0C8050] shadow-lg shadow-green-200/60 transition-all duration-200"
+                      className="w-full h-11 rounded-lg font-medium text-white shadow-lg shadow-green-200/60 transition-all duration-200"
+                      style={{ backgroundColor: accentColor }}
+                      onMouseEnter={(event) => {
+                        event.currentTarget.style.backgroundColor = accentColorDark;
+                      }}
+                      onMouseLeave={(event) => {
+                        event.currentTarget.style.backgroundColor = accentColor;
+                      }}
                     >
                       Donate
                     </button>

@@ -16,6 +16,9 @@ interface PaymentScreenProps {
   ) => Promise<void>;
   onBack: () => void;
   organizationCurrency?: string;
+  accentColorHex?: string;
+  organizationDisplayName?: string;
+  organizationLogoUrl?: string | null;
 }
 
 export function PaymentScreen({
@@ -26,7 +29,14 @@ export function PaymentScreen({
   handlePaymentSubmit,
   onBack,
   organizationCurrency,
+  accentColorHex,
+  organizationDisplayName,
+  organizationLogoUrl,
 }: PaymentScreenProps) {
+  const accentColor =
+    typeof accentColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(accentColorHex.trim())
+      ? accentColorHex.trim().toUpperCase()
+      : '#0E8F5A';
   // Get Gift Aid details from donation or sessionStorage as fallback
   const giftAidDetails =
     donation.giftAidDetails ||
@@ -148,7 +158,8 @@ export function PaymentScreen({
       <button
         onClick={isProcessing ? undefined : onBack}
         disabled={isProcessing}
-        className="absolute left-6 top-5 z-20 inline-flex items-center gap-2 text-[#0E8F5A] hover:text-[#0C8050] text-sm font-medium hover:underline underline-offset-4 disabled:opacity-60"
+        className="absolute left-6 top-5 z-20 inline-flex items-center gap-2 text-sm font-medium hover:underline underline-offset-4 disabled:opacity-60"
+        style={{ color: accentColor }}
         title="Back"
         aria-label="Back"
       >
@@ -160,7 +171,22 @@ export function PaymentScreen({
         <div className="w-full max-w-2xl md:max-w-3xl">
           <div className="bg-[#FFFBF7] rounded-[18px] border border-gray-200/50 shadow-[0_10px_28px_rgba(15,23,42,0.08)] overflow-hidden">
             {/* Campaign Header */}
-            <div className="bg-[#0E8F5A] text-white px-5 py-3 text-center">
+            <div
+              className="text-white px-5 py-3 text-center"
+              style={{ backgroundColor: accentColor }}
+            >
+              {organizationDisplayName ? (
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 text-xs font-medium">
+                  {organizationLogoUrl ? (
+                    <img
+                      src={organizationLogoUrl}
+                      alt={organizationDisplayName}
+                      className="h-4 w-4 rounded-full object-cover"
+                    />
+                  ) : null}
+                  <span>{organizationDisplayName}</span>
+                </div>
+              ) : null}
               <div className="text-center">
                 <p className="text-white/85 text-[12px] uppercase tracking-wide mb-0.5 font-medium">
                   Donating to
@@ -234,12 +260,18 @@ export function PaymentScreen({
                   {isGiftAid && (
                     <div className="flex justify-between items-center">
                       <div className="flex items-center space-x-2">
-                        <CheckCircle className="h-4 w-4 text-[#0E8F5A]" />
-                        <span className="text-[14px] sm:text-[16px] text-[#0E8F5A] font-semibold">
+                        <CheckCircle className="h-4 w-4" style={{ color: accentColor }} />
+                        <span
+                          className="text-[14px] sm:text-[16px] font-semibold"
+                          style={{ color: accentColor }}
+                        >
                           Gift Aid (25%)
                         </span>
                       </div>
-                      <span className="text-[16px] sm:text-[18px] font-semibold text-[#0E8F5A]">
+                      <span
+                        className="text-[16px] sm:text-[18px] font-semibold"
+                        style={{ color: accentColor }}
+                      >
                         +{formatAmount(giftAidAmount)}
                       </span>
                     </div>
@@ -261,7 +293,10 @@ export function PaymentScreen({
                           </span>
                         )}
                       </div>
-                      <span className="text-[20px] sm:text-[22px] font-semibold text-[#0E8F5A]">
+                      <span
+                        className="text-[20px] sm:text-[22px] font-semibold"
+                        style={{ color: accentColor }}
+                      >
                         {formatAmount(totalImpact)}
                       </span>
                     </div>
@@ -291,7 +326,7 @@ export function PaymentScreen({
               {/* Payment Method Section */}
               <div className="mb-4">
                 <div className="flex items-center mb-3">
-                  <Lock className="h-4 w-4 text-[#0E8F5A] mr-2" />
+                  <Lock className="h-4 w-4 mr-2" style={{ color: accentColor }} />
                   <h2 className="text-[14px] sm:text-[16px] font-semibold text-slate-900">
                     Payment Method
                   </h2>
@@ -299,7 +334,12 @@ export function PaymentScreen({
 
                 {/* Payment Form - Always mounted to keep Stripe Elements alive */}
                 <div className="bg-gray-100/50 border border-gray-200/30 rounded-xl p-4 sm:p-5">
-                  <PaymentForm loading={isProcessing} error={error} onSubmit={handleSubmit} />
+                  <PaymentForm
+                    loading={isProcessing}
+                    error={error}
+                    onSubmit={handleSubmit}
+                    accentColorHex={accentColor}
+                  />
                 </div>
               </div>
 

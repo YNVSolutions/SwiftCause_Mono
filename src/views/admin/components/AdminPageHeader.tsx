@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import React from "react";
-import { Button } from "../../../shared/ui/button";
-import { Input } from "../../../shared/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "../../../shared/ui/avatar";
-import { SidebarTrigger } from "../../../shared/ui/sidebar";
-import { Compass, Search } from "lucide-react";
+import React from 'react';
+import { Button } from '../../../shared/ui/button';
+import { Input } from '../../../shared/ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from '../../../shared/ui/avatar';
+import { SidebarTrigger } from '../../../shared/ui/sidebar';
+import { Compass, Search } from 'lucide-react';
 
 interface AdminPageHeaderProps {
   title: React.ReactNode | null;
@@ -42,7 +42,7 @@ export function AdminPageHeader({
 }: AdminPageHeaderProps) {
   const renderTitle = () => {
     if (title === null) return null;
-    if (typeof title === "string") {
+    if (typeof title === 'string') {
       return (
         <div>
           {organizationName && (
@@ -61,14 +61,14 @@ export function AdminPageHeader({
 
   const renderSubtitle = () => {
     if (!subtitle) return null;
-    if (typeof subtitle === "string") {
+    if (typeof subtitle === 'string') {
       return <p className="text-sm text-slate-600 mt-1 font-light">{subtitle}</p>;
     }
     return subtitle;
   };
 
   return (
-    <div className="flex w-full flex-col gap-4 px-6 py-5 glass-card border-b border-[#F3F1EA]/60 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex w-full flex-col gap-4 px-4 py-4 glass-card border-b border-[#F3F1EA]/60 sm:px-6 sm:py-5 lg:flex-row lg:items-center lg:justify-between">
       <style jsx>{`
         .glass-card {
           background: rgba(255, 255, 255, 0.65);
@@ -77,10 +77,10 @@ export function AdminPageHeader({
         }
       `}</style>
       <div className="flex w-full flex-col gap-4">
-        <div className="flex w-full items-start justify-between gap-4 lg:items-center">
-          <div className="flex min-w-0 items-center gap-4 lg:flex-1">
+        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:gap-4 lg:flex-1 lg:items-center">
             {showSidebarTrigger && (
-              <SidebarTrigger className="h-10 w-10 rounded-2xl border border-[#F3F1EA]/60 bg-[#F7F6F2] text-slate-600 hover:bg-emerald-50 hover:text-[#064e3b] hover:border-emerald-200 hover:shadow-lg hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 shadow-sm" />
+              <SidebarTrigger className="h-9 w-9 shrink-0 rounded-2xl border border-[#F3F1EA]/60 bg-[#F7F6F2] text-slate-600 hover:bg-emerald-50 hover:text-[#064e3b] hover:border-emerald-200 hover:shadow-lg hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 shadow-sm sm:h-10 sm:w-10" />
             )}
             <div className="flex flex-col min-w-0">
               {renderTitle()}
@@ -90,7 +90,7 @@ export function AdminPageHeader({
               <div className="relative hidden lg:block w-full max-w-[520px] ml-6">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 shrink-0" />
                 <Input
-                  placeholder={search.placeholder ?? "Search..."}
+                  placeholder={search.placeholder ?? 'Search...'}
                   value={search.value}
                   onChange={(e) => search.onChange(e.target.value)}
                   className="pl-10 w-full h-11 border border-black rounded-full text-sm bg-white/70 focus:bg-white transition-all duration-300"
@@ -99,23 +99,19 @@ export function AdminPageHeader({
             )}
           </div>
 
-          <div className="flex items-center gap-3 shrink-0 lg:justify-self-end ml-auto">
+          <div className="flex w-full items-center justify-between gap-2 sm:gap-3 lg:ml-auto lg:w-auto lg:shrink-0 lg:justify-end">
             {inlineActions && (
-              <div className="hidden lg:flex items-center gap-2">
-                {inlineActions}
-              </div>
+              <div className="hidden lg:flex items-center gap-2">{inlineActions}</div>
             )}
             {topRightActions && (
-              <div className="flex items-center gap-2">
-                {topRightActions}
-              </div>
+              <div className="min-w-0 flex-1 lg:flex-none">{topRightActions}</div>
             )}
             {onStartTour && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={onStartTour}
-                className="hidden sm:flex items-center gap-2 border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 rounded-2xl px-6 py-3 font-semibold"
+                className="hidden md:flex items-center gap-2 border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 rounded-2xl px-6 py-3 font-semibold"
               >
                 <Compass className="h-4 w-4" />
                 <span className="font-medium">Get a Tour</span>
@@ -148,7 +144,7 @@ export function AdminPageHeader({
               <div className="relative min-w-0 flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 shrink-0" />
                 <Input
-                  placeholder={search.placeholder ?? "Search..."}
+                  placeholder={search.placeholder ?? 'Search...'}
                   value={search.value}
                   onChange={(e) => search.onChange(e.target.value)}
                   className="pl-10 w-full h-10 sm:h-11 border border-black rounded-full text-sm sm:text-base bg-white/70 focus:bg-white transition-all duration-300"
@@ -156,9 +152,7 @@ export function AdminPageHeader({
               </div>
             )}
             {inlineActions && (
-              <div className="flex items-center gap-2 shrink-0">
-                {inlineActions}
-              </div>
+              <div className="flex items-center gap-2 shrink-0">{inlineActions}</div>
             )}
           </div>
         )}

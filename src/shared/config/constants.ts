@@ -53,6 +53,8 @@ export const PERMISSIONS = {
   CREATE_USER: 'create_user',
   EDIT_USER: 'edit_user',
   DELETE_USER: 'delete_user',
+  CHANGE_ORG_IDENTITY: 'change_org_identity',
+  CHANGE_ORG_BRANDING: 'change_org_branding',
   MANAGE_PERMISSIONS: 'manage_permissions',
   SYSTEM_ADMIN: 'system_admin',
 } as const;
@@ -169,6 +171,9 @@ export const VALIDATION_LIMITS = {
   organization: {
     name: { min: 2, max: 100 },
     website: { max: 200 },
+    displayName: { min: 1, max: 40 },
+    thankYouMessage: { max: 140 },
+    accentColorHexPattern: '^#[0-9A-Fa-f]{6}$',
   },
 } as const;
 
@@ -272,6 +277,8 @@ export const DEFAULT_USER_PERMISSIONS = {
     'create_user',
     'edit_user',
     'delete_user',
+    'change_org_identity',
+    'change_org_branding',
     'manage_permissions',
     'system_admin',
   ],
@@ -297,6 +304,8 @@ export const DEFAULT_USER_PERMISSIONS = {
     'create_user',
     'edit_user',
     'delete_user',
+    'change_org_identity',
+    'change_org_branding',
     'manage_permissions',
   ],
   manager: [

@@ -2,16 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   test:
-    name: Run Tests
+    name: Run Frontend and Functions Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -29,6 +29,13 @@ jobs:
         run: npm run test:run
         continue-on-error: false
 
+      - name: Install Functions dependencies
+        run: npm ci --prefix backend/functions
+
+      - name: Run Functions tests
+        run: npm run test:functions
+        continue-on-error: false
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -41,7 +48,7 @@ jobs:
   lint:
     name: Run Linter
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -57,4 +64,4 @@ jobs:
 
       - name: Run linter
         run: npm run lint
-        continue-on-error: true  
+        continue-on-error: true

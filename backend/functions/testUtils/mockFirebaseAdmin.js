@@ -63,6 +63,11 @@ const firestoreInstance = {
       doc(id) {
         return doc(name, id);
       },
+      async get() {
+        const store = getCollectionStore(name);
+        const docs = Array.from(store.entries()).map(([id, value]) => createSnapshot(id, value));
+        return { docs };
+      },
       async add(data) {
         autoIdCounter += 1;
         const generatedId = `auto-${autoIdCounter}`;
@@ -110,6 +115,14 @@ const firestoreInstance = {
 const admin = {
   firestore() {
     return firestoreInstance;
+  },
+  app() {
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'demo-project';
+    return {
+      options: {
+        storageBucket: `${projectId}.appspot.com`,
+      },
+    };
   },
 };
 

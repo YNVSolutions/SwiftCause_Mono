@@ -105,7 +105,7 @@ interface AuthContextType {
   handleSignup: (signupData: SignupFormData) => Promise<string>;
   hasPermission: (permission: Permission) => boolean;
   refreshCurrentKioskSession: (kioskIdToRefresh?: string) => Promise<void>;
-  handleOrganizationSwitch: (organizationId: string) => void;
+  handleOrganizationSwitch: (organizationId: string, organizationName?: string) => void;
   resendVerificationEmail: (email: string) => Promise<void>;
 }
 
@@ -237,8 +237,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 const orgDocSnap = await getDoc(orgDocRef);
                 if (orgDocSnap.exists()) {
                   const orgData = orgDocSnap.data();
+                  const settings = orgData.settings as { displayName?: string } | undefined;
                   organizationName =
-                    orgData.name || orgData.organizationName || userData.organizationId;
+                    settings?.displayName ||
+                    orgData.name ||
+                    orgData.organizationName ||
+                    userData.organizationId;
                 }
               } catch (error) {
                 console.error('Error fetching organization name:', error);
@@ -364,6 +368,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           'create_user',
           'edit_user',
           'delete_user',
+          'change_org_identity',
+          'change_org_branding',
           'manage_permissions',
         ] as Permission[],
         isActive: true,
@@ -436,7 +442,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     );
   };
 
-  const handleOrganizationSwitch = (organizationId: string) => {
+  const handleOrganizationSwitch = (organizationId: string, organizationName?: string) => {
     if (currentAdminSession) {
       setCurrentAdminSession((prev) => {
         if (!prev) return null;
@@ -445,6 +451,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           user: {
             ...prev.user,
             organizationId: organizationId,
+            organizationName: organizationName,
           },
         };
       });

@@ -4,7 +4,10 @@ import { Skeleton } from '../../../shared/ui/skeleton';
 import { Progress } from '../../../shared/ui/progress';
 import { Trophy, ArrowUpRight } from 'lucide-react';
 import { Button } from '../../../shared/ui/button';
-import { formatCurrency as formatGbp, formatCurrencyFromMajor as formatGbpMajor } from '../../../shared/lib/currencyFormatter';
+import {
+  formatCurrency as formatGbp,
+  formatCurrencyFromMajor as formatGbpMajor,
+} from '../../../shared/lib/currencyFormatter';
 
 interface CampaignData {
   id: string;
@@ -94,55 +97,57 @@ export const TopPerformingCampaigns: React.FC<TopPerformingCampaignsProps> = ({
             {data.map((campaign, index) => {
               const goal = campaign.goal || 0;
               const raisedInGbp = (campaign.raised || 0) / 100;
-              const displayPercentage =
-                goal > 0 ? (raisedInGbp / goal) * 100 : 0;
+              const displayPercentage = goal > 0 ? (raisedInGbp / goal) * 100 : 0;
 
               return (
-              <div key={campaign.id} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${
-                      index === 0 ? 'bg-amber-100 text-amber-700' :
-                      index === 1 ? 'bg-gray-100 text-gray-600' :
-                      index === 2 ? 'bg-orange-100 text-orange-600' :
-                      'bg-blue-100 text-blue-600'
-                    }`}>
-                      {index + 1}
+                <div key={campaign.id} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${
+                          index === 0
+                            ? 'bg-amber-100 text-amber-700'
+                            : index === 1
+                              ? 'bg-gray-100 text-gray-600'
+                              : index === 2
+                                ? 'bg-orange-100 text-orange-600'
+                                : 'bg-blue-100 text-blue-600'
+                        }`}
+                      >
+                        {index + 1}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-medium text-gray-900 truncate text-sm leading-relaxed">
+                          {campaign.name}
+                        </h4>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-medium text-gray-900 truncate text-sm leading-relaxed">
-                        {campaign.name}
-                      </h4>
+                    <div className="text-right flex-shrink-0 ml-3">
+                      <p className="text-sm font-medium text-gray-600">
+                        {Math.round(displayPercentage)}%
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right flex-shrink-0 ml-3">
-                    <p className="text-sm font-medium text-gray-600">
-                      {Math.round(displayPercentage)}%
-                    </p>
+
+                  <Progress value={displayPercentage} className="h-1.5" />
+
+                  <div className="flex items-center justify-between text-xs text-gray-500 leading-relaxed">
+                    <span className="font-medium">
+                      {formatCurrency(campaign.raised)} of {formatGbpMajor(campaign.goal)}
+                    </span>
+                    <span className="text-gray-400">{campaign.donationCount} donations</span>
                   </div>
                 </div>
-                
-                <Progress 
-                  value={displayPercentage} 
-                  className="h-1.5"
-                />
-                
-                <div className="flex items-center justify-between text-xs text-gray-500 leading-relaxed">
-                  <span className="font-medium">
-                    {formatCurrency(campaign.raised)} of {formatGbpMajor(campaign.goal)}
-                  </span>
-                  <span className="text-gray-400">
-                    {campaign.donationCount} donations
-                  </span>
-                </div>
-              </div>
-            );})}
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-12 text-gray-500">
             <Trophy className="mx-auto h-12 w-12 text-gray-300 mb-4" />
             <p className="text-lg font-medium mb-2 text-gray-700">No Campaign Data</p>
-            <p className="text-sm text-gray-500">Campaign performance will appear here once campaigns are created.</p>
+            <p className="text-sm text-gray-500">
+              Campaign performance will appear here once campaigns are created.
+            </p>
           </div>
         )}
       </CardContent>

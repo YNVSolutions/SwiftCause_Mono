@@ -17,6 +17,7 @@ export type Screen =
   | 'admin-gift-aid'
   | 'admin-users'
   | 'admin-bank-details'
+  | 'admin-organization-settings'
   | 'admin-stripe-account'
   | 'about'
   | 'contact'
@@ -47,6 +48,8 @@ export type Permission =
   | 'create_user'
   | 'edit_user'
   | 'delete_user'
+  | 'change_org_identity'
+  | 'change_org_branding'
   | 'manage_permissions'
   | 'system_admin';
 
@@ -64,6 +67,16 @@ export interface User {
   photoURL?: string;
 }
 
+export interface OrganizationSettings {
+  displayName: string;
+  logoUrl: string | null;
+  idleImageUrl: string | null;
+  accentColorHex: string;
+  thankYouMessage: string | null;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 export interface Organization {
   id: string;
   name: string;
@@ -78,6 +91,7 @@ export interface Organization {
     chargesEnabled?: boolean;
     payoutsEnabled?: boolean;
   };
+  settings?: OrganizationSettings;
 }
 
 export interface AdminSession {

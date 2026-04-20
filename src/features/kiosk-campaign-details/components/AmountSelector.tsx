@@ -15,6 +15,7 @@ export const AmountSelector: React.FC<AmountSelectorProps> = ({
   recurringInterval = 'monthly',
   donorEmail = '',
   donorName = '',
+  accentColorHex,
   onSelectAmount,
   onCustomAmountChange,
   onRecurringToggle,
@@ -22,6 +23,11 @@ export const AmountSelector: React.FC<AmountSelectorProps> = ({
   onDonorEmailChange,
   onDonorNameChange,
 }) => {
+  const accentColor =
+    typeof accentColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(accentColorHex.trim())
+      ? accentColorHex.trim().toUpperCase()
+      : '#0E8F5A';
+
   // Format amount without decimals
   const formatAmount = (amount: number) => formatCurrencyFromMajor(amount, currency);
 
@@ -63,15 +69,16 @@ export const AmountSelector: React.FC<AmountSelectorProps> = ({
       {enableRecurring && (
         <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200">
           <div className="flex items-center gap-2">
-            <Repeat className="w-4 h-4 text-[#0E8F5A]" />
+            <Repeat className="w-4 h-4" style={{ color: accentColor }} />
             <span className="text-sm font-medium text-slate-700">Make this recurring</span>
           </div>
           <button
             type="button"
             onClick={() => onRecurringToggle?.(!isRecurring)}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              isRecurring ? 'bg-[#0E8F5A]' : 'bg-gray-300'
+              isRecurring ? 'bg-gray-300' : 'bg-gray-300'
             }`}
+            style={isRecurring ? { backgroundColor: accentColor } : undefined}
           >
             <span
               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -89,12 +96,15 @@ export const AmountSelector: React.FC<AmountSelectorProps> = ({
             <button
               key={interval}
               type="button"
-              onClick={() => onRecurringIntervalChange?.(interval as 'monthly' | 'quarterly' | 'yearly')}
+              onClick={() =>
+                onRecurringIntervalChange?.(interval as 'monthly' | 'quarterly' | 'yearly')
+              }
               className={`h-10 rounded-lg border text-sm font-medium transition-all ${
                 recurringInterval === interval
-                  ? 'bg-[#0E8F5A] text-white border-transparent'
+                  ? 'text-white border-transparent'
                   : 'bg-white text-slate-700 border-gray-200 hover:bg-gray-50'
               }`}
+              style={recurringInterval === interval ? { backgroundColor: accentColor } : undefined}
             >
               <span className="flex items-center justify-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5" />
@@ -119,7 +129,8 @@ export const AmountSelector: React.FC<AmountSelectorProps> = ({
       {enableRecurring && isRecurring && effectiveAmount > 0 && (
         <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
           <p className="text-sm text-blue-900">
-            <span className="font-semibold">{formatAmount(effectiveAmount)}</span> will be charged {getRecurringLabel().toLowerCase()}
+            <span className="font-semibold">{formatAmount(effectiveAmount)}</span> will be charged{' '}
+            {getRecurringLabel().toLowerCase()}
           </p>
         </div>
       )}
@@ -136,9 +147,12 @@ export const AmountSelector: React.FC<AmountSelectorProps> = ({
             }}
             className={`h-12 rounded-full font-semibold text-[17px] transition-all duration-150 ease-out border ${
               selectedAmount === amount
-                ? 'bg-[#0E8F5A] text-white border-transparent shadow-[0_12px_32px_rgba(15,23,42,0.08)] scale-[1.02]'
-                : 'bg-[#FFFBF7] text-[#0E8F5A] border-gray-200 hover:bg-gray-100/50 hover:border-gray-300 hover:brightness-[1.02]'
+                ? 'text-white border-transparent shadow-[0_12px_32px_rgba(15,23,42,0.08)] scale-[1.02]'
+                : 'bg-[#FFFBF7] border-gray-200 hover:bg-gray-100/50 hover:border-gray-300 hover:brightness-[1.02]'
             }`}
+            style={
+              selectedAmount === amount ? { backgroundColor: accentColor } : { color: accentColor }
+            }
           >
             {formatAmount(amount)}
           </button>
@@ -156,7 +170,11 @@ export const AmountSelector: React.FC<AmountSelectorProps> = ({
           onChange={(e) => handleCustomChange(e.target.value)}
           onFocus={handleCustomFocus}
           placeholder="Custom amount"
-          className="w-full h-12 pl-10 pr-4 rounded-lg border border-gray-200 text-[17px] font-normal focus:outline-none focus:border-[#0E8F5A] focus:ring-1 focus:ring-[#0E8F5A]/20 transition-all duration-150 ease-out bg-[#FFFBF7]"
+          className="w-full h-12 pl-10 pr-4 rounded-lg border border-gray-200 text-[17px] font-normal focus:outline-none transition-all duration-150 ease-out bg-[#FFFBF7]"
+          style={{
+            borderColor: customAmount ? `${accentColor}55` : undefined,
+            boxShadow: customAmount ? `0 0 0 1px ${accentColor}33` : undefined,
+          }}
         />
       </div>
     </div>

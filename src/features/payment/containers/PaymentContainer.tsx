@@ -2,7 +2,7 @@ import React from 'react';
 import { PaymentScreen } from '../../../views/campaigns/PaymentScreen';
 import { Campaign, Donation, PaymentResult } from '../../../shared/types';
 import { usePayment } from '../hooks/usePayment';
-import { getOrganizationById } from '../../../shared/api';
+import { useOrganization } from '../../../shared/lib/hooks/useOrganization';
 
 interface PaymentContainerProps {
   campaign: Campaign;
@@ -11,23 +11,25 @@ interface PaymentContainerProps {
   onBack: () => void;
 }
 
-export function PaymentContainer({ campaign, donation, onPaymentComplete, onBack }: PaymentContainerProps) {
-  const { isProcessing, error, handlePaymentSubmit: processPayment } = usePayment(onPaymentComplete);
-  const [organizationCurrency, setOrganizationCurrency] = React.useState<string | undefined>(undefined);
+export function PaymentContainer({
+  campaign,
+  donation,
+  onPaymentComplete,
+  onBack,
+}: PaymentContainerProps) {
+  const {
+    isProcessing,
+    error,
+    handlePaymentSubmit: processPayment,
+  } = usePayment(onPaymentComplete);
+  const { organization } = useOrganization(campaign.organizationId || null);
+  const organizationCurrency = organization?.currency;
 
-  React.useEffect(() => {
-    const fetchOrganizationCurrency = async () => {
-      if (campaign.organizationId) {
-        const organization = await getOrganizationById(campaign.organizationId);
-        if (organization && organization.currency) {
-          setOrganizationCurrency(organization.currency as string);
-        }
-      }
-    };
-    fetchOrganizationCurrency();
-  }, [campaign.organizationId]);
-
-  const submitPayment = async (amount: number, metadata: Record<string, unknown>, currency: string) => {
+  const submitPayment = async (
+    amount: number,
+    metadata: Record<string, unknown>,
+    currency: string,
+  ) => {
     await processPayment(amount, metadata, organizationCurrency || currency);
   };
 
@@ -40,7 +42,9 @@ export function PaymentContainer({ campaign, donation, onPaymentComplete, onBack
       handlePaymentSubmit={submitPayment}
       onBack={onBack}
       organizationCurrency={organizationCurrency}
+      accentColorHex={organization?.settings?.accentColorHex}
+      organizationDisplayName={organization?.settings?.displayName || organization?.name}
+      organizationLogoUrl={organization?.settings?.logoUrl}
     />
   );
 }
-

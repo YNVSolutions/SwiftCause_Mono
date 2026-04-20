@@ -68,7 +68,7 @@ describe('giftAidExport formatters', () => {
     expect(csv).toBe(
       [
         'Title,First name or initial,Last name,House name or number,Postcode,Aggregated donations,Sponsored event,Donation date,Amount',
-        "'=Admin,' +cmd,'-2+2,'@A1,\"\t'=SUM(1,1)\",,,03/04/26,12.34",
+        "'=Admin,' +cmd,'-2+2,'@A1,\"'\t=SUM(1,1)\",,,03/04/26,12.34",
       ].join('\n'),
     );
   });
@@ -93,7 +93,7 @@ describe('giftAidExport formatters', () => {
     expect(csv).toBe(
       [
         'Title,Donor First Name,Donor Surname,House Number,Address Line 1,Address Line 2,Town,Postcode,Donation Amount (Pence),Gift Aid Amount (Pence),Donation Date,Tax Year,Campaign Title,Donation ID',
-        "'=Ms,'+Jane,'-Donor,'@14,' =Main Road,,\"\t'@Leeds\",'=LS1 1AA,1234,308,2026-04-03,2025-26,'@Spring Appeal,'=don_1",
+        "'=Ms,'+Jane,'-Donor,'@14,' =Main Road,,'\t@Leeds,'=LS1 1AA,1234,308,2026-04-03,2025-26,'@Spring Appeal,'=don_1",
       ].join('\n'),
     );
   });

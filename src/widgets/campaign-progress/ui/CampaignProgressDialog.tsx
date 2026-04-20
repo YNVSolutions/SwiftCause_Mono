@@ -1,7 +1,20 @@
 import React, { useState } from 'react';
-import { X, Target, TrendingUp, Search, Filter, CheckCircle2, AlertCircle, AlertTriangle, ArrowUpDown } from 'lucide-react';
+import {
+  X,
+  Target,
+  TrendingUp,
+  Search,
+  Filter,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  ArrowUpDown,
+} from 'lucide-react';
 import { CampaignProgress, sortCampaignProgress } from '../lib/progressCalculations';
-import { formatCurrency as formatGbp, formatCurrencyFromMajor as formatGbpMajor } from '../../../shared/lib/currencyFormatter';
+import {
+  formatCurrency as formatGbp,
+  formatCurrencyFromMajor as formatGbpMajor,
+} from '../../../shared/lib/currencyFormatter';
 
 interface CampaignProgressDialogProps {
   isOpen: boolean;
@@ -11,6 +24,8 @@ interface CampaignProgressDialogProps {
   formatCurrency?: (amount: number) => string;
 }
 
+type ProgressFilterStatus = 'all' | 'critical' | 'warning' | 'good' | 'exceeded';
+
 export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
   isOpen,
   onClose,
@@ -19,7 +34,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
   formatCurrency = formatGbp,
 }) => {
   const [sortBy, setSortBy] = useState<'progress' | 'raised' | 'goal' | 'name'>('progress');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'critical' | 'warning' | 'good' | 'exceeded'>('all');
+  const [filterStatus, setFilterStatus] = useState<ProgressFilterStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   if (!isOpen) return null;
@@ -36,8 +51,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
   // Calculate summary stats
   const totalRaised = campaigns.reduce((sum, c) => sum + c.raised, 0);
   const totalGoal = campaigns.reduce((sum, c) => sum + c.goal, 0);
-  const overallProgress =
-    totalGoal > 0 ? Math.round(((totalRaised / 100) / totalGoal) * 100) : 0;
+  const overallProgress = totalGoal > 0 ? Math.round((totalRaised / 100 / totalGoal) * 100) : 0;
   const completedCount = campaigns.filter((c) => c.status === 'exceeded').length;
   const criticalCount = campaigns.filter((c) => c.status === 'critical').length;
 
@@ -68,7 +82,12 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
   };
 
   const handleSort = () => {
-    const sortOrder: Array<'progress' | 'raised' | 'goal' | 'name'> = ['progress', 'raised', 'goal', 'name'];
+    const sortOrder: Array<'progress' | 'raised' | 'goal' | 'name'> = [
+      'progress',
+      'raised',
+      'goal',
+      'name',
+    ];
     const currentIndex = sortOrder.indexOf(sortBy);
     const nextIndex = (currentIndex + 1) % sortOrder.length;
     setSortBy(sortOrder[nextIndex]);
@@ -98,7 +117,9 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Campaign Progress Overview</h2>
-              <p className="text-sm text-gray-600 mt-1">Detailed view of all campaign goals and progress</p>
+              <p className="text-sm text-gray-600 mt-1">
+                Detailed view of all campaign goals and progress
+              </p>
             </div>
           </div>
           <button
@@ -110,7 +131,10 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <div
+          className="flex-1 overflow-y-auto p-6 scrollbar-hide"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           <div className="space-y-6">
             {/* Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -131,7 +155,8 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                 <div className="text-xs font-medium text-gray-600 mb-1">Completed</div>
                 <p className="text-2xl font-bold text-gray-800">{completedCount}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {campaigns.length > 0 ? Math.round((completedCount / campaigns.length) * 100) : 0}% of total
+                  {campaigns.length > 0 ? Math.round((completedCount / campaigns.length) * 100) : 0}
+                  % of total
                 </p>
               </div>
 
@@ -161,7 +186,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                 <Filter className="w-4 h-4 text-gray-500" />
                 <select
                   value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  onChange={(e) => setFilterStatus(e.target.value as ProgressFilterStatus)}
                   className="px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 text-sm bg-white"
                 >
                   <option value="all">All Status</option>
@@ -185,18 +210,24 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
             {/* Campaign Progress Chart */}
             <div className="bg-white rounded-xl p-6 border border-gray-100">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-gray-900">Campaign Progress Distribution</h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Campaign Progress Distribution
+                </h3>
                 <div className="text-sm text-gray-500">Top 10 campaigns by progress</div>
               </div>
-              
+
               <div className="space-y-4">
                 {sortedCampaigns.slice(0, 10).map((campaign, index) => (
                   <div key={campaign.id} className="flex items-center gap-4">
                     <div className="w-4 text-xs text-gray-500 text-right">{index + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-gray-900 truncate">{campaign.name}</span>
-                        <span className="text-sm font-semibold text-gray-700">{campaign.percentage}%</span>
+                        <span className="text-sm font-medium text-gray-900 truncate">
+                          {campaign.name}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-700">
+                          {campaign.percentage}%
+                        </span>
                       </div>
                       <div className="w-full bg-gray-100 rounded-full h-2">
                         <div
@@ -204,10 +235,10 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                             campaign.status === 'exceeded'
                               ? 'bg-slate-600'
                               : campaign.status === 'good'
-                              ? 'bg-stone-600'
-                              : campaign.status === 'warning'
-                              ? 'bg-neutral-600'
-                              : 'bg-gray-600'
+                                ? 'bg-stone-600'
+                                : campaign.status === 'warning'
+                                  ? 'bg-neutral-600'
+                                  : 'bg-gray-600'
                           }`}
                           style={{ width: `${Math.min(100, campaign.percentage)}%` }}
                         />
@@ -219,7 +250,7 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                   </div>
                 ))}
               </div>
-              
+
               {sortedCampaigns.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <div className="text-sm">No campaign data available</div>
@@ -233,7 +264,9 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                 <div className="text-center py-12 text-gray-500">
                   <Target className="mx-auto h-12 w-12 text-gray-300 mb-3" />
                   <p className="text-base font-medium mb-2 text-gray-700">No campaigns found</p>
-                  <p className="text-sm text-gray-500">Try adjusting your search or filter criteria.</p>
+                  <p className="text-sm text-gray-500">
+                    Try adjusting your search or filter criteria.
+                  </p>
                 </div>
               ) : (
                 sortedCampaigns.map((campaign) => (
@@ -245,30 +278,32 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                       campaign.status === 'exceeded'
                         ? 'border-slate-100 bg-slate-50/30'
                         : campaign.status === 'good'
-                        ? 'border-gray-100 bg-gray-50/30'
-                        : campaign.status === 'warning'
-                        ? 'border-stone-100 bg-stone-50/30'
-                        : 'border-neutral-100 bg-neutral-50/30'
+                          ? 'border-gray-100 bg-gray-50/30'
+                          : campaign.status === 'warning'
+                            ? 'border-stone-100 bg-stone-50/30'
+                            : 'border-neutral-100 bg-neutral-50/30'
                     }`}
                     onClick={() => onCampaignClick?.(campaign.id)}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <div className={campaign.statusColor}>
-                          {getStatusIcon(campaign.status)}
-                        </div>
+                        <div className={campaign.statusColor}>{getStatusIcon(campaign.status)}</div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-base font-semibold text-gray-900 mb-1">{campaign.name}</h4>
+                          <h4 className="text-base font-semibold text-gray-900 mb-1">
+                            {campaign.name}
+                          </h4>
                           <div className="flex items-center gap-2">
-                            <span className={`text-xs font-medium px-2 py-1 rounded-md ${
-                              campaign.status === 'exceeded'
-                                ? 'bg-slate-100 text-slate-700'
-                                : campaign.status === 'good'
-                                ? 'bg-gray-100 text-gray-700'
-                                : campaign.status === 'warning'
-                                ? 'bg-stone-100 text-stone-700'
-                                : 'bg-neutral-100 text-neutral-700'
-                            }`}>
+                            <span
+                              className={`text-xs font-medium px-2 py-1 rounded-md ${
+                                campaign.status === 'exceeded'
+                                  ? 'bg-slate-100 text-slate-700'
+                                  : campaign.status === 'good'
+                                    ? 'bg-gray-100 text-gray-700'
+                                    : campaign.status === 'warning'
+                                      ? 'bg-stone-100 text-stone-700'
+                                      : 'bg-neutral-100 text-neutral-700'
+                              }`}
+                            >
                               {getStatusLabel(campaign.status)}
                             </span>
                           </div>
@@ -293,11 +328,15 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Raised</div>
-                        <div className="text-base font-semibold text-gray-900">{formatCurrency(campaign.raised)}</div>
+                        <div className="text-base font-semibold text-gray-900">
+                          {formatCurrency(campaign.raised)}
+                        </div>
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-gray-500 mb-1">Goal</div>
-                        <div className="text-base font-semibold text-gray-900">{formatGbpMajor(campaign.goal)}</div>
+                        <div className="text-base font-semibold text-gray-900">
+                          {formatGbpMajor(campaign.goal)}
+                        </div>
                       </div>
                     </div>
 
@@ -305,7 +344,10 @@ export const CampaignProgressDialog: React.FC<CampaignProgressDialogProps> = ({
                     {campaign.status !== 'exceeded' && (
                       <div className="mt-3 pt-3 border-t border-gray-100">
                         <div className="text-xs text-gray-600">
-                          Remaining: <span className="font-medium text-gray-900">{formatGbpMajor(campaign.goal - (campaign.raised / 100))}</span>
+                          Remaining:{' '}
+                          <span className="font-medium text-gray-900">
+                            {formatGbpMajor(campaign.goal - campaign.raised / 100)}
+                          </span>
                         </div>
                       </div>
                     )}

@@ -6,6 +6,10 @@ interface ResultScreenProps {
   onEmailConfirmation?: () => void;
   onReturnToStart: () => void;
   onRetry?: () => void;
+  accentColorHex?: string;
+  thankYouMessage?: string | null;
+  organizationDisplayName?: string;
+  organizationLogoUrl?: string | null;
 }
 
 export function ResultScreen({
@@ -13,7 +17,20 @@ export function ResultScreen({
   onEmailConfirmation,
   onReturnToStart,
   onRetry,
+  accentColorHex,
+  thankYouMessage,
+  organizationDisplayName,
+  organizationLogoUrl,
 }: ResultScreenProps) {
+  const accentColor =
+    typeof accentColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(accentColorHex.trim())
+      ? accentColorHex.trim().toUpperCase()
+      : '#0E8F5A';
+  const resolvedThankYouMessage =
+    typeof thankYouMessage === 'string' && thankYouMessage.trim()
+      ? thankYouMessage.trim()
+      : 'Thank you for using our donation kiosk.';
+
   if (result.success) {
     return (
       <div className="min-h-screen flex flex-col bg-linear-to-b from-green-50 via-white to-emerald-50/70 relative overflow-hidden">
@@ -51,6 +68,18 @@ export function ResultScreen({
             }
           `}</style>
           <div className="text-left">
+            {organizationDisplayName ? (
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1 text-xs font-medium text-slate-600">
+                {organizationLogoUrl ? (
+                  <img
+                    src={organizationLogoUrl}
+                    alt={organizationDisplayName}
+                    className="h-4 w-4 rounded-full object-cover"
+                  />
+                ) : null}
+                <span>{organizationDisplayName}</span>
+              </div>
+            ) : null}
             <h1 className="text-xl sm:text-2xl result-hero-title">Donation Complete</h1>
             <p className="text-sm result-hero-subtitle">Your generosity has been received.</p>
           </div>
@@ -60,7 +89,10 @@ export function ResultScreen({
           <div className="w-full max-w-xl">
             <div className="bg-white/90 rounded-3xl border border-green-100 shadow-xl overflow-hidden">
               {/* Success Header */}
-              <div className="bg-linear-to-r from-green-600 to-emerald-600 text-white px-6 py-5 text-center">
+              <div
+                className="text-white px-6 py-5 text-center"
+                style={{ backgroundColor: accentColor }}
+              >
                 <div className="flex justify-center mb-3">
                   <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center shadow-lg">
                     <CheckCircle className="w-10 h-10" />
@@ -133,7 +165,11 @@ export function ResultScreen({
                   {onEmailConfirmation && (
                     <button
                       onClick={onEmailConfirmation}
-                      className="w-full h-14 rounded-xl font-medium text-white flex items-center justify-center gap-2 transition-all bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-200/70"
+                      className="w-full h-14 rounded-xl font-medium text-white flex items-center justify-center gap-2 transition-all shadow-lg"
+                      style={{
+                        backgroundColor: accentColor,
+                        boxShadow: `${accentColor}40 0px 10px 22px`,
+                      }}
                     >
                       <Mail className="w-5 h-5" />
                       Send Receipt to Email
@@ -142,7 +178,8 @@ export function ResultScreen({
 
                   <button
                     onClick={onReturnToStart}
-                    className="w-full max-w-md mx-auto h-16 rounded-xl font-semibold text-lg border-2 border-green-200 text-green-800 flex items-center justify-center gap-2 hover:bg-green-50 transition-colors"
+                    className="w-full max-w-md mx-auto h-16 rounded-xl font-semibold text-lg border-2 flex items-center justify-center gap-2 transition-colors"
+                    style={{ borderColor: `${accentColor}55`, color: accentColor }}
                   >
                     <Home className="w-5 h-5" />
                     Browse Campaigns
@@ -151,7 +188,7 @@ export function ResultScreen({
 
                 {/* Footer Message */}
                 <div className="mt-8 text-center">
-                  <p className="text-sm text-gray-500">Thank you for using our donation kiosk.</p>
+                  <p className="text-sm text-gray-500">{resolvedThankYouMessage}</p>
                 </div>
               </div>
             </div>
@@ -219,7 +256,11 @@ export function ResultScreen({
               <div className="space-y-4">
                 <button
                   onClick={onRetry || onReturnToStart}
-                  className="w-full max-w-md mx-auto h-14 rounded-xl font-medium text-white flex items-center justify-center gap-2 transition-all bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-200/70"
+                  className="w-full max-w-md mx-auto h-14 rounded-xl font-medium text-white flex items-center justify-center gap-2 transition-all shadow-lg"
+                  style={{
+                    backgroundColor: accentColor,
+                    boxShadow: `${accentColor}40 0px 10px 22px`,
+                  }}
                 >
                   <RefreshCw className="w-5 h-5" />
                   Try Again
@@ -227,7 +268,8 @@ export function ResultScreen({
 
                 <button
                   onClick={onReturnToStart}
-                  className="w-full max-w-md mx-auto h-16 rounded-xl font-semibold text-lg border-2 border-green-200 text-green-800 flex items-center justify-center gap-2 hover:bg-green-50 transition-colors"
+                  className="w-full max-w-md mx-auto h-16 rounded-xl font-semibold text-lg border-2 flex items-center justify-center gap-2 transition-colors"
+                  style={{ borderColor: `${accentColor}55`, color: accentColor }}
                 >
                   <Home className="w-5 h-5" />
                   Browse Campaigns

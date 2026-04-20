@@ -10,6 +10,7 @@ interface GiftAidBoostPanelProps {
   currency: string;
   campaignTitle: string;
   onAccept: () => void;
+  accentColorHex?: string;
 }
 
 export const GiftAidBoostPanel: React.FC<GiftAidBoostPanelProps> = ({
@@ -20,7 +21,12 @@ export const GiftAidBoostPanel: React.FC<GiftAidBoostPanelProps> = ({
   currency,
   campaignTitle,
   onAccept,
+  accentColorHex,
 }) => {
+  const accentColor =
+    typeof accentColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(accentColorHex.trim())
+      ? accentColorHex.trim().toUpperCase()
+      : '#0E8F5A';
   const currentAmount = isCustomAmount ? parseFloat(customAmountValue) || 0 : amount;
   const giftAidAmount = currentAmount * 0.25;
   const totalWithGiftAid = currentAmount + giftAidAmount;
@@ -66,7 +72,7 @@ export const GiftAidBoostPanel: React.FC<GiftAidBoostPanelProps> = ({
       {/* Icon */}
       <div className="flex justify-center mb-3 sm:mb-4 relative z-10">
         <div className="w-11 h-11 sm:w-14 sm:h-14 bg-gray-100/50 rounded-full flex items-center justify-center shadow-lg shadow-emerald-100">
-          <ArrowUp className="w-6 h-6 sm:w-7 sm:h-7 text-[#0E8F5A]" />
+          <ArrowUp className="w-6 h-6 sm:w-7 sm:h-7" style={{ color: accentColor }} />
         </div>
       </div>
 
@@ -76,11 +82,11 @@ export const GiftAidBoostPanel: React.FC<GiftAidBoostPanelProps> = ({
           <div className="space-y-6">
             <h1 className="text-[20px] sm:text-[24px] lg:text-[30px] font-semibold text-slate-900 mb-2 sm:mb-3 tracking-[-0.01em] leading-[1.3]">
               Turn your donation into{' '}
-              <span className="text-[#0E8F5A]">
+              <span style={{ color: accentColor }}>
                 {isValidAmount ? formatAmount(totalWithGiftAid) : formatAmount(0)}
               </span>{' '}
               for free
-              <span className="text-[#0E8F5A]">.</span>
+              <span style={{ color: accentColor }}>.</span>
             </h1>
 
             {/* Custom Amount Input */}
@@ -95,7 +101,11 @@ export const GiftAidBoostPanel: React.FC<GiftAidBoostPanelProps> = ({
                   max="10000"
                   value={customAmountValue}
                   onChange={(e) => onCustomAmountChange(e.target.value)}
-                  className="w-full h-14 sm:h-16 pl-12 pr-4 text-center text-[26px] sm:text-[32px] font-semibold border-2 border-gray-200 rounded-lg focus:outline-none focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10 bg-white/90"
+                  className="w-full h-14 sm:h-16 pl-12 pr-4 text-center text-[26px] sm:text-[32px] font-semibold border-2 border-gray-200 rounded-lg focus:outline-none bg-white/90"
+                  style={{
+                    borderColor: customAmountValue ? `${accentColor}55` : undefined,
+                    boxShadow: customAmountValue ? `0 0 0 1px ${accentColor}22` : undefined,
+                  }}
                   placeholder="0"
                 />
               </div>
@@ -107,15 +117,18 @@ export const GiftAidBoostPanel: React.FC<GiftAidBoostPanelProps> = ({
         ) : (
           <h1 className="text-[20px] sm:text-[24px] lg:text-[30px] font-semibold text-slate-900 mb-3 sm:mb-4 tracking-[-0.01em] leading-[1.3]">
             Turn your {formatAmount(currentAmount)} into{' '}
-            <span className="text-[#0E8F5A]">{formatAmount(totalWithGiftAid)}</span> for free
-            <span className="text-[#0E8F5A]">.</span>
+            <span style={{ color: accentColor }}>{formatAmount(totalWithGiftAid)}</span> for free
+            <span style={{ color: accentColor }}>.</span>
           </h1>
         )}
       </div>
 
       {/* Campaign Info */}
       <div className="mb-3 sm:mb-4 p-2.5 sm:p-3.5 bg-gray-100/50 border border-[rgba(15,23,42,0.08)] rounded-xl text-center relative z-10">
-        <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[#0E8F5A] mb-2 font-medium">
+        <div
+          className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] mb-2 font-medium"
+          style={{ color: accentColor }}
+        >
           <Sparkles className="w-3.5 h-3.5" />
           Donating to
         </div>
@@ -140,6 +153,7 @@ export const GiftAidBoostPanel: React.FC<GiftAidBoostPanelProps> = ({
           onClick={onAccept}
           disabled={!isValidAmount}
           className="w-full h-12 sm:h-14 rounded-full font-semibold text-[15px] sm:text-[17px] text-white transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed bg-[#0E8F5A] hover:brightness-[1.02] active:brightness-[0.98] shadow-[0_12px_32px_rgba(15,23,42,0.08)] tracking-[0.01em]"
+          style={{ backgroundColor: accentColor }}
         >
           Yes, Boost My Donation
         </button>

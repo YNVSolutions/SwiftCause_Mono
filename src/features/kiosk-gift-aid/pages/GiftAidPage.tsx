@@ -13,6 +13,7 @@ interface GiftAidPageProps {
   currency: string;
   initialDonorName?: string;
   initialDonorEmail?: string;
+  accentColorHex?: string;
   onAcceptGiftAid: (details: GiftAidDetails) => void;
   onBack: () => void;
 }
@@ -24,9 +25,14 @@ export const GiftAidPage: React.FC<GiftAidPageProps> = ({
   currency,
   initialDonorName = '',
   initialDonorEmail = '',
+  accentColorHex,
   onAcceptGiftAid,
   onBack,
 }) => {
+  const accentColor =
+    typeof accentColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(accentColorHex.trim())
+      ? accentColorHex.trim().toUpperCase()
+      : '#0E8F5A';
   const [showDetails, setShowDetails] = useState(false);
   const [showEmailGate, setShowEmailGate] = useState(false);
   const [checkingSavedProfile, setCheckingSavedProfile] = useState(false);
@@ -116,7 +122,8 @@ export const GiftAidPage: React.FC<GiftAidPageProps> = ({
               ? () => setShowEmailGate(false)
               : onBack
         }
-        className="absolute left-4 sm:left-6 top-4 sm:top-5 z-20 inline-flex items-center gap-2 text-[#0E8F5A] hover:text-[#0C8050] text-sm font-medium hover:underline underline-offset-4"
+        className="absolute left-4 sm:left-6 top-4 sm:top-5 z-20 inline-flex items-center gap-2 text-sm font-medium hover:underline underline-offset-4"
+        style={{ color: accentColor }}
       >
         <ArrowLeft className="w-4 h-4" />
         Back
@@ -141,6 +148,7 @@ export const GiftAidPage: React.FC<GiftAidPageProps> = ({
                   onCustomAmountChange={setCustomAmountValue}
                   currency={currency}
                   campaignTitle={campaign.title}
+                  accentColorHex={accentColor}
                   onAccept={handleAcceptBoost}
                 />
               </div>
@@ -169,6 +177,10 @@ export const GiftAidPage: React.FC<GiftAidPageProps> = ({
               }}
               className="w-full h-11 px-4 rounded-[14px] border border-slate-200 focus:border-[#0E8F5A] focus:ring-2 focus:ring-[#0E8F5A]/10 text-[14px] sm:text-[15px] bg-white outline-none"
               placeholder="e.g. your@email.com"
+              style={{
+                borderColor: donorEmail ? `${accentColor}66` : undefined,
+                boxShadow: donorEmail ? `0 0 0 1px ${accentColor}22` : undefined,
+              }}
             />
             {emailError && (
               <p className="text-red-500 text-[12px] sm:text-[13px] mt-2">{emailError}</p>
@@ -190,6 +202,7 @@ export const GiftAidPage: React.FC<GiftAidPageProps> = ({
                 onClick={handleEmailContinue}
                 disabled={checkingSavedProfile}
                 className="flex-1 h-11 rounded-[14px] bg-[#0E8F5A] text-white font-semibold disabled:opacity-60"
+                style={{ backgroundColor: accentColor }}
               >
                 {checkingSavedProfile ? 'Checking...' : 'Continue'}
               </button>
@@ -209,6 +222,7 @@ export const GiftAidPage: React.FC<GiftAidPageProps> = ({
                   currency={currency}
                   campaignTitle={campaign.title}
                   organizationId={campaign.organizationId || ''}
+                  accentColorHex={accentColor}
                   initialFullName={initialDonorName}
                   initialDonorEmail={donorEmail}
                   collectDonorEmail={false}

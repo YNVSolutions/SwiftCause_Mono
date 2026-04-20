@@ -15,6 +15,12 @@ export interface CampaignListState {
 export interface CampaignListPageProps {
   state: CampaignListState;
   kioskSession: KioskSession | null;
+  organizationBranding?: {
+    displayName?: string;
+    logoUrl?: string | null;
+    accentColorHex?: string;
+    idleImageUrl?: string | null;
+  };
   onSelectCampaign: (campaign: Campaign, amount?: number) => void;
   onViewDetails: (campaign: Campaign) => void;
   onLogout: () => void;
@@ -24,6 +30,7 @@ export interface CampaignListPageProps {
 export interface CampaignCardProps {
   campaign: Campaign;
   currency: string;
+  accentColorHex?: string;
   onSelectAmount: (amount: number) => void;
   onDonate: () => void;
   onCardClick: () => void;
@@ -33,6 +40,7 @@ export interface CampaignCardProps {
 export interface CampaignGridProps {
   campaigns: Campaign[];
   currency: string;
+  accentColorHex?: string;
   onSelectCampaign: (campaign: Campaign, amount?: number) => void;
   onViewDetails: (campaign: Campaign) => void;
 }
@@ -41,6 +49,7 @@ export interface CampaignGridProps {
 export interface CampaignListLayoutProps {
   campaigns: Campaign[];
   currency: string;
+  accentColorHex?: string;
   onSelectCampaign: (campaign: Campaign, amount?: number) => void;
   onViewDetails: (campaign: Campaign) => void;
 }
@@ -49,6 +58,7 @@ export interface CampaignListLayoutProps {
 export interface CampaignCarouselProps {
   campaigns: Campaign[];
   currency: string;
+  accentColorHex?: string;
   onSelectCampaign: (campaign: Campaign, amount?: number) => void;
   onViewDetails: (campaign: Campaign) => void;
 }
@@ -69,6 +79,8 @@ export interface CampaignListHeaderProps {
 export interface LoadingStateProps {
   message?: string;
   submessage?: string;
+  accentColorHex?: string;
+  organizationId?: string | null;
 }
 
 // Props for error state

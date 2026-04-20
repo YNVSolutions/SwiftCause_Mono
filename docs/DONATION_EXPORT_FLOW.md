@@ -19,6 +19,7 @@ This flow replaces client-side CSV generation with a backend function so exports
 
 - Admin-triggered donation CSV export
 - Date range filtering (`current_month`, `past_month`, `custom`)
+- Server-side filter support (`searchTerm`, `status`, `campaignId`, `recurring`, `date`)
 - Backend permission and organization checks
 - CSV generation and download response
 
@@ -87,11 +88,12 @@ sequenceDiagram
 
   Admin->>UI: Click Export
   UI->>UI: Validate custom dates (if selected)
-  UI->>API: exportDonations({ organizationId, range, startDate?, endDate? })
+  UI->>API: exportDonations({ organizationId, range, startDate?, endDate?, filters? })
   API->>API: get Firebase ID token
   API->>FN: POST + Authorization: Bearer <token>
   FN->>FN: verifyAuth + permission + org scope
   FN->>FN: resolveDateRange(range, startDate, endDate)
+  FN->>FN: normalize and apply export filters
   FN->>FS: Query donations by organizationId
   FS-->>FN: Donation docs
   FN->>FN: Filter by effective timestamp
@@ -136,6 +138,13 @@ Conditional:
 
 - `startDate: "YYYY-MM-DD"` (required for `custom`)
 - `endDate: "YYYY-MM-DD"` (required for `custom`)
+- `filters?: {`
+  - `searchTerm?: string`
+  - `status?: string`
+  - `campaignId?: string`
+  - `recurring?: "all" | "recurring" | "one_time" | string`
+  - `date?: "YYYY-MM-DD"`
+- `}`
 
 Error behavior:
 
@@ -211,6 +220,12 @@ Filter:
   1. `paymentCompletedAt` (primary)
   2. `timestamp` (fallback)
   3. `createdAt` (fallback)
+- After date-range filtering, additional server-side export filters are applied:
+  - `searchTerm` matches donor name, payment intent id, transaction id, or campaign display name
+  - `status` matches `paymentStatus`
+  - `campaignId` matches donation campaign
+  - `recurring` maps to recurring vs one-time donations
+  - `date` matches effective timestamp date (`YYYY-MM-DD`)
 
 Records without a parseable effective timestamp are excluded.
 

@@ -4,14 +4,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ResultScreen } from '@/views/campaigns/ResultScreen';
 import { useAuth } from '@/shared/lib/auth-provider';
 import { useState, useEffect, useCallback, Suspense } from 'react';
-import { PaymentResult } from '@/shared/types';
+import { Donation, PaymentResult } from '@/shared/types';
 import { KioskLoading } from '@/shared/ui/KioskLoading';
+import { useOrganization } from '@/shared/lib/hooks/useOrganization';
+import { getCampaignById } from '@/shared/api/firestoreService';
 
 function ResultContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { userRole } = useAuth();
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const { organization } = useOrganization(organizationId);
 
   const fetchMagicLinkToken = useCallback(async (transactionId: string, retryCount = 0) => {
     const maxRetries = 15; // Increased from 5 to 15 (30 seconds total)
@@ -73,9 +77,26 @@ function ResultContent() {
   useEffect(() => {
     // Get payment result from sessionStorage or URL params
     const storedResult = sessionStorage.getItem('paymentResult');
+    const storedDonation = sessionStorage.getItem('donation');
     if (storedResult) {
       const result = JSON.parse(storedResult);
       setPaymentResult(result);
+      if (storedDonation) {
+        try {
+          const donation = JSON.parse(storedDonation) as Donation;
+          if (donation.organizationId) {
+            setOrganizationId(donation.organizationId);
+          } else if (donation.campaignId) {
+            void getCampaignById(donation.campaignId).then((campaign) => {
+              if (campaign?.organizationId) {
+                setOrganizationId(campaign.organizationId);
+              }
+            });
+          }
+        } catch {
+          // ignore parse failures
+        }
+      }
 
       // Fetch magic link token if transaction was successful
       if (result.success && result.transactionId) {
@@ -110,6 +131,9 @@ function ResultContent() {
     }
     if (paymentResult?.campaignTitle) {
       params.set('campaignTitle', paymentResult.campaignTitle);
+    }
+    if (organizationId) {
+      params.set('organizationId', organizationId);
     }
     const query = params.toString();
     router.push(query ? `/email-confirmation?${query}` : '/email-confirmation');
@@ -162,6 +186,10 @@ function ResultContent() {
       onEmailConfirmation={paymentResult.success ? handleEmailConfirmation : undefined}
       onReturnToStart={handleReturnToStart}
       onRetry={paymentResult.success ? undefined : handleRetry}
+      accentColorHex={organization?.settings?.accentColorHex}
+      thankYouMessage={organization?.settings?.thankYouMessage}
+      organizationDisplayName={organization?.settings?.displayName || organization?.name}
+      organizationLogoUrl={organization?.settings?.logoUrl}
     />
   );
 }

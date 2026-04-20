@@ -4,6 +4,14 @@ import { LoadingStateProps } from '../types';
 
 export const LoadingState: React.FC<LoadingStateProps> = ({
   message = 'Loading campaign details...',
+  accentColorHex,
+  organizationId,
 }) => {
-  return <KioskLoading message={message} />;
+  return (
+    <KioskLoading
+      message={message}
+      accentColorHex={accentColorHex}
+      organizationId={organizationId}
+    />
+  );
 };

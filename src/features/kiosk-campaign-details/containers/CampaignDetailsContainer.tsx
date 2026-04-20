@@ -8,12 +8,14 @@ interface CampaignDetailsContainerProps {
   loading: boolean;
   error: string | null;
   currency: string;
+  accentColorHex?: string;
+  organizationId?: string | null;
   initialAmount?: number | null;
   onBack: () => void;
   onDonate: (
     campaign: Campaign,
     amount: number,
-    options: { isRecurring: boolean; recurringInterval: 'monthly' | 'quarterly' | 'yearly' }
+    options: { isRecurring: boolean; recurringInterval: 'monthly' | 'quarterly' | 'yearly' },
   ) => void;
 }
 
@@ -25,6 +27,8 @@ export const CampaignDetailsContainer: React.FC<CampaignDetailsContainerProps> =
   loading,
   error,
   currency,
+  accentColorHex,
+  organizationId,
   initialAmount,
   onBack,
   onDonate,
@@ -41,7 +45,7 @@ export const CampaignDetailsContainer: React.FC<CampaignDetailsContainerProps> =
     (amount: number) => {
       actions.setSelectedAmount(amount);
     },
-    [actions]
+    [actions],
   );
 
   // Donate button click - use selected or custom amount
@@ -59,7 +63,7 @@ export const CampaignDetailsContainer: React.FC<CampaignDetailsContainerProps> =
         sessionStorage.setItem('donorEmail', email);
         sessionStorage.setItem('donorName', actions.getDonorName());
       }
-      
+
       onDonate(campaign, amount, {
         isRecurring: state.isRecurring,
         recurringInterval: state.recurringInterval,
@@ -71,6 +75,8 @@ export const CampaignDetailsContainer: React.FC<CampaignDetailsContainerProps> =
     <CampaignDetailsPage
       state={state}
       currency={currency}
+      accentColorHex={accentColorHex}
+      organizationId={organizationId}
       onBack={onBack}
       onSelectAmount={handleSelectAmount}
       onCustomAmountChange={actions.setCustomAmount}

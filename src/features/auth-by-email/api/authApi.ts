@@ -247,6 +247,8 @@ export const authApi = {
           'create_user',
           'edit_user',
           'delete_user',
+          'change_org_identity',
+          'change_org_branding',
           'manage_permissions',
         ],
         isActive: true,

@@ -9,7 +9,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   currentIndex,
   onIndexChange,
   fallbackImage = '/campaign-fallback.svg',
+  accentColorHex,
 }) => {
+  const accentColor =
+    typeof accentColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(accentColorHex.trim())
+      ? accentColorHex.trim().toUpperCase()
+      : '#0E8F5A';
   const allImages = images.length > 0 ? images : [fallbackImage];
   const hasMultipleImages = allImages.length > 1;
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -75,14 +80,14 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             onClick={handlePrev}
             className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md transition-colors z-10 border border-[rgba(15,23,42,0.08)]"
           >
-            <ChevronLeft className="w-6 h-6 text-[#0E8F5A]" />
+            <ChevronLeft className="w-6 h-6" style={{ color: accentColor }} />
           </button>
           <button
             type="button"
             onClick={handleNext}
             className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md transition-colors z-10 border border-[rgba(15,23,42,0.08)]"
           >
-            <ChevronRight className="w-6 h-6 text-[#0E8F5A]" />
+            <ChevronRight className="w-6 h-6" style={{ color: accentColor }} />
           </button>
         </>
       )}
@@ -96,8 +101,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               key={index}
               onClick={(e) => handleDotClick(e, index)}
               className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                index === safeIndex ? 'bg-[#0E8F5A]' : 'bg-gray-200'
+                index === safeIndex ? 'bg-gray-200' : 'bg-gray-200'
               }`}
+              style={index === safeIndex ? { backgroundColor: accentColor } : undefined}
             />
           ))}
         </div>

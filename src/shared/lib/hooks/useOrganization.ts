@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Organization } from '../../types';
+import {
+  clearCachedOrganization,
+  getCachedOrganization,
+  setCachedOrganization,
+} from '../organizationBrandingCache';
 
 export interface StripeAccountInfo {
   accountId: string;
@@ -10,8 +15,12 @@ export interface StripeAccountInfo {
 }
 
 export const useOrganization = (organizationId: string | null) => {
-  const [organization, setOrganization] = useState<Organization | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [organization, setOrganization] = useState<Organization | null>(() =>
+    organizationId ? getCachedOrganization(organizationId) : null,
+  );
+  const [loading, setLoading] = useState(
+    () => !organizationId || !getCachedOrganization(organizationId),
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,7 +30,9 @@ export const useOrganization = (organizationId: string | null) => {
       return;
     }
 
-    setLoading(true);
+    const cachedOrganization = getCachedOrganization(organizationId);
+    setOrganization(cachedOrganization);
+    setLoading(!cachedOrganization);
     setError(null);
 
     const orgRef = doc(db, 'organizations', organizationId);
@@ -30,10 +41,13 @@ export const useOrganization = (organizationId: string | null) => {
       orgRef,
       (docSnap) => {
         if (docSnap.exists()) {
-          setOrganization({ id: docSnap.id, ...docSnap.data() } as Organization);
+          const nextOrganization = { id: docSnap.id, ...docSnap.data() } as Organization;
+          setOrganization(nextOrganization);
+          setCachedOrganization(organizationId, nextOrganization);
         } else {
           setOrganization(null);
           setError('Organization not found.');
+          clearCachedOrganization(organizationId);
         }
         setLoading(false);
       },

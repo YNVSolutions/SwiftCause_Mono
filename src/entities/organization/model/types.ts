@@ -1,2 +1,2 @@
 // Re-export types from shared layer
-export type { Organization } from '../../../shared/types';
+export type { Organization, OrganizationSettings } from '../../../shared/types';

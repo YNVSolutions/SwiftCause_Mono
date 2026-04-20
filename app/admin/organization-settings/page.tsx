@@ -1,12 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { AdminDashboard } from '@/views/admin/AdminDashboard';
+import { OrganizationSettings } from '@/views/admin/OrganizationSettings';
 import { useAuth } from '@/shared/lib/auth-provider';
 
-export default function AdminDashboardPage() {
+export default function AdminOrganizationSettingsPage() {
   const router = useRouter();
-  const { currentAdminSession, hasPermission, handleLogout } = useAuth();
+  const { currentAdminSession, hasPermission, handleLogout, handleOrganizationSwitch } = useAuth();
 
   const handleNavigate = (screen: string) => {
     if (screen === 'admin' || screen === 'admin-dashboard') {
@@ -22,11 +22,12 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <AdminDashboard
+    <OrganizationSettings
       onNavigate={handleNavigate}
       onLogout={handleLogout}
       userSession={currentAdminSession}
       hasPermission={hasPermission}
+      onOrganizationSwitch={handleOrganizationSwitch}
     />
   );
 }

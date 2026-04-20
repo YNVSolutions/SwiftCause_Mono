@@ -45,6 +45,7 @@ const { kioskLogin } = require('./handlers/kiosk');
 const { completeEmailVerification } = require('./handlers/verification');
 const { logAuthEvent } = require('./handlers/auth');
 const { createConnectionToken } = require('./handlers/terminal');
+const { updateOrganizationSettings } = require('./handlers/organizationSettings');
 
 // Crypto for token hashing
 const crypto = require('crypto');
@@ -155,6 +156,7 @@ exports.createConnectionToken = functions.https.onRequest(
 exports.createStripeAccountForNewOrg = createStripeAccountForNewOrg;
 exports.sendWelcomeEmailForNewOrg = sendWelcomeEmailForNewOrg;
 exports.kioskLogin = functions.https.onRequest(kioskLogin);
+exports.updateOrganizationSettings = functions.https.onRequest(updateOrganizationSettings);
 
 // Export v2 function with secret
 exports.verifySignupRecaptcha = onRequest({ secrets: [recaptchaSecretKey] }, verifySignupRecaptcha);

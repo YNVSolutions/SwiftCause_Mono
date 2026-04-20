@@ -7,6 +7,7 @@ interface EmailConfirmationScreenProps {
   receiptReferenceId?: string;
   campaignName?: string;
   initialEmail?: string;
+  accentColorHex?: string;
   onComplete: () => void;
 }
 
@@ -15,8 +16,15 @@ export function EmailConfirmationScreen({
   receiptReferenceId,
   campaignName,
   initialEmail = '',
+  accentColorHex,
   onComplete,
 }: EmailConfirmationScreenProps) {
+  const accentColor =
+    typeof accentColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(accentColorHex.trim())
+      ? accentColorHex.trim().toUpperCase()
+      : '#0E8F5A';
+  const accentSoft = `${accentColor}14`;
+  const accentBorder = `${accentColor}33`;
   const [email, setEmail] = useState(initialEmail);
   const [isSending, setIsSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -49,16 +57,34 @@ export function EmailConfirmationScreen({
 
   if (emailSent) {
     return (
-      <div className="min-h-screen flex flex-col bg-linear-to-b from-green-50 via-white to-emerald-50/70 relative overflow-hidden">
-        <div className="absolute -top-24 right-0 h-80 w-80 rounded-full bg-green-100 blur-3xl opacity-70" />
-        <div className="absolute top-1/3 -left-24 h-72 w-72 rounded-full bg-emerald-100 blur-3xl opacity-60" />
-        <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-green-50 blur-3xl opacity-90" />
+      <div
+        className="min-h-screen flex flex-col relative overflow-hidden"
+        style={{ background: `linear-gradient(to bottom, ${accentSoft}, #ffffff, ${accentSoft})` }}
+      >
+        <div
+          className="absolute -top-24 right-0 h-80 w-80 rounded-full blur-3xl opacity-70"
+          style={{ backgroundColor: `${accentColor}22` }}
+        />
+        <div
+          className="absolute top-1/3 -left-24 h-72 w-72 rounded-full blur-3xl opacity-60"
+          style={{ backgroundColor: `${accentColor}1A` }}
+        />
+        <div
+          className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full blur-3xl opacity-90"
+          style={{ backgroundColor: `${accentColor}12` }}
+        />
 
         <main className="relative z-10 flex-1 flex items-center justify-center px-4 pb-8">
           <div className="w-full max-w-xl">
-            <div className="bg-white/90 rounded-3xl border border-green-100 shadow-xl overflow-hidden">
+            <div
+              className="bg-white/90 rounded-3xl shadow-xl overflow-hidden"
+              style={{ border: `1px solid ${accentBorder}` }}
+            >
               {/* Success Header */}
-              <div className="bg-linear-to-r from-green-600 to-emerald-600 text-white px-6 py-5 text-center">
+              <div
+                className="text-white px-6 py-5 text-center"
+                style={{ backgroundColor: accentColor }}
+              >
                 <div className="flex justify-center mb-3">
                   <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center shadow-lg">
                     <CheckCircle className="w-10 h-10" />
@@ -72,14 +98,16 @@ export function EmailConfirmationScreen({
                 {/* Message */}
                 <div className="text-center mb-8">
                   <p className="text-gray-600 leading-relaxed">
-                    Please check your email inbox for the receipt. If you don't see it, please check your spam folder.
+                    Please check your email inbox for the receipt. If you don't see it, please check
+                    your spam folder.
                   </p>
                 </div>
 
                 {/* Action Button */}
                 <button
                   onClick={onComplete}
-                  className="w-full h-14 rounded-xl font-medium text-white flex items-center justify-center gap-2 transition-all bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-200/70"
+                  className="w-full h-14 rounded-xl font-medium text-white flex items-center justify-center gap-2 transition-all hover:brightness-95"
+                  style={{ backgroundColor: accentColor }}
                 >
                   <Home className="w-5 h-5" />
                   Back to Campaigns
@@ -87,9 +115,7 @@ export function EmailConfirmationScreen({
 
                 {/* Footer Message */}
                 <div className="mt-8 text-center">
-                  <p className="text-sm text-gray-500">
-                    Thank you for your donation!
-                  </p>
+                  <p className="text-sm text-gray-500">Thank you for your donation!</p>
                 </div>
               </div>
             </div>
@@ -100,37 +126,73 @@ export function EmailConfirmationScreen({
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-linear-to-b from-green-50 via-white to-emerald-50/70 relative overflow-hidden">
-      <div className="absolute -top-24 right-0 h-80 w-80 rounded-full bg-green-100 blur-3xl opacity-70" />
-      <div className="absolute top-1/3 -left-24 h-72 w-72 rounded-full bg-emerald-100 blur-3xl opacity-60" />
-      <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-green-50 blur-3xl opacity-90" />
+    <div
+      className="min-h-screen flex flex-col relative overflow-hidden"
+      style={{ background: `linear-gradient(to bottom, ${accentSoft}, #ffffff, ${accentSoft})` }}
+    >
+      <div
+        className="absolute -top-24 right-0 h-80 w-80 rounded-full blur-3xl opacity-70"
+        style={{ backgroundColor: `${accentColor}22` }}
+      />
+      <div
+        className="absolute top-1/3 -left-24 h-72 w-72 rounded-full blur-3xl opacity-60"
+        style={{ backgroundColor: `${accentColor}1A` }}
+      />
+      <div
+        className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full blur-3xl opacity-90"
+        style={{ backgroundColor: `${accentColor}12` }}
+      />
 
       <main className="relative z-10 flex-1 flex items-center justify-center px-4 pb-8">
         <div className="w-full max-w-xl">
-          <div className="bg-white/90 rounded-3xl border border-green-100 shadow-xl overflow-hidden">
+          <div
+            className="bg-white/90 rounded-3xl shadow-xl overflow-hidden"
+            style={{ border: `1px solid ${accentBorder}` }}
+          >
             {/* Header */}
-            <div className="bg-linear-to-r from-green-600 to-emerald-600 text-white px-6 py-5 text-center">
+            <div
+              className="text-white px-6 py-5 text-center"
+              style={{ backgroundColor: accentColor }}
+            >
               <div className="flex justify-center mb-3">
                 <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center shadow-lg">
                   <Mail className="w-9 h-9" />
                 </div>
               </div>
               <h2 className="text-2xl lg:text-3xl font-bold mb-1">Send Receipt</h2>
-              <p className="text-white/85">Would you like to receive a donation receipt by email?</p>
+              <p className="text-white/85">
+                Would you like to receive a donation receipt by email?
+              </p>
             </div>
 
             <div className="p-8 lg:p-10">
               <form onSubmit={handleSubmit}>
                 {/* Transaction ID */}
                 {transactionId && (
-                  <div className="mb-6 p-4 bg-green-50/70 border border-green-100 rounded-2xl text-center">
-                    <p className="text-sm text-green-700 mb-1">Transaction Id</p>
+                  <div
+                    className="mb-6 p-4 rounded-2xl text-center"
+                    style={{
+                      backgroundColor: `${accentColor}12`,
+                      border: `1px solid ${accentColor}33`,
+                    }}
+                  >
+                    <p className="text-sm mb-1" style={{ color: accentColor }}>
+                      Transaction Id
+                    </p>
                     <p className="font-mono text-sm text-[#0A0A0A] break-all">{transactionId}</p>
                   </div>
                 )}
                 {campaignName && (
-                  <div className="mb-6 p-4 bg-green-50/70 border border-green-100 rounded-2xl text-center">
-                    <p className="text-sm text-green-700 mb-1">Campaign</p>
+                  <div
+                    className="mb-6 p-4 rounded-2xl text-center"
+                    style={{
+                      backgroundColor: `${accentColor}12`,
+                      border: `1px solid ${accentColor}33`,
+                    }}
+                  >
+                    <p className="text-sm mb-1" style={{ color: accentColor }}>
+                      Campaign
+                    </p>
                     <p className="text-sm text-[#0A0A0A] wrap-break-word">{campaignName}</p>
                   </div>
                 )}
@@ -148,7 +210,8 @@ export function EmailConfirmationScreen({
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
                     disabled={isSending}
-                    className="w-full h-14 px-4 text-lg border-2 border-green-200 rounded-xl focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 disabled:bg-gray-100 disabled:cursor-not-allowed bg-white"
+                    className="w-full h-14 px-4 text-lg border-2 rounded-xl focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed bg-white"
+                    style={{ borderColor: accentBorder }}
                   />
                   <p className="text-xs text-gray-500 mt-2">
                     We'll only use this email to send your receipt
@@ -167,7 +230,8 @@ export function EmailConfirmationScreen({
                   <button
                     type="submit"
                     disabled={isSending || !email}
-                    className="w-full h-14 rounded-xl font-medium text-white flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-200/70"
+                    className="w-full h-14 rounded-xl font-medium text-white flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-95"
+                    style={{ backgroundColor: accentColor }}
                   >
                     {isSending ? (
                       <>
@@ -186,7 +250,12 @@ export function EmailConfirmationScreen({
                     type="button"
                     onClick={handleSkip}
                     disabled={isSending}
-                    className="w-full max-w-md mx-auto h-16 rounded-xl font-semibold text-lg border-2 border-green-200 text-green-800 flex items-center justify-center gap-2 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full max-w-md mx-auto h-16 rounded-xl font-semibold text-lg border-2 flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      borderColor: accentBorder,
+                      color: accentColor,
+                      backgroundColor: `${accentColor}0A`,
+                    }}
                   >
                     Skip Email Receipt
                   </button>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Screen, AdminSession, Permission } from '../../shared/types';
 import { Avatar, AvatarFallback, AvatarImage } from '../../shared/ui/avatar';
 import { Button } from '../../shared/ui/button';
@@ -42,11 +42,14 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  SlidersHorizontal,
+  ChevronsDown,
 } from 'lucide-react';
 import { auth, db } from '../../shared/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { PASSWORD_REQUIREMENTS } from '../../shared/config/constants';
+import { useOrganization } from '../../shared/lib/hooks/useOrganization';
 
 const SCREEN_LABELS: Partial<Record<Screen, string>> = {
   admin: 'Dashboard',
@@ -58,6 +61,7 @@ const SCREEN_LABELS: Partial<Record<Screen, string>> = {
   'admin-gift-aid': 'Gift Aid Donations',
   'admin-users': 'Users',
   'admin-bank-details': 'Bank Details',
+  'admin-organization-settings': 'Organization Settings',
   'admin-stripe-account': 'Stripe account',
 } as Partial<Record<Screen, string>>;
 
@@ -162,10 +166,63 @@ function AdminSidebar({
 }) {
   const { state, isMobile } = useSidebar();
   const roleDisplayName = getRoleDisplayName(userSession.user.role);
+  const canManageOrgSettings =
+    userSession.user.role === 'admin' ||
+    userSession.user.role === 'super_admin' ||
+    hasPermission('change_org_identity') ||
+    hasPermission('change_org_branding') ||
+    hasPermission('system_admin');
 
   // On mobile, always show expanded sidebar (with text)
   // On desktop, respect the collapsed state
   const isCollapsed = !isMobile && state === 'collapsed';
+  const sidebarScrollRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollDownHint, setShowScrollDownHint] = useState(false);
+  const [showScrollUpHint, setShowScrollUpHint] = useState(false);
+
+  useEffect(() => {
+    const scrollElement = sidebarScrollRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    let rafId = 0;
+    const updateScrollHints = () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+
+      rafId = window.requestAnimationFrame(() => {
+        const hasOverflow = scrollElement.scrollHeight > scrollElement.clientHeight + 1;
+        const isAtTop = scrollElement.scrollTop <= 2;
+        const isAtBottom =
+          scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 2;
+
+        setShowScrollUpHint(hasOverflow && !isAtTop);
+        setShowScrollDownHint(hasOverflow && !isAtBottom);
+      });
+    };
+
+    updateScrollHints();
+
+    scrollElement.addEventListener('scroll', updateScrollHints, { passive: true });
+    window.addEventListener('resize', updateScrollHints);
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateScrollHints) : null;
+    if (resizeObserver) {
+      resizeObserver.observe(scrollElement);
+    }
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      scrollElement.removeEventListener('scroll', updateScrollHints);
+      window.removeEventListener('resize', updateScrollHints);
+      resizeObserver?.disconnect();
+    };
+  }, [isCollapsed, isMobile]);
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -191,7 +248,7 @@ function AdminSidebar({
         )}
       </SidebarHeader>
 
-      <SidebarContent className="flex flex-col px-3">
+      <SidebarContent ref={sidebarScrollRef} className="relative flex flex-col px-3 scrollbar-hide">
         <SidebarGroup>
           <SidebarMenu className="space-y-2">
             {/* Dashboard */}
@@ -499,6 +556,35 @@ function AdminSidebar({
               </SidebarMenuButton>
             </SidebarMenuItem>
 
+            {/* Organization Settings */}
+            {canManageOrgSettings ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onNavigate('admin-organization-settings')}
+                  className={`relative w-full flex items-center ${isCollapsed ? 'justify-center px-4 py-4' : 'px-4 py-3.5'} rounded-xl text-left transition-all duration-200 group ${
+                    isActive('admin-organization-settings')
+                      ? 'bg-[#0f5132] text-white font-medium shadow-lg'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={isCollapsed ? 'Organization Settings' : ''}
+                  aria-current={isActive('admin-organization-settings') ? 'page' : undefined}
+                >
+                  {isActive('admin-organization-settings') && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white/30 rounded-r-full"></div>
+                  )}
+                  <SlidersHorizontal
+                    className={`${isCollapsed ? 'h-6 w-6' : 'h-5 w-5'} shrink-0 ${
+                      isActive('admin-organization-settings') ? 'text-white' : ''
+                    }`}
+                    strokeWidth={1.5}
+                  />
+                  {!isCollapsed && (
+                    <span className="ml-3 text-base font-medium">Organization Settings</span>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
+
             {/* Stripe account */}
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -534,6 +620,22 @@ function AdminSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
+
+        {showScrollUpHint && (
+          <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-8 rounded-md bg-gradient-to-b from-[#064e3b] via-[#064e3b]/75 to-transparent" />
+        )}
+
+        {showScrollDownHint && (
+          <>
+            <div className="pointer-events-none absolute inset-x-2 bottom-0 z-10 h-12 rounded-md bg-gradient-to-t from-[#064e3b] via-[#064e3b]/80 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex justify-center">
+              <div className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-1 text-[10px] font-semibold tracking-wide text-white/90 backdrop-blur-sm">
+                <ChevronsDown className="h-3 w-3 animate-bounce" />
+                {!isCollapsed && <span>More</span>}
+              </div>
+            </div>
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4">
@@ -610,6 +712,7 @@ export function AdminLayout({
   hideHeader,
 }: AdminLayoutProps) {
   const { showToast } = useToast();
+  const { organization } = useOrganization(userSession.user.organizationId ?? null);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const [showStripeConfigDialog, setShowStripeConfigDialog] = useState(false);
@@ -642,6 +745,11 @@ export function AdminLayout({
   const currentLabel = SCREEN_LABELS[activeScreen] ?? 'Admin';
   const resolvedTitle = headerTitle ?? currentLabel;
   const resolvedSubtitle = headerSubtitle ?? undefined;
+  const resolvedOrganizationName =
+    userSession.user.organizationName ||
+    organization?.settings?.displayName ||
+    organization?.name ||
+    undefined;
   const userInitials = getInitials(userSession.user.username || userSession.user.email || 'U');
   const roleDisplayName = getRoleDisplayName(userSession.user.role);
   const memberSinceLabel = userSession.user.createdAt
@@ -969,6 +1077,14 @@ export function AdminLayout({
         [data-slot="sidebar-content"] {
           background-color: #064e3b !important;
           color: white !important;
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+        [data-sidebar="content"]::-webkit-scrollbar,
+        [data-slot="sidebar-content"]::-webkit-scrollbar {
+          width: 0 !important;
+          height: 0 !important;
+          display: none !important;
         }
         
         /* Force sidebar menu buttons hover states */
@@ -1065,7 +1181,7 @@ export function AdminLayout({
                 <AdminPageHeader
                   title={resolvedTitle}
                   subtitle={resolvedSubtitle}
-                  organizationName={userSession.user.organizationName}
+                  organizationName={resolvedOrganizationName}
                   topRightActions={headerTopRightActions}
                   inlineActions={headerInlineActions}
                   search={headerSearch}
@@ -1612,6 +1728,16 @@ export function AdminLayout({
                   {hasPermission('delete_user') && (
                     <span className="px-2.5 py-1 bg-rose-100/80 backdrop-blur-xl text-rose-700 text-xs font-medium rounded-md border border-rose-200/50">
                       delete user
+                    </span>
+                  )}
+                  {hasPermission('change_org_identity') && (
+                    <span className="px-2.5 py-1 bg-emerald-100/80 backdrop-blur-xl text-emerald-700 text-xs font-medium rounded-md border border-emerald-200/50">
+                      change org identity
+                    </span>
+                  )}
+                  {hasPermission('change_org_branding') && (
+                    <span className="px-2.5 py-1 bg-teal-100/80 backdrop-blur-xl text-teal-700 text-xs font-medium rounded-md border border-teal-200/50">
+                      change org branding
                     </span>
                   )}
                   {hasPermission('manage_permissions') && (

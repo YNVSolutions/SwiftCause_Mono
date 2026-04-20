@@ -10,6 +10,7 @@ import { CampaignDetailsContainer } from '@/features/kiosk-campaign-details';
 import { GiftAidPage } from '@/features/kiosk-gift-aid';
 import { submitGiftAidDeclaration } from '@/entities/giftAid/lib';
 import { KioskLoading } from '@/shared/ui/KioskLoading';
+import { useOrganization } from '@/shared/lib/hooks/useOrganization';
 
 export default function CampaignPage({ params }: { params: Promise<{ campaignId: string }> }) {
   const router = useRouter();
@@ -18,6 +19,8 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { organization } = useOrganization(campaign?.organizationId ?? null);
+  const accentColorHex = organization?.settings?.accentColorHex;
 
   // Unwrap the params Promise
   const { campaignId } = use(params);
@@ -102,6 +105,7 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
     // Magic link will be generated based on campaign.configuration.giftAidEnabled
     const donation = {
       campaignId: _campaign.id,
+      organizationId: _campaign.organizationId,
       amount: amountPence,
       isGiftAid: false, // Donor hasn't opted in yet
       giftAidAccepted: false,
@@ -186,6 +190,7 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
       // Regular flow: Continue to payment
       const donation = {
         campaignId: campaign.id,
+        organizationId: campaign.organizationId,
         amount: details.donationAmount,
         isGiftAid: true,
         giftAidAccepted: true,
@@ -224,6 +229,8 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
       <KioskLoading
         message="Loading Gift Aid details..."
         submessage="Preparing your Gift Aid options."
+        accentColorHex={accentColorHex}
+        organizationId={currentKioskSession?.organizationId || null}
       />
     );
   }
@@ -236,6 +243,7 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
       const amountPence = Math.round((initialAmount || 0) * 100);
       const donation = {
         campaignId: campaign.id,
+        organizationId: campaign.organizationId,
         amount: amountPence,
         isGiftAid: false,
         giftAidAccepted: false, // Explicitly set to false when disabled
@@ -259,6 +267,7 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
         amount={initialAmount || 0}
         isCustomAmount={isCustomAmount || !initialAmount}
         currency={currentKioskSession?.organizationCurrency || 'GBP'}
+        accentColorHex={accentColorHex}
         initialDonorName={sessionStorage.getItem('donorName') || ''}
         initialDonorEmail={sessionStorage.getItem('donorEmail') || ''}
         onAcceptGiftAid={handleAcceptGiftAid}
@@ -279,6 +288,8 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
       loading={loading}
       error={error}
       currency={currentKioskSession?.organizationCurrency || 'GBP'}
+      accentColorHex={accentColorHex}
+      organizationId={currentKioskSession?.organizationId || null}
       initialAmount={preselectAmount || initialAmount}
       onBack={handleBackToList}
       onDonate={handleDonate}

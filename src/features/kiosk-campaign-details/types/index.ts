@@ -16,6 +16,8 @@ export interface CampaignDetailsState {
 export interface CampaignDetailsPageProps {
   state: CampaignDetailsState;
   currency: string;
+  accentColorHex?: string;
+  organizationId?: string | null;
   donorEmail?: string;
   donorName?: string;
   onBack: () => void;
@@ -40,6 +42,7 @@ export interface ImageCarouselProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   fallbackImage?: string;
+  accentColorHex?: string;
 }
 
 // Props for amount selector
@@ -54,6 +57,7 @@ export interface AmountSelectorProps {
   isRecurring: boolean;
   donorEmail?: string;
   donorName?: string;
+  accentColorHex?: string;
   onSelectAmount: (amount: number) => void;
   onCustomAmountChange: (value: string) => void;
   onRecurringToggle: (value: boolean) => void;
@@ -67,6 +71,7 @@ export interface DonateButtonProps {
   disabled: boolean;
   onClick: () => void;
   label?: string;
+  accentColorHex?: string;
 }
 
 // Props for video player
@@ -77,6 +82,8 @@ export interface VideoPlayerProps {
 // Props for loading state
 export interface LoadingStateProps {
   message?: string;
+  accentColorHex?: string;
+  organizationId?: string | null;
 }
 
 // Props for error state

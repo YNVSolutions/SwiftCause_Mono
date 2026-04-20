@@ -322,7 +322,7 @@ export function DonationSelectionScreen({
     setDonorInfo((prev) => ({ ...prev, ...updates }));
   };
 
-  const progress = ((campaign.raised / 100) / campaign.goal) * 100;
+  const progress = (campaign.raised / 100 / campaign.goal) * 100;
   const intervalLabel = intervalLabelMap[recurringInterval];
   const discountedAmount = getDiscountedAmount();
   const annualizedAmount = getAnnualAmount(discountedAmount, recurringInterval);

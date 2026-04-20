@@ -14,6 +14,7 @@ interface GiftAidDetailsPanelProps {
   initialDonorEmail?: string;
   collectDonorEmail?: boolean;
   enableAutoLookup?: boolean;
+  accentColorHex?: string;
   onSubmit: (details: GiftAidDetails) => void;
   onBack: () => void;
 }
@@ -56,8 +57,14 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
   initialDonorEmail = '',
   collectDonorEmail = true,
   enableAutoLookup = true,
+  accentColorHex,
   onSubmit,
 }) => {
+  const accentColor =
+    typeof accentColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(accentColorHex.trim())
+      ? accentColorHex.trim().toUpperCase()
+      : '#008751';
+
   // Create a unique key for this form session
   const formStorageKey = `giftAidForm_${campaignTitle}_${amount}`;
 
@@ -251,8 +258,8 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
   return (
     <div className="bg-white rounded-2xl shadow-md overflow-hidden flex flex-col w-full max-w-xl md:max-w-[42rem] mx-auto max-h-full">
       {/* ── Impact header ─────────────────────────────────────────────────── */}
-      <div className="bg-green-700 text-white px-6 py-4 text-center">
-        <p className="text-xs uppercase tracking-widest text-green-100 mb-1">Your impact</p>
+      <div className="text-white px-6 py-4 text-center" style={{ backgroundColor: accentColor }}>
+        <p className="text-xs uppercase tracking-widest text-white/90 mb-1">Your impact</p>
         <p className="text-xl font-medium">
           Boosting <span className="font-semibold">{formatAmount(amount)}</span> to{' '}
           <span className="font-semibold">{formatAmount(totalWithGiftAid)}</span>
@@ -292,7 +299,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
           {/* ── Section 1: Personal info ─────────────────────────────────── */}
           <section className="space-y-4">
             <div className="flex items-center gap-2 mb-6">
-              <User className="w-4 h-4 text-green-700" />
+              <User className="w-4 h-4" style={{ color: accentColor }} />
               <h3 className="text-base font-medium text-gray-900">Donor details</h3>
             </div>
 
@@ -353,7 +360,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
           {/* ── Section 2: Home Address ───────────────────────────────────── */}
           <section className="space-y-4 mb-8">
             <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-green-700" />
+              <MapPin className="w-4 h-4" style={{ color: accentColor }} />
               <h3 className="text-base font-medium text-gray-900">Home Address</h3>
             </div>
 
@@ -448,7 +455,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
           {/* ── Section 3: Gift Aid declaration ──────────────────────────── */}
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-green-700" />
+              <CheckCircle className="w-4 h-4" style={{ color: accentColor }} />
               <h3 className="text-base font-medium text-gray-900">Gift Aid Declaration</h3>
             </div>
 
@@ -489,10 +496,13 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
                 <div
                   className={[
                     'mt-0.5 w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors',
-                    claimGiftAid || usingSavedConsent
-                      ? 'bg-[#008751] border-[#008751]'
-                      : 'bg-white border-gray-400',
+                    claimGiftAid || usingSavedConsent ? 'border-2' : 'bg-white border-gray-400',
                   ].join(' ')}
+                  style={
+                    claimGiftAid || usingSavedConsent
+                      ? { backgroundColor: accentColor, borderColor: accentColor }
+                      : undefined
+                  }
                 >
                   {(claimGiftAid || usingSavedConsent) && (
                     <Check className="w-3 h-3 text-white" strokeWidth={3} />
@@ -539,10 +549,11 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
               'flex items-center justify-center gap-2',
               'transition-all duration-300 ease-in-out',
               claimGiftAid || usingSavedConsent
-                ? 'bg-[#008751] text-white hover:bg-[#006b40] hover:shadow-md cursor-pointer'
+                ? 'text-white hover:shadow-md cursor-pointer'
                 : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none',
               submitting ? 'opacity-70 cursor-not-allowed' : '',
             ].join(' ')}
+            style={claimGiftAid || usingSavedConsent ? { backgroundColor: accentColor } : undefined}
           >
             {submitting && (
               <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />

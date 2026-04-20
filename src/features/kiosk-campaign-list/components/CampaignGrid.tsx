@@ -5,11 +5,12 @@ import { CampaignCard } from './CampaignCard';
 export const CampaignGrid: React.FC<CampaignGridProps> = ({
   campaigns,
   currency,
+  accentColorHex,
   onSelectCampaign,
   onViewDetails,
 }) => {
   return (
-    <div 
+    <div
       className="mx-auto"
       style={{
         display: 'grid',
@@ -25,6 +26,7 @@ export const CampaignGrid: React.FC<CampaignGridProps> = ({
           key={campaign.id}
           campaign={campaign}
           currency={currency}
+          accentColorHex={accentColorHex}
           onSelectAmount={(amount) => onSelectCampaign(campaign, amount)}
           onDonate={() => onViewDetails(campaign)}
           onCardClick={() => onViewDetails(campaign)}

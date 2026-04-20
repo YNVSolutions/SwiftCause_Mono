@@ -50,11 +50,11 @@ export function getProgressStatus(percentage: number): {
  * Transform campaigns into progress data
  */
 export function transformCampaignsToProgress(campaigns: Campaign[]): CampaignProgress[] {
-  return campaigns.map(campaign => {
+  return campaigns.map((campaign) => {
     const raised = campaign.raised || 0;
     const goal = campaign.goal || 1;
     // Allow percentage to exceed 100% for over-funded campaigns
-    const percentage = Math.round(((raised / 100) / goal) * 100);
+    const percentage = Math.round((raised / 100 / goal) * 100);
     const { status, statusColor, progressColor } = getProgressStatus(percentage);
 
     return {
@@ -75,10 +75,10 @@ export function transformCampaignsToProgress(campaigns: Campaign[]): CampaignPro
  */
 export function sortCampaignProgress(
   campaigns: CampaignProgress[],
-  sortBy: 'progress' | 'raised' | 'goal' | 'name'
+  sortBy: 'progress' | 'raised' | 'goal' | 'name',
 ): CampaignProgress[] {
   const sorted = [...campaigns];
-  
+
   switch (sortBy) {
     case 'progress':
       return sorted.sort((a, b) => b.percentage - a.percentage);
