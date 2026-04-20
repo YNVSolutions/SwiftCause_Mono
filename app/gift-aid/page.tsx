@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
 import { GiftAidDetailsPanel } from '../../src/features/kiosk-gift-aid/components/GiftAidDetailsPanel';
@@ -22,7 +22,7 @@ interface Campaign {
   name?: string;
 }
 
-export default function GiftAidFormPage() {
+function GiftAidFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
@@ -254,5 +254,22 @@ export default function GiftAidFormPage() {
         />
       </div>
     </>
+  );
+}
+
+export default function GiftAidFormPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-50 to-white">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Loading...</h1>
+          </div>
+        </div>
+      }
+    >
+      <GiftAidFormContent />
+    </Suspense>
   );
 }
