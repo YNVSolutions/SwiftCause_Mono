@@ -184,6 +184,7 @@ export default function GiftAidFormPage() {
           totalImpact,
           donorName: `${details.firstName} ${details.surname}`,
           declarationId: data.declarationId,
+          transactionId: tokenData?.donationId || '',
         }),
       );
 

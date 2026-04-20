@@ -173,6 +173,8 @@ export default function CampaignPage({ params }: { params: Promise<{ campaignId:
             totalImpact,
             donorName: `${details.firstName} ${details.surname}`,
             declarationId,
+            // No transactionId here — payment hasn't happened yet in this flow.
+            // The receipt button will be disabled until a real donation ID is available.
           }),
         );
 
