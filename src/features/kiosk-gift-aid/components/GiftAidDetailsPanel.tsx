@@ -61,10 +61,10 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
   // Create a unique key for this form session
   const formStorageKey = `giftAidForm_${campaignTitle}_${amount}`;
 
-  // Load saved form data from localStorage
+  // Load saved form data from sessionStorage (session-only for security)
   const loadSavedFormData = () => {
     try {
-      const saved = localStorage.getItem(formStorageKey);
+      const saved = sessionStorage.getItem(formStorageKey);
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -99,7 +99,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
     claimGiftAid?: string;
   }>({});
 
-  // Save form data to localStorage whenever form fields change
+  // Save form data to sessionStorage whenever form fields change (session-only for security)
   useEffect(() => {
     const formData = {
       donorTitle,
@@ -114,9 +114,9 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
     };
 
     try {
-      localStorage.setItem(formStorageKey, JSON.stringify(formData));
+      sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
     } catch (error) {
-      console.warn('Failed to save form data to localStorage:', error);
+      console.warn('Failed to save form data to sessionStorage:', error);
     }
   }, [
     donorTitle,
@@ -134,7 +134,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
   // Clear saved form data on successful submission
   const clearSavedFormData = () => {
     try {
-      localStorage.removeItem(formStorageKey);
+      sessionStorage.removeItem(formStorageKey);
     } catch (error) {
       console.warn('Failed to clear saved form data:', error);
     }
