@@ -262,6 +262,12 @@ export function OrganizationSettings({
   };
 
   const handleSaveSection = async (section: 'identity' | 'branding') => {
+    const currentOrganization = organization;
+    if (!currentOrganization) {
+      showToast('Organization record is not available.', 'error');
+      return;
+    }
+
     const hasSectionPermission = section === 'identity' ? canEditIdentity : canEditBranding;
     if (!hasSectionPermission) {
       showToast(
@@ -319,16 +325,31 @@ export function OrganizationSettings({
 
     setSavingSection(section);
     try {
+      const persistedDisplayName = (
+        currentOrganization.settings?.displayName ||
+        currentOrganization.name ||
+        ''
+      ).trim();
+      const persistedThankYouMessage = (currentOrganization.settings?.thankYouMessage || '').trim();
+      const persistedAccentColorHex = (
+        currentOrganization.settings?.accentColorHex || ACCENT_COLOR_FALLBACK
+      ).trim();
+      const persistedLogoUrl = currentOrganization.settings?.logoUrl || null;
+      const persistedIdleImageUrl = currentOrganization.settings?.idleImageUrl || null;
+      const isIdentitySave = section === 'identity';
+
       await organizationApi.saveOrganizationSettings({
         organizationId,
         section,
-        displayName: trimmedDisplayName,
-        accentColorHex: trimmedAccentColorHex,
-        thankYouMessage: trimmedThankYouMessage || null,
-        logoUrl,
-        idleImageUrl,
-        logo: pendingLogo,
-        idleImage: pendingIdleImage,
+        displayName: isIdentitySave ? trimmedDisplayName : persistedDisplayName,
+        accentColorHex: isIdentitySave ? persistedAccentColorHex : trimmedAccentColorHex,
+        thankYouMessage: isIdentitySave
+          ? trimmedThankYouMessage || null
+          : persistedThankYouMessage || null,
+        logoUrl: isIdentitySave ? persistedLogoUrl : logoUrl,
+        idleImageUrl: isIdentitySave ? persistedIdleImageUrl : idleImageUrl,
+        logo: isIdentitySave ? null : pendingLogo,
+        idleImage: isIdentitySave ? null : pendingIdleImage,
         logoDimensions: resolvedLogoDimensions,
       });
 
