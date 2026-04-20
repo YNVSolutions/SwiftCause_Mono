@@ -308,6 +308,41 @@ const resolveSettingsForDiff = (organizationData) => {
   return organizationData.settings;
 };
 
+const buildSectionScopedSettings = ({
+  section,
+  incomingSettings,
+  organizationData,
+  currentSettings,
+}) => {
+  if (section !== 'identity' && section !== 'branding') {
+    return incomingSettings;
+  }
+
+  const currentDisplayName = resolveOrganizationDisplayName(organizationData);
+  const currentThankYouMessage = normalizeOptionalString(currentSettings.thankYouMessage);
+  const currentAccentColorHex = normalizeHexColor(currentSettings.accentColorHex);
+  const currentLogoUrl = normalizeOptionalString(currentSettings.logoUrl);
+  const currentIdleImageUrl = normalizeOptionalString(currentSettings.idleImageUrl);
+
+  if (section === 'identity') {
+    return {
+      displayName: incomingSettings.displayName,
+      thankYouMessage: incomingSettings.thankYouMessage,
+      accentColorHex: currentAccentColorHex,
+      logoUrl: currentLogoUrl,
+      idleImageUrl: currentIdleImageUrl,
+    };
+  }
+
+  return {
+    displayName: currentDisplayName,
+    thankYouMessage: currentThankYouMessage,
+    accentColorHex: incomingSettings.accentColorHex,
+    logoUrl: incomingSettings.logoUrl,
+    idleImageUrl: incomingSettings.idleImageUrl,
+  };
+};
+
 const updateOrganizationSettings = (req, res) => {
   cors(req, res, async () => {
     try {
@@ -317,18 +352,6 @@ const updateOrganizationSettings = (req, res) => {
 
       const auth = await verifyAuth(req);
       const { organizationId, section, settings } = validateAndNormalizeSettingsPayload(req.body);
-      assertAssetBelongsToOrganization(
-        settings.logoUrl,
-        organizationId,
-        LOGO_STORAGE_PATH_REGEX,
-        'logoUrl',
-      );
-      assertAssetBelongsToOrganization(
-        settings.idleImageUrl,
-        organizationId,
-        IDLE_IMAGE_STORAGE_PATH_REGEX,
-        'idleImageUrl',
-      );
       const callerData = await getCallerProfile(auth.uid);
 
       if (!hasAnyOrgSettingsWriteAccess(callerData)) {
@@ -358,29 +381,38 @@ const updateOrganizationSettings = (req, res) => {
 
       const currentOrganizationData = orgSnapshot.data() || {};
       const currentSettings = resolveSettingsForDiff(currentOrganizationData);
+      const sectionScopedSettings = buildSectionScopedSettings({
+        section,
+        incomingSettings: settings,
+        organizationData: currentOrganizationData,
+        currentSettings,
+      });
       const identityChanged =
-        normalizeIdentityField(settings.displayName) !==
+        normalizeIdentityField(sectionScopedSettings.displayName) !==
           normalizeIdentityField(resolveOrganizationDisplayName(currentOrganizationData)) ||
-        normalizeIdentityField(settings.thankYouMessage) !==
+        normalizeIdentityField(sectionScopedSettings.thankYouMessage) !==
           normalizeIdentityField(currentSettings.thankYouMessage);
       const brandingChanged =
-        normalizeHexColor(settings.accentColorHex) !==
+        normalizeHexColor(sectionScopedSettings.accentColorHex) !==
           normalizeHexColor(currentSettings.accentColorHex) ||
-        normalizeOptionalString(settings.logoUrl) !==
+        normalizeOptionalString(sectionScopedSettings.logoUrl) !==
           normalizeOptionalString(currentSettings.logoUrl) ||
-        normalizeOptionalString(settings.idleImageUrl) !==
+        normalizeOptionalString(sectionScopedSettings.idleImageUrl) !==
           normalizeOptionalString(currentSettings.idleImageUrl);
 
-      if (section === 'identity' && brandingChanged) {
-        return res.status(400).send({
-          error: 'Branding fields cannot be changed when section is identity',
-        });
-      }
-
-      if (section === 'branding' && identityChanged) {
-        return res.status(400).send({
-          error: 'Identity fields cannot be changed when section is branding',
-        });
+      if (brandingChanged) {
+        assertAssetBelongsToOrganization(
+          sectionScopedSettings.logoUrl,
+          organizationId,
+          LOGO_STORAGE_PATH_REGEX,
+          'logoUrl',
+        );
+        assertAssetBelongsToOrganization(
+          sectionScopedSettings.idleImageUrl,
+          organizationId,
+          IDLE_IMAGE_STORAGE_PATH_REGEX,
+          'idleImageUrl',
+        );
       }
 
       if (
@@ -405,7 +437,7 @@ const updateOrganizationSettings = (req, res) => {
       await orgRef.set(
         {
           settings: {
-            ...settings,
+            ...sectionScopedSettings,
             updatedAt,
             updatedBy: auth.uid,
           },
@@ -417,7 +449,7 @@ const updateOrganizationSettings = (req, res) => {
         success: true,
         organizationId,
         settings: {
-          ...settings,
+          ...sectionScopedSettings,
           updatedAt,
           updatedBy: auth.uid,
         },
