@@ -401,7 +401,7 @@ const updateOrganizationSettings = (req, res) => {
         });
       }
 
-      const updatedAt = new Date().toISOString();
+      const updatedAt = admin.firestore.Timestamp.now();
       await orgRef.set(
         {
           settings: {

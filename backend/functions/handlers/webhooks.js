@@ -158,7 +158,7 @@ const createGiftAidDeclarationIfNeeded = async ({
   }
 
   const donationId = paymentIntent.id;
-  const now = new Date().toISOString();
+  const now = admin.firestore.Timestamp.now();
   const declarationId =
     toStringOrNull(metadata.giftAidDeclarationId) || toStringOrNull(metadata.declarationId);
   const donorTitle = toStringOrNull(metadata.giftAidTitle);
@@ -284,7 +284,7 @@ const createGiftAidDeclarationIfNeeded = async ({
       toStringOrNull(metadata.giftAidDeclarationText) || DEFAULT_GIFT_AID_DECLARATION_TEXT,
     declarationTextVersion:
       toStringOrNull(metadata.giftAidDeclarationTextVersion) || GIFT_AID_DECLARATION_TEXT_VERSION,
-    declarationDate,
+    declarationDate: admin.firestore.Timestamp.fromDate(new Date(declarationDate)),
     giftAidConsent: toBoolean(metadata.giftAidConsent),
     ukTaxpayerConfirmation: toBoolean(metadata.giftAidTaxpayer),
     dataProcessingConsent: toBoolean(metadata.giftAidDataProcessingConsent),
@@ -294,7 +294,7 @@ const createGiftAidDeclarationIfNeeded = async ({
     campaignId: campaignId || null,
     campaignTitle: campaignTitleSnapshot || 'Deleted Campaign',
     organizationId: resolvedOrganizationId,
-    donationDate,
+    donationDate: admin.firestore.Timestamp.fromDate(new Date(donationDate)),
     taxYear: toStringOrNull(metadata.giftAidTaxYear) || getTaxYear(donationDate) || 'unknown',
     giftAidStatus: GIFT_AID_DECLARATION_STATUS.PENDING,
     hmrcClaimStatus: GIFT_AID_HMRC_CLAIM_STATUS.PENDING,
@@ -555,7 +555,7 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
               const donorNameFromDeclaration =
                 donorFirstName || donorSurname ? `${donorFirstName} ${donorSurname}`.trim() : null;
 
-              const now = new Date().toISOString();
+              const now = admin.firestore.Timestamp.now();
               const resolvedOrgId =
                 toStringOrNull(organizationId) ||
                 toStringOrNull(declarationData.organizationId) ||

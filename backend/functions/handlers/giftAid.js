@@ -95,7 +95,15 @@ const ensureGiftAidBatchDownloadAccess = async (auth, requestedOrganizationId) =
   return callerData;
 };
 
-const buildTimestampToken = (isoTimestamp) => {
+const buildTimestampToken = (timestamp) => {
+  // Convert Firestore Timestamp to ISO string if needed.
+  // Duck-type on .toMillis() — works with both the real Admin SDK Timestamp
+  // and the test mock, avoiding a broken instanceof check.
+  const isoTimestamp =
+    typeof timestamp === 'object' && timestamp !== null && typeof timestamp.toMillis === 'function'
+      ? new Date(timestamp.toMillis()).toISOString()
+      : timestamp;
+
   return isoTimestamp
     .replace(/[-:]/g, '')
     .replace(/\.\d{3}Z$/, 'Z')
@@ -229,7 +237,7 @@ const exportGiftAidDeclarations = (req, res) => {
         });
       }
 
-      const exportedAt = new Date().toISOString();
+      const exportedAt = admin.firestore.Timestamp.now();
       batchRef = await admin
         .firestore()
         .collection('giftAidExportBatches')
@@ -320,7 +328,7 @@ const exportGiftAidDeclarations = (req, res) => {
             {
               status: 'failed',
               failureMessage: error.message || 'Gift Aid export failed',
-              failedAt: new Date().toISOString(),
+              failedAt: admin.firestore.Timestamp.now(),
             },
             { merge: true },
           );

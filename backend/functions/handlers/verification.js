@@ -1,8 +1,8 @@
-const admin = require("firebase-admin");
-const cors = require("../middleware/cors");
+const admin = require('firebase-admin');
+const cors = require('../middleware/cors');
 
 const normalizeString = (value) => {
-  if (typeof value !== "string") return null;
+  if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
@@ -17,22 +17,22 @@ const normalizeString = (value) => {
 const completeEmailVerification = (req, res) => {
   cors(req, res, async () => {
     try {
-      if (req.method !== "POST") {
-        return res.status(405).send({error: "Method not allowed"});
+      if (req.method !== 'POST') {
+        return res.status(405).send({ error: 'Method not allowed' });
       }
 
       const uid = normalizeString(req.body?.uid);
       const token = normalizeString(req.body?.token);
 
       if (!uid || !token) {
-        return res.status(400).send({error: "uid and token are required."});
+        return res.status(400).send({ error: 'uid and token are required.' });
       }
 
-      const userRef = admin.firestore().collection("users").doc(uid);
+      const userRef = admin.firestore().collection('users').doc(uid);
       const userSnap = await userRef.get();
 
       if (!userSnap.exists) {
-        return res.status(404).send({error: "User not found."});
+        return res.status(404).send({ error: 'User not found.' });
       }
 
       const userData = userSnap.data() || {};
@@ -40,28 +40,31 @@ const completeEmailVerification = (req, res) => {
       const expiresAt = normalizeString(userData.emailVerificationTokenExpiresAt);
 
       if (!storedToken || storedToken !== token) {
-        return res.status(403).send({error: "Invalid verification token."});
+        return res.status(403).send({ error: 'Invalid verification token.' });
       }
 
       if (expiresAt) {
         const expiryDate = new Date(expiresAt);
         if (!Number.isNaN(expiryDate.getTime()) && expiryDate.getTime() < Date.now()) {
-          return res.status(403).send({error: "Verification token expired."});
+          return res.status(403).send({ error: 'Verification token expired.' });
         }
       }
 
-      await userRef.set({
-        emailVerified: true,
-        emailVerifiedAt: new Date().toISOString(),
-        emailVerificationToken: admin.firestore.FieldValue.delete(),
-        emailVerificationTokenExpiresAt: admin.firestore.FieldValue.delete(),
-      }, {merge: true});
+      await userRef.set(
+        {
+          emailVerified: true,
+          emailVerifiedAt: admin.firestore.Timestamp.now(),
+          emailVerificationToken: admin.firestore.FieldValue.delete(),
+          emailVerificationTokenExpiresAt: admin.firestore.FieldValue.delete(),
+        },
+        { merge: true },
+      );
 
-      return res.status(200).send({success: true});
+      return res.status(200).send({ success: true });
     } catch (error) {
-      console.error("Error completing email verification:", error);
+      console.error('Error completing email verification:', error);
       return res.status(500).send({
-        error: error.message || "Failed to complete verification.",
+        error: error.message || 'Failed to complete verification.',
       });
     }
   });

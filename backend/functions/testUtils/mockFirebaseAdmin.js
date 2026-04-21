@@ -127,8 +127,20 @@ const admin = {
 };
 
 admin.firestore.Timestamp = {
-  now: () => ({ __type: 'timestamp', ms: Date.now() }),
-  fromDate: (date) => ({ __type: 'timestamp', ms: date.getTime() }),
+  now: () => ({
+    __type: 'timestamp',
+    ms: Date.now(),
+    toMillis() {
+      return this.ms;
+    },
+  }),
+  fromDate: (date) => ({
+    __type: 'timestamp',
+    ms: date.getTime(),
+    toMillis() {
+      return this.ms;
+    },
+  }),
 };
 
 admin.firestore.FieldValue = {
