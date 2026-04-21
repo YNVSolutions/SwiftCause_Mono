@@ -202,6 +202,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
         e.donorEmail = 'Please enter a valid email address';
     }
     if (!addressLine1.trim()) e.addressLine1 = 'Address Line 1 is required';
+    if (!houseNumber.trim()) e.houseNumber = 'House number or name is required';
     if (!town.trim()) e.town = 'Town/City is required';
     if (!postcode.trim()) {
       e.postcode = 'Postcode is required';
@@ -246,13 +247,12 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
       timestamp: currentDate,
       taxYear: `${currentYear}-${String(currentYear + 1).slice(-2)}`,
     };
-    try {
-      // Clear saved form data on successful submission
-      clearSavedFormData();
-      onSubmit(giftAidDetails);
-    } catch {
+    // Clear saved form data on successful submission
+    clearSavedFormData();
+    // onSubmit may be async — await it so submitting state is always cleared
+    Promise.resolve(onSubmit(giftAidDetails)).finally(() => {
       setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -372,7 +372,7 @@ export const GiftAidDetailsPanel: React.FC<GiftAidDetailsPanelProps> = ({
 
             {/* House + Street */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <Field label="House Number / Name" error={errors.houseNumber}>
+              <Field label="House Number / Name" required error={errors.houseNumber}>
                 <input
                   type="text"
                   value={houseNumber}

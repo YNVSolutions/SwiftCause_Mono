@@ -372,6 +372,7 @@ exports.validateMagicLinkToken = functions.https.onRequest(async (req, res) => {
           tokenId: tokenId,
           donationId: tokenData.donationId,
           campaignId: tokenData.campaignId,
+          charityId: tokenData.charityId || null,
           amount: tokenData.amount,
           currency: tokenData.currency,
           purpose: tokenData.purpose,
