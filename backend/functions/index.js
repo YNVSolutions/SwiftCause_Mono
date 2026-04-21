@@ -835,7 +835,10 @@ exports.completeGiftAidFlow = functions.https.onRequest(async (req, res) => {
         donationAmount: tokenData.amount,
         giftAidAmount: giftAidAmount,
         campaignId: tokenData.campaignId || null,
-        campaignTitle: donationData.metadata?.campaignTitleSnapshot || 'Donation',
+        campaignTitle:
+          donationData.metadata?.campaignTitleSnapshot ||
+          donationData.campaignTitleSnapshot ||
+          'Donation',
         organizationId: tokenData.charityId || donationData.organizationId || null,
         donationDate: donationData.createdAt || timestamp,
         taxYear: getTaxYear(donationData.createdAt || timestamp),
