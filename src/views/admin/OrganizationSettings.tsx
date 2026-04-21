@@ -682,7 +682,7 @@ export function OrganizationSettings({
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     className="hidden"
                     onChange={handleLogoFileChange}
                   />
@@ -703,7 +703,8 @@ export function OrganizationSettings({
                     </p>
                   )}
                   <p className="text-xs text-gray-500">
-                    After selecting a logo, you can drag and zoom it in a square grid before upload.
+                    After selecting a logo (PNG, JPG, WEBP, GIF, or SVG), you can drag and zoom it
+                    in a square grid before upload.
                   </p>
                 </div>
 
@@ -792,8 +793,8 @@ export function OrganizationSettings({
         }}
         file={idleImageFileToCrop}
         title="Adjust idle screensaver image"
-        description="Position the cover image exactly as you want for kiosk screens."
-        aspectRatio={16 / 9}
+        description="Position the portrait cover image exactly as you want for kiosk screens."
+        aspectRatio={9 / 16}
         onConfirm={async (croppedFile) => {
           await handleUploadImage(croppedFile, 'idleImage');
           setIdleImageFileToCrop(null);
