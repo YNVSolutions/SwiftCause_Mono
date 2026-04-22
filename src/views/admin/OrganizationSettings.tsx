@@ -261,9 +261,15 @@ export function OrganizationSettings({
   const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    event.target.value = '';
+
+    if (file.type === 'image/svg+xml') {
+      await handleUploadImage(file, 'logo');
+      return;
+    }
+
     setLogoFileToCrop(file);
     setIsLogoCropDialogOpen(true);
-    event.target.value = '';
   };
 
   const handleIdleImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -703,8 +709,8 @@ export function OrganizationSettings({
                     </p>
                   )}
                   <p className="text-xs text-gray-500">
-                    After selecting a logo (PNG, JPG, WEBP, GIF, or SVG), you can drag and zoom it
-                    in a square grid before upload.
+                    Raster logos can be adjusted in a square crop before upload. SVG logos are
+                    uploaded directly to preserve the vector asset.
                   </p>
                 </div>
 
