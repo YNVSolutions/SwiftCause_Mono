@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { CheckCircle, Heart, Leaf, ArrowRight, Mail, Send } from 'lucide-react';
+import { CheckCircle, Heart, Leaf, Mail, Send } from 'lucide-react';
 import { createThankYouMail } from '@/shared/api';
 
 interface ThankYouData {
@@ -26,7 +25,7 @@ const Spinner = () => (
 );
 
 // ─── Fallback (no session data) ───────────────────────────────────────────────
-const Fallback = ({ onReturn }: { onReturn: () => void }) => (
+const Fallback = () => (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
     <div className="max-w-md w-full bg-white rounded-2xl shadow-md overflow-hidden">
       <div className="bg-green-700 px-6 py-8 text-center">
@@ -40,22 +39,12 @@ const Fallback = ({ onReturn }: { onReturn: () => void }) => (
           Your declaration has been successfully processed.
         </p>
       </div>
-      <div className="px-6 py-6 space-y-4">
-        <button
-          onClick={onReturn}
-          className="w-full min-h-[48px] rounded-full border-2 border-green-200 text-green-800 hover:bg-green-50 font-medium text-base tracking-wide flex items-center justify-center gap-2 transition-colors"
-        >
-          Browse Campaigns
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
     </div>
   </div>
 );
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function GiftAidThankYouPage() {
-  const router = useRouter();
   const [data, setData] = useState<ThankYouData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEmailForm, setShowEmailForm] = useState(false);
@@ -77,8 +66,6 @@ export default function GiftAidThankYouPage() {
     }
     setLoading(false);
   }, []);
-
-  const handleReturn = () => router.push('/campaigns');
 
   const handleEmailConfirmation = () => {
     setShowEmailForm((current) => !current);
@@ -124,7 +111,7 @@ export default function GiftAidThankYouPage() {
   };
 
   if (loading) return <Spinner />;
-  if (!data) return <Fallback onReturn={handleReturn} />;
+  if (!data) return <Fallback />;
 
   const firstName = data.donorName.split(' ')[0] || data.donorName;
   const canSendReceipt = Boolean(data.transactionId?.trim());
@@ -262,14 +249,6 @@ export default function GiftAidThankYouPage() {
                 missing.
               </p>
             )}
-
-            <button
-              onClick={handleReturn}
-              className="w-full min-h-[48px] rounded-full border-2 border-green-200 text-green-800 hover:bg-green-50 font-medium text-base tracking-wide flex items-center justify-center gap-2 transition-colors"
-            >
-              Browse Campaigns
-              <ArrowRight className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </div>
