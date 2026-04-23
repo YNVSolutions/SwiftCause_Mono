@@ -15,6 +15,7 @@ interface TokenData {
   campaignTitle?: string;
   amount?: number;
   currency?: string;
+  expiresAt?: string;
   error?: string;
 }
 
@@ -47,14 +48,7 @@ function GiftAidFormContent() {
 
     // Cleanup function to clear cache if component unmounts before completion
     return () => {
-      // Only clear cache if we're still validating (user navigated away)
-      if (validating && token) {
-        const cacheKey = `tokenValidation_${token}`;
-        const cachedData = sessionStorage.getItem(cacheKey);
-        if (cachedData) {
-          // Don't clear cache - user might be coming back
-        }
-      }
+      // Cache is intentionally preserved — user may navigate back to this page
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -62,24 +56,27 @@ function GiftAidFormContent() {
   const validateTokenWithCache = async () => {
     if (!token) return;
 
-    // Check if we have cached validation data from the magic link page
-    // This prevents duplicate validation calls and race conditions
     const cacheKey = `tokenValidation_${token}`;
-    const cachedData = sessionStorage.getItem(cacheKey);
 
-    if (cachedData) {
-      try {
+    // Attempt to read from cache — wrapped in try-catch for restricted environments
+    try {
+      const cachedData = sessionStorage.getItem(cacheKey);
+      if (cachedData) {
         const parsedData: TokenData = JSON.parse(cachedData);
 
-        // Verify cache is still fresh (within 5 minutes)
-        const cacheTimestamp = sessionStorage.getItem(`${cacheKey}_timestamp`);
+        // Bound cache validity by the token's actual server-side expiry,
+        // not just a local TTL. If expiresAt is missing or already past,
+        // fall through to a fresh API call.
+        const tokenExpiresAt = parsedData.expiresAt ? new Date(parsedData.expiresAt).getTime() : 0;
         const now = Date.now();
+        // Also enforce a 5-minute local cap as a secondary safety net
+        const cacheTimestamp = sessionStorage.getItem(`${cacheKey}_timestamp`);
+        const localAge = cacheTimestamp ? now - parseInt(cacheTimestamp, 10) : Infinity;
         const fiveMinutes = 5 * 60 * 1000;
 
-        if (cacheTimestamp && now - parseInt(cacheTimestamp) < fiveMinutes) {
+        if (tokenExpiresAt > now && localAge < fiveMinutes) {
           setTokenData(parsedData);
 
-          // Fetch campaign title if needed
           if (parsedData.campaignId && !parsedData.campaignTitle) {
             await fetchCampaignTitle(parsedData.campaignId);
           } else if (parsedData.campaignTitle) {
@@ -88,19 +85,17 @@ function GiftAidFormContent() {
 
           setValidating(false);
           return;
-        } else {
-          // Cache expired, clear it
-          sessionStorage.removeItem(cacheKey);
-          sessionStorage.removeItem(`${cacheKey}_timestamp`);
         }
-      } catch (error) {
-        console.warn('Failed to parse cached token data:', error);
+
+        // Cache is stale or token already expired — clear and revalidate
         sessionStorage.removeItem(cacheKey);
         sessionStorage.removeItem(`${cacheKey}_timestamp`);
       }
+    } catch {
+      // Storage unavailable or corrupted — fall through to API
     }
 
-    // No valid cache, perform validation
+    // No valid cache — perform fresh validation
     await validateToken();
   };
 
@@ -127,8 +122,12 @@ function GiftAidFormContent() {
 
       // Cache the validation result to prevent duplicate calls
       const cacheKey = `tokenValidation_${token}`;
-      sessionStorage.setItem(cacheKey, JSON.stringify(data));
-      sessionStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(data));
+        sessionStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
+      } catch {
+        // Storage unavailable — validation still proceeds without caching
+      }
 
       setTokenData(data);
 
@@ -234,29 +233,34 @@ function GiftAidFormContent() {
       }
 
       // Success - clear saved form data and store data for thank you page
-      sessionStorage.removeItem(`giftAidForm_${campaignTitle}_${(tokenData?.amount || 0) / 100}`);
-
+      try {
+        sessionStorage.removeItem(`giftAidForm_${campaignTitle}_${(tokenData?.amount || 0) / 100}`);
+        const cacheKey = `tokenValidation_${token}`;
+        sessionStorage.removeItem(cacheKey);
+        sessionStorage.removeItem(`${cacheKey}_timestamp`);
+      } catch {
+        // Storage unavailable — proceed with redirect regardless
+      }
       const donationAmountPounds = (tokenData?.amount || 0) / 100;
       const giftAidBonus = data.giftAidAmount / 100;
       const totalImpact = data.totalImpact / 100;
 
-      sessionStorage.setItem(
-        'giftAidThankYou',
-        JSON.stringify({
-          campaignTitle: campaignTitle,
-          donationAmount: donationAmountPounds,
-          giftAidBonus,
-          totalImpact,
-          donorName: `${details.firstName} ${details.surname}`,
-          declarationId: data.declarationId,
-          transactionId: tokenData?.donationId || '',
-        }),
-      );
-
-      // Clear token validation cache after successful submission
-      const cacheKey = `tokenValidation_${token}`;
-      sessionStorage.removeItem(cacheKey);
-      sessionStorage.removeItem(`${cacheKey}_timestamp`);
+      try {
+        sessionStorage.setItem(
+          'giftAidThankYou',
+          JSON.stringify({
+            campaignTitle: campaignTitle,
+            donationAmount: donationAmountPounds,
+            giftAidBonus,
+            totalImpact,
+            donorName: `${details.firstName} ${details.surname}`,
+            declarationId: data.declarationId,
+            transactionId: tokenData?.donationId || '',
+          }),
+        );
+      } catch {
+        // Storage unavailable — proceed with redirect regardless
+      }
 
       // Redirect to thank you page
       router.push('/gift-aid-thank-you');
