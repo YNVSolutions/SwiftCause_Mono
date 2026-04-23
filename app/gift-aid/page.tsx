@@ -36,7 +36,8 @@ function GiftAidFormContent() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [campaignTitle, setCampaignTitle] = useState<string>('Your Donation');
 
-  // Validate token on mount with caching to prevent race conditions
+  // Validate token on mount. Token state must always come from the backend so
+  // consumed/blocked changes from another tab/session/device are respected.
   useEffect(() => {
     if (!token) {
       setTokenError('No token provided');
@@ -44,7 +45,7 @@ function GiftAidFormContent() {
       return;
     }
 
-    validateTokenWithCache();
+    validateTokenFresh();
 
     // Cleanup function to clear cache if component unmounts before completion
     return () => {
@@ -53,49 +54,11 @@ function GiftAidFormContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const validateTokenWithCache = async () => {
+  const validateTokenFresh = async () => {
     if (!token) return;
 
-    const cacheKey = `tokenValidation_${token}`;
-
-    // Attempt to read from cache — wrapped in try-catch for restricted environments
-    try {
-      const cachedData = sessionStorage.getItem(cacheKey);
-      if (cachedData) {
-        const parsedData: TokenData = JSON.parse(cachedData);
-
-        // Bound cache validity by the token's actual server-side expiry,
-        // not just a local TTL. If expiresAt is missing or already past,
-        // fall through to a fresh API call.
-        const tokenExpiresAt = parsedData.expiresAt ? new Date(parsedData.expiresAt).getTime() : 0;
-        const now = Date.now();
-        // Also enforce a 5-minute local cap as a secondary safety net
-        const cacheTimestamp = sessionStorage.getItem(`${cacheKey}_timestamp`);
-        const localAge = cacheTimestamp ? now - parseInt(cacheTimestamp, 10) : Infinity;
-        const fiveMinutes = 5 * 60 * 1000;
-
-        if (tokenExpiresAt > now && localAge < fiveMinutes) {
-          setTokenData(parsedData);
-
-          if (parsedData.campaignId && !parsedData.campaignTitle) {
-            await fetchCampaignTitle(parsedData.campaignId);
-          } else if (parsedData.campaignTitle) {
-            setCampaignTitle(parsedData.campaignTitle);
-          }
-
-          setValidating(false);
-          return;
-        }
-
-        // Cache is stale or token already expired — clear and revalidate
-        sessionStorage.removeItem(cacheKey);
-        sessionStorage.removeItem(`${cacheKey}_timestamp`);
-      }
-    } catch {
-      // Storage unavailable or corrupted — fall through to API
-    }
-
-    // No valid cache — perform fresh validation
+    // Deliberately ignore any tokenValidation_* sessionStorage entry. Cached
+    // validity can go stale if the token is consumed or blocked elsewhere.
     await validateToken();
   };
 
@@ -118,15 +81,6 @@ function GiftAidFormContent() {
         setTokenError(getErrorMessage(data.error || 'UNKNOWN_ERROR'));
         setValidating(false);
         return;
-      }
-
-      // Cache the validation result to prevent duplicate calls
-      const cacheKey = `tokenValidation_${token}`;
-      try {
-        sessionStorage.setItem(cacheKey, JSON.stringify(data));
-        sessionStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
-      } catch {
-        // Storage unavailable — validation still proceeds without caching
       }
 
       setTokenData(data);
