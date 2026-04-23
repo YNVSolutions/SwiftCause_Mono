@@ -131,7 +131,7 @@ How:
 1. User picks file from hidden input.
 2. Crop dialog opens (`SquareImageCropDialog`) with aspect ratio:
    - logo: `1:1`
-   - idle image: `16:9`
+   - idle image: `9:16` (portrait)
 3. On confirm, cropped file is validated and uploaded to Storage.
 4. Upload response returns URL + dimensions + metadata.
 5. UI stores asset as pending (`pendingLogo` / `pendingIdleImage`) and previews it.
@@ -337,7 +337,8 @@ flowchart TD
 Notes:
 
 - `logo` requires square validation (`requireSquare: true`)
-- `idleImage` is cropped at `16:9` in dialog and uploaded without square requirement
+- `logo` upload accepts `PNG`, `JPG/JPEG`, `WEBP`, `GIF`, and `SVG` input types
+- `idleImage` is cropped at `9:16` (portrait) in dialog and uploaded without square requirement
 
 ## 8.2 Remove Asset
 

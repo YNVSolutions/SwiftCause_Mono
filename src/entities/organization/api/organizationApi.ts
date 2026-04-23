@@ -11,6 +11,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { FUNCTION_URLS } from '@/shared/config/functions';
+import { FILE_UPLOAD_LIMITS } from '@/shared/config/constants';
 import { uploadImageAsset, type UploadedImageAsset } from '@/shared/lib/imageUpload';
 import { db } from '../../../shared/lib/firebase';
 import { type Organization, type OrganizationSettings } from '../model';
@@ -71,14 +72,17 @@ const normalizeNullableString = (value: string | null | undefined): string | nul
 };
 
 const getFileExtension = (fileName: string, fileType: string) => {
+  if (fileType === 'image/svg+xml') return 'svg';
+  if (fileType === 'image/png') return 'png';
+  if (fileType === 'image/jpeg') return 'jpg';
+  if (fileType === 'image/webp') return 'webp';
+  if (fileType === 'image/gif') return 'gif';
+
   const dotIndex = fileName.lastIndexOf('.');
   if (dotIndex > -1 && dotIndex < fileName.length - 1) {
     return fileName.slice(dotIndex + 1).toLowerCase();
   }
 
-  if (fileType === 'image/png') return 'png';
-  if (fileType === 'image/webp') return 'webp';
-  if (fileType === 'image/gif') return 'gif';
   return 'jpg';
 };
 
@@ -178,7 +182,13 @@ export const organizationApi = {
     }
 
     const storagePath = buildOrganizationSettingsAssetPath(trimmedOrganizationId, assetType, file);
+    const allowedTypes =
+      assetType === 'logo'
+        ? [...FILE_UPLOAD_LIMITS.image.allowedTypes, 'image/svg+xml']
+        : FILE_UPLOAD_LIMITS.image.allowedTypes;
+
     return uploadImageAsset(file, storagePath, {
+      allowedTypes,
       requireSquare: assetType === 'logo',
     });
   },

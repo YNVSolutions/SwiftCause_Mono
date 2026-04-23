@@ -261,9 +261,15 @@ export function OrganizationSettings({
   const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    event.target.value = '';
+
+    if (file.type === 'image/svg+xml') {
+      await handleUploadImage(file, 'logo');
+      return;
+    }
+
     setLogoFileToCrop(file);
     setIsLogoCropDialogOpen(true);
-    event.target.value = '';
   };
 
   const handleIdleImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -682,7 +688,7 @@ export function OrganizationSettings({
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     className="hidden"
                     onChange={handleLogoFileChange}
                   />
@@ -703,7 +709,8 @@ export function OrganizationSettings({
                     </p>
                   )}
                   <p className="text-xs text-gray-500">
-                    After selecting a logo, you can drag and zoom it in a square grid before upload.
+                    Raster logos can be adjusted in a square crop before upload. SVG logos are
+                    uploaded directly to preserve the vector asset.
                   </p>
                 </div>
 
@@ -792,8 +799,8 @@ export function OrganizationSettings({
         }}
         file={idleImageFileToCrop}
         title="Adjust idle screensaver image"
-        description="Position the cover image exactly as you want for kiosk screens."
-        aspectRatio={16 / 9}
+        description="Position the portrait cover image exactly as you want for kiosk screens."
+        aspectRatio={9 / 16}
         onConfirm={async (croppedFile) => {
           await handleUploadImage(croppedFile, 'idleImage');
           setIdleImageFileToCrop(null);
