@@ -43,6 +43,7 @@
     <string name="content_description_next_image">Show next image</string>
     <string name="content_description_previous_image">Show previous image</string>
     <string name="content_description_image_indicator">Image %1$d of %2$d</string>
+    <string name="organization_logo_content_description">Organization logo</string>
 
     <!-- Magic Link / Thank You Screen -->
     <string name="thank_you">Thank You!</string>

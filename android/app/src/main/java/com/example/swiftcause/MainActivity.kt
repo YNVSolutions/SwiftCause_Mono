@@ -325,6 +325,7 @@ fun KioskMainContent(
                 val campaign = activeCampaign
                 CampaignDetailsScreen(
                     campaign = campaign,
+                    accentColorHex = uiState.organizationAccentColorHex,
                     onBackClick = {
                         if (!hasSingleCampaign) {
                             viewModel.clearSelectedCampaign()
@@ -375,6 +376,9 @@ fun KioskMainContent(
                 CampaignListScreen(
                     campaigns = uiState.campaigns,
                     isLoading = uiState.isLoading,
+                    organizationDisplayName = uiState.organizationDisplayName,
+                    organizationLogoUrl = uiState.organizationLogoUrl,
+                    accentColorHex = uiState.organizationAccentColorHex,
                     onCampaignClick = { campaign ->
                         viewModel.selectCampaign(campaign)
                     }
@@ -585,6 +589,8 @@ fun KioskMainContent(
 
             ThankYouScreen(
                 thankYouData = currentThankYouData,
+                customThankYouMessage = uiState.organizationThankYouMessage,
+                accentColorHex = uiState.organizationAccentColorHex,
                 magicLinkToken = magicLinkToken,
                 onDismiss = {
                     showThankYouScreen = false

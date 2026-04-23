@@ -66,7 +66,6 @@ import com.example.swiftcause.ui.theme.PremiumHeadline
 import com.example.swiftcause.ui.theme.PremiumPageBackground
 import com.example.swiftcause.ui.theme.PremiumPanelSurface
 import com.example.swiftcause.ui.theme.PremiumPrimary
-import com.example.swiftcause.ui.theme.PremiumPrimaryPressed
 import com.example.swiftcause.ui.theme.PremiumUnselectedFill
 import com.example.swiftcause.utils.CurrencyFormatter
 import kotlinx.coroutines.delay
@@ -77,6 +76,7 @@ fun CampaignDetailsScreen(
     campaign: Campaign,
     onBackClick: () -> Unit,
     onDonateClick: (amount: Long, isRecurring: Boolean, interval: String?, email: String?) -> Unit,
+    accentColorHex: String? = null,
     showBackButton: Boolean = true // New parameter to control back button visibility
 ) {
     android.util.Log.d("CampaignDetails", "Screen rendered for campaign: ${campaign.title}, videoUrl: '${campaign.videoUrl}'")
@@ -92,6 +92,9 @@ fun CampaignDetailsScreen(
 
     val images = campaign.getAllImages()
     val scrollState = rememberScrollState()
+    val accentColor = remember(accentColorHex) {
+        parseAccentColorOrNull(accentColorHex)
+    } ?: PremiumPrimary
     val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
     val panelLift by animateDpAsState(
         targetValue = if (imeBottom > 0) 72.dp else 0.dp,
@@ -137,12 +140,12 @@ fun CampaignDetailsScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.content_description_back_button),
-                            tint = PremiumPrimary,
+                            tint = accentColor,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = stringResource(R.string.back),
-                            color = PremiumPrimary,
+                            color = accentColor,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -156,6 +159,7 @@ fun CampaignDetailsScreen(
                 currentIndex = currentImageIndex,
                 onIndexChange = { currentImageIndex = it },
                 campaignTitle = campaign.title,
+                accentColor = accentColor,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
@@ -188,7 +192,7 @@ fun CampaignDetailsScreen(
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-                ProgressSection(campaign = campaign)
+                ProgressSection(campaign = campaign, accentColor = accentColor)
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -205,7 +209,7 @@ fun CampaignDetailsScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = PremiumPrimary
+                    color = accentColor
                 )
 
                 if (isLongDescriptionExpanded) {
@@ -223,6 +227,7 @@ fun CampaignDetailsScreen(
         // Fixed Bottom Donation Panel (primary focus)
         DonationPanel(
             campaign = campaign,
+            accentColor = accentColor,
             selectedAmount = selectedAmount,
             customAmount = customAmount,
             isRecurring = isRecurring,
@@ -260,6 +265,7 @@ private fun ImageCarousel(
     currentIndex: Int,
     onIndexChange: (Int) -> Unit,
     campaignTitle: String,
+    accentColor: Color,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -322,7 +328,7 @@ private fun ImageCarousel(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                             contentDescription = stringResource(R.string.content_description_previous_image),
-                            tint = PremiumPrimary
+                            tint = accentColor
                         )
                     }
 
@@ -341,7 +347,7 @@ private fun ImageCarousel(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = stringResource(R.string.content_description_next_image),
-                            tint = PremiumPrimary
+                            tint = accentColor
                         )
                     }
 
@@ -358,7 +364,7 @@ private fun ImageCarousel(
                                     .size(10.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (index == currentIndex) PremiumPrimary
+                                        if (index == currentIndex) accentColor
                                         else Color.White.copy(alpha = 0.6f)
                                     )
                                     .clickable { onIndexChange(index) }
@@ -374,6 +380,7 @@ private fun ImageCarousel(
 @Composable
 private fun ProgressSection(
     campaign: Campaign,
+    accentColor: Color,
     modifier: Modifier = Modifier
 ) {
     val progress = campaign.getProgressPercentage()
@@ -404,7 +411,7 @@ private fun ProgressSection(
                 text = "${progress.toInt()}%",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = PremiumPrimary
+                color = accentColor
             )
         }
 
@@ -423,7 +430,7 @@ private fun ProgressSection(
                     .fillMaxWidth(animatedProgress)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(4.dp))
-                    .background(PremiumPrimary)
+                    .background(accentColor)
             )
         }
 
@@ -445,6 +452,7 @@ private fun ProgressSection(
 @Composable
 private fun DonationPanel(
     campaign: Campaign,
+    accentColor: Color,
     selectedAmount: Long,
     customAmount: String,
     isRecurring: Boolean,
@@ -488,7 +496,7 @@ private fun DonationPanel(
                 text = stringResource(R.string.choose_amount),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = PremiumPrimary
+                color = accentColor
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -502,6 +510,7 @@ private fun DonationPanel(
                     AmountButton(
                         amount = amount,
                         currency = campaign.currency,
+                        accentColor = accentColor,
                         isSelected = selectedAmount == amount,
                         onClick = {
                             onAmountSelected(amount)
@@ -525,6 +534,7 @@ private fun DonationPanel(
                         AmountButton(
                             amount = amount,
                             currency = campaign.currency,
+                            accentColor = accentColor,
                             isSelected = selectedAmount == amount,
                             onClick = {
                                 onAmountSelected(amount)
@@ -581,7 +591,7 @@ private fun DonationPanel(
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = PremiumPrimary,
+                                containerColor = accentColor,
                                 contentColor = Color.White
                             )
                         ) {
@@ -600,7 +610,7 @@ private fun DonationPanel(
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     unfocusedBorderColor = PremiumBorder,
-                    focusedBorderColor = PremiumPrimary,
+                    focusedBorderColor = accentColor,
                     unfocusedContainerColor = PremiumCardSurface,
                     focusedContainerColor = PremiumCardSurface,
                     focusedLeadingIconColor = PremiumBody,
@@ -632,7 +642,7 @@ private fun DonationPanel(
                         onCheckedChange = onRecurringToggle,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
-                            checkedTrackColor = PremiumPrimary,
+                            checkedTrackColor = accentColor,
                             uncheckedThumbColor = Color.White,
                             uncheckedTrackColor = PremiumBorder
                         )
@@ -650,18 +660,21 @@ private fun DonationPanel(
                             text = stringResource(R.string.monthly),
                             isSelected = selectedInterval == "monthly",
                             onClick = { onIntervalSelected("monthly") },
+                            accentColor = accentColor,
                             modifier = Modifier.weight(1f)
                         )
                         IntervalButton(
                             text = stringResource(R.string.quarterly),
                             isSelected = selectedInterval == "quarterly",
                             onClick = { onIntervalSelected("quarterly") },
+                            accentColor = accentColor,
                             modifier = Modifier.weight(1f)
                         )
                         IntervalButton(
                             text = stringResource(R.string.yearly),
                             isSelected = selectedInterval == "yearly",
                             onClick = { onIntervalSelected("yearly") },
+                            accentColor = accentColor,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -677,8 +690,8 @@ private fun DonationPanel(
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PremiumPrimary,
-                            focusedLabelColor = PremiumPrimary,
+                            focusedBorderColor = accentColor,
+                            focusedLabelColor = accentColor,
                             unfocusedBorderColor = PremiumBorder,
                             unfocusedContainerColor = PremiumCardSurface,
                             focusedContainerColor = PremiumCardSurface,
@@ -703,12 +716,13 @@ private fun DonationPanel(
 private fun AmountButton(
     amount: Long,
     currency: String,
+    accentColor: Color,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) PremiumPrimaryPressed else PremiumPrimary,
+        targetValue = if (isSelected) accentColor.copy(alpha = 0.88f) else accentColor,
         label = "bg"
     )
     val textColor by animateColorAsState(
@@ -729,7 +743,7 @@ private fun AmountButton(
             .background(backgroundColor)
             .border(
                 width = if (isSelected) 2.dp else 0.dp,
-                color = if (isSelected) PremiumPrimary else Color.Transparent,
+                color = if (isSelected) accentColor else Color.Transparent,
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable { onClick() }
@@ -750,10 +764,11 @@ private fun IntervalButton(
     text: String,
     isSelected: Boolean,
     onClick: () -> Unit,
+    accentColor: Color,
     modifier: Modifier = Modifier
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) PremiumPrimary else PremiumCardSurface,
+        targetValue = if (isSelected) accentColor else PremiumCardSurface,
         label = "bg"
     )
     val textColor by animateColorAsState(
@@ -1153,6 +1168,15 @@ private fun Color.toArgb(): Int {
         (green * 255).toInt(),
         (blue * 255).toInt()
     )
+}
+
+private fun parseAccentColorOrNull(hex: String?): Color? {
+    val value = hex?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return try {
+        Color(android.graphics.Color.parseColor(value))
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 }
 
 /**

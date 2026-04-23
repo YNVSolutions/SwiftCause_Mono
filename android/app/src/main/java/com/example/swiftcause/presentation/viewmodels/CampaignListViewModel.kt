@@ -18,7 +18,11 @@ data class CampaignListUiState(
     val campaigns: List<Campaign> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
-    val selectedCampaign: Campaign? = null
+    val selectedCampaign: Campaign? = null,
+    val organizationDisplayName: String = "SwiftCause",
+    val organizationLogoUrl: String? = null,
+    val organizationThankYouMessage: String? = null,
+    val organizationAccentColorHex: String? = null
 )
 
 class CampaignListViewModel(
@@ -44,6 +48,9 @@ class CampaignListViewModel(
             val orgCurrency = kioskSession.organizationId?.let {
                 repository.getOrganizationCurrency(it)
             }
+            val organizationBranding = kioskSession.organizationId?.let {
+                repository.getOrganizationBranding(it)
+            }
 
             val result = repository.getCampaignsForKiosk(
                 assignedCampaignIds = kioskSession.assignedCampaigns,
@@ -61,13 +68,21 @@ class CampaignListViewModel(
                     }
                     _uiState.value = _uiState.value.copy(
                         campaigns = displayCampaigns,
-                        isLoading = false
+                        isLoading = false,
+                        organizationDisplayName = organizationBranding?.displayName ?: "SwiftCause",
+                        organizationLogoUrl = organizationBranding?.logoUrl,
+                        organizationThankYouMessage = organizationBranding?.thankYouMessage,
+                        organizationAccentColorHex = organizationBranding?.accentColorHex
                     )
                 },
                 onFailure = { exception ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = exception.message ?: "Failed to load campaigns"
+                        error = exception.message ?: "Failed to load campaigns",
+                        organizationDisplayName = organizationBranding?.displayName ?: "SwiftCause",
+                        organizationLogoUrl = organizationBranding?.logoUrl,
+                        organizationThankYouMessage = organizationBranding?.thankYouMessage,
+                        organizationAccentColorHex = organizationBranding?.accentColorHex
                     )
                 }
             )
