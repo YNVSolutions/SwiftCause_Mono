@@ -1,10 +1,13 @@
 ﻿'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db } from '../../shared/lib/firebase';
 import { useKiosks } from '../../shared/lib/hooks/useKiosks';
+import { useLocations } from '../../shared/lib/hooks/useLocations';
 import { useCampaigns } from '../../entities/campaign';
 import { exportKiosks } from '../../entities/kiosk/api';
+import { createLocation, updateLocationImmutable } from '../../entities/location/api/locationApi';
+import { LocationFormData } from '../../entities/location';
 import { useKioskPerformance } from '../../shared/lib/hooks/useKioskPerformance';
 import { useOrganization } from '../../shared/lib/hooks/useOrganization';
 import { useStripeOnboarding, StripeOnboardingDialog } from '../../features/stripe-onboarding';
@@ -17,7 +20,6 @@ import {
 } from '../../shared/lib/sync/campaignKioskSync';
 import { PaginationControls } from '../../shared/ui/PaginationControls';
 
-// UI Components
 import { Button } from '../../shared/ui/button';
 import { Badge } from '../../shared/ui/badge';
 import { Card, CardContent } from '../../shared/ui/card';
@@ -72,7 +74,6 @@ export function KioskManagement({
   hasPermission: (permission: Permission) => boolean;
 }) {
   const { showToast } = useToast();
-  // Search + status filter state
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'maintenance'>(
     'all',
@@ -92,15 +93,20 @@ export function KioskManagement({
   } = useKiosks(userSession.user.organizationId, { status: statusFilter });
 
   const {
+    locations,
+    loading: locationsLoading,
+    error: locationsError,
+    refetch: refetchLocations,
+  } = useLocations(userSession.user.organizationId);
+
+  const {
     campaigns,
     loading: campaignsLoading,
     refresh: refreshCampaigns,
   } = useCampaigns(userSession.user.organizationId);
 
-  // Enrich only the visible page — not the full collection
   const performanceData = useKioskPerformance(kiosks);
 
-  // Stripe onboarding state & hooks
   const { organization, loading: orgLoading } = useOrganization(
     userSession.user.organizationId ?? null,
   );
@@ -109,7 +115,14 @@ export function KioskManagement({
 
   const isLoading = kiosksLoading || campaignsLoading;
 
-  // Client-side search filter on the current page only
+  const locationNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    locations.forEach((location) => {
+      map.set(location.id, location.name);
+    });
+    return map;
+  }, [locations]);
+
   const filteredKiosksData = kiosks.filter(
     (kiosk) =>
       kiosk.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -126,7 +139,6 @@ export function KioskManagement({
     data: filteredKiosksData,
   });
 
-  // Stats computed from the current page
   const totalStats = {
     online: filteredKiosks.filter((k) => k.status === 'online').length,
     offline: filteredKiosks.filter((k) => k.status === 'offline').length,
@@ -144,6 +156,7 @@ export function KioskManagement({
   const [newKiosk, setNewKiosk] = useState<KioskFormData>({
     name: '',
     location: '',
+    location_id: undefined,
     accessCode: '',
     status: 'offline' as Kiosk['status'],
     assignedCampaigns: [] as string[],
@@ -155,9 +168,9 @@ export function KioskManagement({
   const [isDeletingKiosk, setIsDeletingKiosk] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  // State for showing access codes and copy feedback
   const [showAccessCodes, setShowAccessCodes] = useState<{ [key: string]: boolean }>({});
   const [copiedIds, setCopiedIds] = useState<{ [key: string]: boolean }>({});
+  const lastLocationsErrorRef = useRef<string | null>(null);
 
   const normalizeAssignedCampaigns = (campaignIds?: string[]) =>
     Array.from(new Set((campaignIds || []).filter(Boolean)));
@@ -182,13 +195,26 @@ export function KioskManagement({
   const handleFilterChange = useCallback((key: string, value: string) => {
     if (key === 'statusFilter') {
       setStatusFilter(value as typeof statusFilter);
-      // pagination resets automatically in useKiosks when filters change
     }
   }, []);
 
   useEffect(() => {
     refreshCampaigns();
   }, [refreshCampaigns]);
+
+  useEffect(() => {
+    if (!locationsError) {
+      lastLocationsErrorRef.current = null;
+      return;
+    }
+
+    const message =
+      locationsError instanceof Error ? locationsError.message : 'Failed to load locations.';
+    if (lastLocationsErrorRef.current === message) return;
+
+    lastLocationsErrorRef.current = message;
+    showToast(`Location data unavailable: ${message}`, 'error');
+  }, [locationsError, showToast]);
 
   const handleAssignCampaign = (campaignId: string) => {
     if (needsOnboarding) {
@@ -209,17 +235,44 @@ export function KioskManagement({
     }));
   };
 
+  const handleCreateLocation = async (
+    locationData: LocationFormData,
+    oldLocationId?: string,
+  ): Promise<string> => {
+    if (!userSession.user.organizationId) {
+      throw new Error('Organization ID is required to create a location');
+    }
+    try {
+      const newLocationId = oldLocationId
+        ? await updateLocationImmutable(
+            userSession.user.organizationId,
+            oldLocationId,
+            locationData,
+            userSession.user.id,
+          )
+        : await createLocation(userSession.user.organizationId, locationData, userSession.user.id);
+      await refetchLocations();
+      return newLocationId;
+    } catch (error) {
+      console.error('Error creating location:', error);
+      throw error;
+    }
+  };
+
   const handleCreateKiosk = async () => {
-    if (!newKiosk.name || !newKiosk.location || !userSession) return;
+    if (!newKiosk.name || !newKiosk.location_id || !userSession) return;
 
     setIsCreatingKiosk(true);
     try {
       const normalizedAssignedCampaigns = normalizeAssignedCampaigns(newKiosk.assignedCampaigns);
 
       if (editingKiosk) {
+        const selectedLocationName =
+          locationNameById.get(newKiosk.location_id) || newKiosk.location || editingKiosk.location;
         const updatedKioskData = {
           name: newKiosk.name,
-          location: newKiosk.location,
+          location: selectedLocationName,
+          location_id: newKiosk.location_id,
           accessCode: newKiosk.accessCode,
           status: newKiosk.status,
           assignedCampaigns: normalizedAssignedCampaigns,
@@ -239,9 +292,13 @@ export function KioskManagement({
           oldAssignedCampaigns,
         );
       } else {
-        // Create new kiosk
+        const selectedLocationName =
+          locationNameById.get(newKiosk.location_id) || newKiosk.location;
         const newKioskData: Omit<Kiosk, 'id'> = {
-          ...newKiosk,
+          name: newKiosk.name,
+          location: selectedLocationName,
+          location_id: newKiosk.location_id,
+          accessCode: newKiosk.accessCode,
           status: newKiosk.status,
           lastActive: new Date().toISOString(),
           totalDonations: 0,
@@ -267,6 +324,7 @@ export function KioskManagement({
       setNewKiosk({
         name: '',
         location: '',
+        location_id: undefined,
         accessCode: '',
         status: 'offline',
         assignedCampaigns: [],
@@ -276,6 +334,8 @@ export function KioskManagement({
       setEditingKiosk(null);
     } catch (error) {
       console.error('Error saving kiosk: ', error);
+      const message = error instanceof Error ? error.message : 'Failed to save kiosk.';
+      showToast(message, 'error');
     } finally {
       setIsCreatingKiosk(false);
     }
@@ -287,6 +347,7 @@ export function KioskManagement({
     setNewKiosk({
       name: '',
       location: '',
+      location_id: undefined,
       accessCode: '',
       status: 'offline',
       assignedCampaigns: [],
@@ -295,10 +356,47 @@ export function KioskManagement({
   };
 
   const handleEditKiosk = (kiosk: Kiosk) => {
+    const normalizedLegacyLocationName = kiosk.location?.trim().toLowerCase();
+    const matchedLocations = normalizedLegacyLocationName
+      ? locations.filter(
+          (location) => location.name.trim().toLowerCase() === normalizedLegacyLocationName,
+        )
+      : [];
+
+    const hasReferencedLocation =
+      !!kiosk.location_id && locations.some((location) => location.id === kiosk.location_id);
+    let inferredLocationId = hasReferencedLocation ? kiosk.location_id : undefined;
+
+    if (kiosk.location_id && !hasReferencedLocation) {
+      showToast(
+        'This kiosk references an unavailable location. Please select a valid location before saving.',
+        'warning',
+      );
+    }
+
+    if (!inferredLocationId && matchedLocations.length === 1) {
+      inferredLocationId = matchedLocations[0].id;
+    }
+
+    if (!inferredLocationId) {
+      if (matchedLocations.length > 1) {
+        showToast(
+          'Multiple locations match this kiosk. Please select the correct location before saving.',
+          'warning',
+        );
+      } else {
+        showToast(
+          'This kiosk has no location mapping. Please select a location before saving.',
+          'warning',
+        );
+      }
+    }
+
     setEditingKiosk(kiosk);
     setNewKiosk({
       name: kiosk.name,
       location: kiosk.location,
+      location_id: inferredLocationId,
       accessCode: kiosk.accessCode || '',
       status: kiosk.status,
       assignedCampaigns: normalizeAssignedCampaigns(kiosk.assignedCampaigns),
@@ -339,13 +437,11 @@ export function KioskManagement({
     }
   };
 
-  // Copy kiosk ID to clipboard
   const copyKioskId = async (kioskId: string) => {
     try {
       await navigator.clipboard.writeText(kioskId);
       setCopiedIds((prev) => ({ ...prev, [kioskId]: true }));
 
-      // Reset copied state after 2 seconds
       setTimeout(() => {
         setCopiedIds((prev) => ({ ...prev, [kioskId]: false }));
       }, 2000);
@@ -354,7 +450,6 @@ export function KioskManagement({
     }
   };
 
-  // Toggle access code visibility
   const toggleAccessCode = (kioskId: string) => {
     setShowAccessCodes((prev) => ({
       ...prev,
@@ -948,6 +1043,7 @@ export function KioskManagement({
             setNewKiosk({
               name: '',
               location: '',
+              location_id: undefined,
               accessCode: '',
               status: 'offline',
               assignedCampaigns: [],
@@ -959,14 +1055,16 @@ export function KioskManagement({
         kioskData={newKiosk}
         setKioskData={setNewKiosk}
         campaigns={campaigns}
+        locations={locations}
         hasPermission={hasPermission}
         onSubmit={handleCreateKiosk}
         onCancel={handleCancel}
         onAssignCampaign={handleAssignCampaign}
         onUnassignCampaign={handleUnassignCampaign}
         onEditCampaign={handleEditCampaign}
+        onCreateLocation={handleCreateLocation}
         formatCurrency={formatCurrency}
-        isLoading={isCreatingKiosk}
+        isLoading={isCreatingKiosk || locationsLoading}
       />
 
       {/* Delete Confirmation Dialog */}
