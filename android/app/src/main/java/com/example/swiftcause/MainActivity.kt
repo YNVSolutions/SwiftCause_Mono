@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.nfc.NfcAdapter
 import android.os.Bundle
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,7 +32,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -49,10 +55,14 @@ import com.example.swiftcause.presentation.viewmodels.TapToPayState
 import com.example.swiftcause.presentation.viewmodels.TapToPayViewModel
 import com.example.swiftcause.ui.theme.SwiftCauseTheme
 import com.example.swiftcause.utils.StripeConfig
+import coil.compose.AsyncImage
 import com.stripe.android.PaymentConfiguration
 import com.stripe.android.paymentsheet.PaymentSheet
 import com.stripe.android.paymentsheet.PaymentSheetResult
 import com.stripe.android.paymentsheet.rememberPaymentSheet
+import kotlinx.coroutines.delay
+
+private const val IDLE_SCREENSAVER_TIMEOUT_MS = 60_000L
 
 data class PendingDonation(
     val campaign: Campaign,
@@ -118,12 +128,25 @@ fun KioskMainContent(
     val isTapToPaySimulated by tapToPayViewModel.isSimulatedMode.collectAsState()
     val context = LocalContext.current
     val hasNfcCapability = remember(context) { NfcAdapter.getDefaultAdapter(context) != null }
+    val accentColor = remember(uiState.organizationAccentColorHex) {
+        parseAccentColorOrNull(uiState.organizationAccentColorHex)
+    } ?: MaterialTheme.colorScheme.primary
+    val idleImageUrl = uiState.organizationIdleImageUrl?.trim().orEmpty()
 
     // Track selected payment method (null = show selection, "card" or "tap")
     var selectedPaymentMethod by remember { mutableStateOf<String?>(null) }
     var pendingDonation by remember { mutableStateOf<PendingDonation?>(null) }
     var showThankYouScreen by remember { mutableStateOf(false) }
     var thankYouData by remember { mutableStateOf<ThankYouData?>(null) }
+    var lastInteractionAtMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    var showIdleScreensaver by remember { mutableStateOf(false) }
+
+    val canShowIdleScreensaver = idleImageUrl.isNotEmpty() &&
+        !showThankYouScreen &&
+        paymentState !is PaymentState.Loading &&
+        paymentState !is PaymentState.Ready &&
+        tapToPayState !is TapToPayState.WaitingForCard &&
+        tapToPayState !is TapToPayState.ProcessingPayment
 
     // Track location permission state
     var hasLocationPermission by remember {
@@ -315,8 +338,43 @@ fun KioskMainContent(
         viewModel.loadCampaigns(kioskSession)
     }
 
+    LaunchedEffect(canShowIdleScreensaver) {
+        if (!canShowIdleScreensaver) {
+            showIdleScreensaver = false
+        }
+    }
+
+    LaunchedEffect(lastInteractionAtMs, canShowIdleScreensaver, showIdleScreensaver) {
+        if (!canShowIdleScreensaver || showIdleScreensaver) return@LaunchedEffect
+        delay(IDLE_SCREENSAVER_TIMEOUT_MS)
+        val idleForMs = SystemClock.elapsedRealtime() - lastInteractionAtMs
+        if (canShowIdleScreensaver && idleForMs >= IDLE_SCREENSAVER_TIMEOUT_MS) {
+            showIdleScreensaver = true
+        }
+    }
+
     // Show loading overlay when payment intent is being created
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(canShowIdleScreensaver, showIdleScreensaver) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val interacted = event.changes.any { it.pressed || it.positionChanged() }
+                        if (!interacted) continue
+
+                        val now = SystemClock.elapsedRealtime()
+                        if (showIdleScreensaver || now - lastInteractionAtMs > 350L) {
+                            lastInteractionAtMs = now
+                            if (showIdleScreensaver) {
+                                showIdleScreensaver = false
+                            }
+                        }
+                    }
+                }
+            }
+    ) {
         val hasSingleCampaign = uiState.campaigns.size == 1
         val activeCampaign = uiState.selectedCampaign ?: if (hasSingleCampaign) uiState.campaigns.first() else null
 
@@ -411,7 +469,7 @@ fun KioskMainContent(
                     ) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(48.dp),
-                            color = MaterialTheme.colorScheme.primary,
+                            color = accentColor,
                             strokeWidth = 4.dp
                         )
 
@@ -461,7 +519,7 @@ fun KioskMainContent(
                             ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(48.dp),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = accentColor,
                                     strokeWidth = 4.dp
                                 )
 
@@ -507,7 +565,7 @@ fun KioskMainContent(
                                 Icon(
                                     imageVector = Icons.Filled.Contactless,
                                     contentDescription = "Tap to Pay",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = accentColor,
                                     modifier = Modifier
                                         .size(72.dp)
                                         .padding(bottom = 24.dp)
@@ -555,7 +613,7 @@ fun KioskMainContent(
                         ) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(48.dp),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = accentColor,
                                 strokeWidth = 4.dp
                             )
 
@@ -600,6 +658,45 @@ fun KioskMainContent(
                 }
             )
         }
+
+        if (showIdleScreensaver) {
+            IdleScreensaverOverlay(
+                imageUrl = idleImageUrl,
+                onDismiss = {
+                    showIdleScreensaver = false
+                    lastInteractionAtMs = SystemClock.elapsedRealtime()
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun IdleScreensaverOverlay(
+    imageUrl: String,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable { onDismiss() }
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = stringResource(R.string.idle_screensaver_image_content_description),
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        Text(
+            text = stringResource(R.string.tap_to_continue),
+            color = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp),
+            fontSize = 14.sp
+        )
     }
 }
 
@@ -654,4 +751,13 @@ private fun handleDonation(
         isGiftAid = campaign.isGiftAid,  // Pass Gift Aid flag for magic link generation
         kioskId = kioskSession?.kioskId
     )
+}
+
+private fun parseAccentColorOrNull(hex: String?): Color? {
+    val value = hex?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return try {
+        Color(android.graphics.Color.parseColor(value))
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 }

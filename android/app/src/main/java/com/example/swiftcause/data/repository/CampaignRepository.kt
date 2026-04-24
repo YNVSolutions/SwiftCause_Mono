@@ -8,7 +8,8 @@ data class OrganizationBranding(
     val displayName: String?,
     val logoUrl: String?,
     val thankYouMessage: String?,
-    val accentColorHex: String?
+    val accentColorHex: String?,
+    val idleImageUrl: String?
 )
 
 class CampaignRepository(
@@ -198,11 +199,19 @@ class CampaignRepository(
                     ?.trim()
                     ?.takeIf { it.isNotEmpty() }
 
+            val idleImageUrl = (settings?.get("idleImageUrl") as? String)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: (data?.get("idleImageUrl") as? String)
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+
             OrganizationBranding(
                 displayName = displayName,
                 logoUrl = logoUrl,
                 thankYouMessage = thankYouMessage,
-                accentColorHex = accentColorHex
+                accentColorHex = accentColorHex,
+                idleImageUrl = idleImageUrl
             )
         } catch (e: Exception) {
             android.util.Log.e("CampaignRepository", "Failed to fetch organization branding", e)

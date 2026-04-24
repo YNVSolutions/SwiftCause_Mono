@@ -22,7 +22,8 @@ data class CampaignListUiState(
     val organizationDisplayName: String = "SwiftCause",
     val organizationLogoUrl: String? = null,
     val organizationThankYouMessage: String? = null,
-    val organizationAccentColorHex: String? = null
+    val organizationAccentColorHex: String? = null,
+    val organizationIdleImageUrl: String? = null
 )
 
 class CampaignListViewModel(
@@ -72,7 +73,8 @@ class CampaignListViewModel(
                         organizationDisplayName = organizationBranding?.displayName ?: "SwiftCause",
                         organizationLogoUrl = organizationBranding?.logoUrl,
                         organizationThankYouMessage = organizationBranding?.thankYouMessage,
-                        organizationAccentColorHex = organizationBranding?.accentColorHex
+                        organizationAccentColorHex = organizationBranding?.accentColorHex,
+                        organizationIdleImageUrl = organizationBranding?.idleImageUrl
                     )
                 },
                 onFailure = { exception ->
@@ -82,7 +84,8 @@ class CampaignListViewModel(
                         organizationDisplayName = organizationBranding?.displayName ?: "SwiftCause",
                         organizationLogoUrl = organizationBranding?.logoUrl,
                         organizationThankYouMessage = organizationBranding?.thankYouMessage,
-                        organizationAccentColorHex = organizationBranding?.accentColorHex
+                        organizationAccentColorHex = organizationBranding?.accentColorHex,
+                        organizationIdleImageUrl = organizationBranding?.idleImageUrl
                     )
                 }
             )

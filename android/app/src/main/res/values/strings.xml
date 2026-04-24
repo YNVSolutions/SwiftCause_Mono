@@ -44,6 +44,8 @@
     <string name="content_description_previous_image">Show previous image</string>
     <string name="content_description_image_indicator">Image %1$d of %2$d</string>
     <string name="organization_logo_content_description">Organization logo</string>
+    <string name="idle_screensaver_image_content_description">Idle screensaver image</string>
+    <string name="tap_to_continue">Tap to continue</string>
 
     <!-- Magic Link / Thank You Screen -->
     <string name="thank_you">Thank You!</string>
