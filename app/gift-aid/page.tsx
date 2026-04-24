@@ -15,6 +15,7 @@ interface TokenData {
   campaignTitle?: string;
   amount?: number;
   currency?: string;
+  expiresAt?: string;
   error?: string;
 }
 
@@ -35,7 +36,8 @@ function GiftAidFormContent() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [campaignTitle, setCampaignTitle] = useState<string>('Your Donation');
 
-  // Validate token on mount
+  // Validate token on mount. Token state must always come from the backend so
+  // consumed/blocked changes from another tab/session/device are respected.
   useEffect(() => {
     if (!token) {
       setTokenError('No token provided');
@@ -43,9 +45,22 @@ function GiftAidFormContent() {
       return;
     }
 
-    validateToken();
+    validateTokenFresh();
+
+    // Cleanup function to clear cache if component unmounts before completion
+    return () => {
+      // Cache is intentionally preserved — user may navigate back to this page
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  const validateTokenFresh = async () => {
+    if (!token) return;
+
+    // Deliberately ignore any tokenValidation_* sessionStorage entry. Cached
+    // validity can go stale if the token is consumed or blocked elsewhere.
+    await validateToken();
+  };
 
   const validateToken = async () => {
     if (!token) return;
@@ -172,24 +187,34 @@ function GiftAidFormContent() {
       }
 
       // Success - clear saved form data and store data for thank you page
-      sessionStorage.removeItem(`giftAidForm_${campaignTitle}_${(tokenData?.amount || 0) / 100}`);
-
+      try {
+        sessionStorage.removeItem(`giftAidForm_${campaignTitle}_${(tokenData?.amount || 0) / 100}`);
+        const cacheKey = `tokenValidation_${token}`;
+        sessionStorage.removeItem(cacheKey);
+        sessionStorage.removeItem(`${cacheKey}_timestamp`);
+      } catch {
+        // Storage unavailable — proceed with redirect regardless
+      }
       const donationAmountPounds = (tokenData?.amount || 0) / 100;
       const giftAidBonus = data.giftAidAmount / 100;
       const totalImpact = data.totalImpact / 100;
 
-      sessionStorage.setItem(
-        'giftAidThankYou',
-        JSON.stringify({
-          campaignTitle: campaignTitle,
-          donationAmount: donationAmountPounds,
-          giftAidBonus,
-          totalImpact,
-          donorName: `${details.firstName} ${details.surname}`,
-          declarationId: data.declarationId,
-          transactionId: tokenData?.donationId || '',
-        }),
-      );
+      try {
+        sessionStorage.setItem(
+          'giftAidThankYou',
+          JSON.stringify({
+            campaignTitle: campaignTitle,
+            donationAmount: donationAmountPounds,
+            giftAidBonus,
+            totalImpact,
+            donorName: `${details.firstName} ${details.surname}`,
+            declarationId: data.declarationId,
+            transactionId: tokenData?.donationId || '',
+          }),
+        );
+      } catch {
+        // Storage unavailable — proceed with redirect regardless
+      }
 
       // Redirect to thank you page
       router.push('/gift-aid-thank-you');

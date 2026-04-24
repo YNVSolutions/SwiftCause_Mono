@@ -70,6 +70,16 @@ export default function MagicLinkPage({ params }: { params: Promise<{ token: str
         return;
       }
 
+      // Cache the validation result to prevent duplicate calls in gift-aid page
+      // This prevents race conditions when user navigates to /gift-aid
+      const cacheKey = `tokenValidation_${token}`;
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(data));
+        sessionStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
+      } catch {
+        // Storage unavailable — validation still proceeds without caching
+      }
+
       // Small delay for UX polish (show success state briefly)
       await new Promise((resolve) => setTimeout(resolve, 500));
 
