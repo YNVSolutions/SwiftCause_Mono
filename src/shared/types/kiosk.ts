@@ -2,8 +2,9 @@
 export interface Kiosk {
   id: string;
   name: string;
-  location: string;
-  status: "online" | "offline" | "maintenance";
+  location: string; // Display name/address (legacy - for backwards compatibility)
+  location_id?: string; // Reference to locations/{id} - NEW FIELD
+  status: 'online' | 'offline' | 'maintenance';
   lastActive?: string;
   totalDonations?: number;
   totalRaised?: number;
@@ -12,7 +13,7 @@ export interface Kiosk {
   assignedCampaigns?: string[];
   defaultCampaign?: string;
   settings?: {
-    displayMode: "grid" | "list" | "carousel";
+    displayMode: 'grid' | 'list' | 'carousel';
     showAllCampaigns: boolean;
     maxCampaignsDisplay: number;
     autoRotateCampaigns: boolean;
