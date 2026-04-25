@@ -72,7 +72,8 @@ function logSync(
 
   switch (level) {
     case 'info':
-      console.warn(logMessage, logData);
+      // eslint-disable-next-line no-console
+      console.log(logMessage, logData);
       break;
     case 'warn':
       console.warn(logMessage, logData);
