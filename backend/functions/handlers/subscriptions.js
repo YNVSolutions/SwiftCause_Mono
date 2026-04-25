@@ -307,8 +307,55 @@ const createRecurringSubscription = (req, res) => {
       const campaignData = campaignSnap.data();
       const orgId = campaignData.organizationId;
 
-      const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
+      // Resolve location from kiosk if this is a kiosk-originated subscription.
+      // Non-blocking for recurring — kiosk subscriptions are less common and
+      // location_id may not always be present in the request metadata.
+      let subscriptionLocationId = null;
+      let subscriptionLocationSnapshot = null;
+      const subscriptionKioskId =
+        typeof metadata.kioskId === 'string' ? metadata.kioskId.trim() : null;
+      if (subscriptionKioskId) {
+        try {
+          const kioskSnap = await admin
+            .firestore()
+            .collection('kiosks')
+            .doc(subscriptionKioskId)
+            .get();
+          if (kioskSnap.exists) {
+            const locationId =
+              typeof kioskSnap.data().location_id === 'string'
+                ? kioskSnap.data().location_id.trim()
+                : null;
+            if (locationId) {
+              const locationSnap = await admin
+                .firestore()
+                .collection('locations')
+                .doc(locationId)
+                .get();
+              if (locationSnap.exists) {
+                const loc = locationSnap.data();
+                const locName = typeof loc.name === 'string' ? loc.name.trim() : null;
+                const locPostcode = typeof loc.postcode === 'string' ? loc.postcode.trim() : null;
+                const locCity = typeof loc.city === 'string' ? loc.city.trim() : null;
+                if (locName && locPostcode && locCity) {
+                  subscriptionLocationId = locationId;
+                  subscriptionLocationSnapshot = {
+                    name: locName,
+                    postcode: locPostcode,
+                    city: locCity,
+                  };
+                } else {
+                  console.warn('[Subscription] Location missing required fields:', locationId);
+                }
+              }
+            }
+          }
+        } catch (locErr) {
+          console.warn('[Subscription] Failed to resolve location (non-blocking):', locErr.message);
+        }
+      }
 
+      const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
       if (!orgSnap.exists) {
         return res.status(404).send({ error: 'Organization not found' });
       }
@@ -452,6 +499,8 @@ const createRecurringSubscription = (req, res) => {
             subscriptionId: subscription.id,
             invoiceId: latestInvoice.id || null,
             platform: metadata.platform || 'web',
+            location_id: subscriptionLocationId,
+            location_snapshot: subscriptionLocationSnapshot,
             metadata: {
               campaignTitleSnapshot: campaignData.title || 'Recurring Donation',
               source: 'create_recurring_subscription',
@@ -497,6 +546,8 @@ const createRecurringSubscription = (req, res) => {
           subscriptionId: subscription.id,
           invoiceId: latestInvoice.id || null,
           platform: metadata.platform || 'web',
+          location_id: subscriptionLocationId,
+          location_snapshot: subscriptionLocationSnapshot,
           metadata: {
             campaignTitleSnapshot: campaignData.title || 'Recurring Donation',
             source: 'create_recurring_subscription',

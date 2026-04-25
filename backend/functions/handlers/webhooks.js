@@ -479,36 +479,32 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
       }
 
       // Resolve location snapshot from location_id in metadata (set by createKioskPaymentIntent).
-      // Non-blocking — a missing or deleted location does not fail the webhook.
+      // Only kiosk payments carry location_id. Web/recurring payments legitimately have none.
+      // If location_id is present, the snapshot must be complete — fail if the location doc
+      // is missing or has incomplete required fields (name, postcode, city).
       const resolvedLocationId = toStringOrNull(metadata.location_id);
       let resolvedLocationSnapshot = null;
       if (resolvedLocationId) {
-        try {
-          const locationSnap = await admin
-            .firestore()
-            .collection('locations')
-            .doc(resolvedLocationId)
-            .get();
-          if (locationSnap.exists) {
-            const loc = locationSnap.data();
-            resolvedLocationSnapshot = {
-              name: toStringOrNull(loc.name) || '',
-              postcode: toStringOrNull(loc.postcode) || '',
-              city: toStringOrNull(loc.city) || '',
-            };
-          } else {
-            console.warn(
-              '[Webhook] Location not found for id:',
-              resolvedLocationId,
-              paymentIntent.id,
-            );
-          }
-        } catch (locationErr) {
-          console.warn(
-            '[Webhook] Failed to fetch location snapshot (non-critical):',
-            locationErr.message,
+        const locationSnap = await admin
+          .firestore()
+          .collection('locations')
+          .doc(resolvedLocationId)
+          .get();
+        if (!locationSnap.exists) {
+          throw new Error(
+            `[Webhook] Location doc not found for id: ${resolvedLocationId} (payment: ${paymentIntent.id})`,
           );
         }
+        const loc = locationSnap.data();
+        const locName = toStringOrNull(loc.name);
+        const locPostcode = toStringOrNull(loc.postcode);
+        const locCity = toStringOrNull(loc.city);
+        if (!locName || !locPostcode || !locCity) {
+          throw new Error(
+            `[Webhook] Location ${resolvedLocationId} is missing required fields (name, postcode, city)`,
+          );
+        }
+        resolvedLocationSnapshot = { name: locName, postcode: locPostcode, city: locCity };
       }
 
       // Use entity to create donation with recurring support
@@ -848,6 +844,44 @@ const handleInvoicePaid = async (invoice) => {
         : 'monthly';
 
   // Create donation record for this recurring payment
+  // Resolve location from the subscription's kiosk if available
+  let recurringLocationId = null;
+  let recurringLocationSnapshot = null;
+  const recurringKioskId =
+    toStringOrNull(subscriptionData.metadata?.kioskId) || toStringOrNull(subscriptionData.kioskId);
+  if (recurringKioskId) {
+    try {
+      const kioskSnap = await admin.firestore().collection('kiosks').doc(recurringKioskId).get();
+      if (kioskSnap.exists) {
+        const locationId = toStringOrNull(kioskSnap.data().location_id);
+        if (locationId) {
+          const locationSnap = await admin
+            .firestore()
+            .collection('locations')
+            .doc(locationId)
+            .get();
+          if (locationSnap.exists) {
+            const loc = locationSnap.data();
+            const locName = toStringOrNull(loc.name);
+            const locPostcode = toStringOrNull(loc.postcode);
+            const locCity = toStringOrNull(loc.city);
+            if (locName && locPostcode && locCity) {
+              recurringLocationId = locationId;
+              recurringLocationSnapshot = { name: locName, postcode: locPostcode, city: locCity };
+            } else {
+              console.warn('[Webhook Recurring] Location missing required fields:', locationId);
+            }
+          }
+        }
+      }
+    } catch (locErr) {
+      console.warn(
+        '[Webhook Recurring] Failed to resolve location (non-blocking):',
+        locErr.message,
+      );
+    }
+  }
+
   await createDonationDoc({
     transactionId: invoice.payment_intent || invoice.id,
     campaignId: subscriptionData.campaignId,
@@ -863,6 +897,8 @@ const handleInvoicePaid = async (invoice) => {
     subscriptionId: subscriptionId,
     invoiceId: invoice.id,
     platform: subscriptionData.metadata?.platform || 'web',
+    location_id: recurringLocationId,
+    location_snapshot: recurringLocationSnapshot,
     metadata: {
       campaignTitleSnapshot: subscriptionData.metadata?.campaignTitle || 'Recurring Donation',
       source: 'stripe_webhook_recurring',
