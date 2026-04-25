@@ -145,6 +145,27 @@ const createKioskPaymentIntent = (req, res) => {
       }
       const campaignData = campaignSnap.data();
       const orgId = campaignData.organizationId;
+
+      // Resolve location_id from the kiosk so the webhook can attach it to the donation.
+      // Non-blocking — a missing or unlinked kiosk does not fail the payment.
+      let kioskLocationId = null;
+      const kioskId = typeof metadata.kioskId === 'string' ? metadata.kioskId.trim() : null;
+      if (kioskId) {
+        try {
+          const kioskSnap = await admin.firestore().collection('kiosks').doc(kioskId).get();
+          if (kioskSnap.exists) {
+            kioskLocationId = kioskSnap.data().location_id || null;
+          } else {
+            console.warn('[createKioskPaymentIntent] Kiosk not found:', kioskId);
+          }
+        } catch (kioskErr) {
+          console.warn(
+            '[createKioskPaymentIntent] Failed to fetch kiosk for location_id:',
+            kioskErr.message,
+          );
+        }
+      }
+
       const canonicalMetadata = {
         ...metadata,
         campaignId,
@@ -153,6 +174,8 @@ const createKioskPaymentIntent = (req, res) => {
         // Keep both keys to support mixed webhook consumers and old/new clients.
         isGiftAid: metadata.isGiftAid,
         giftAidEnabled: metadata.giftAidEnabled ?? metadata.isGiftAid,
+        // Location reference — read by webhook to build location_snapshot on donation
+        location_id: kioskLocationId,
       };
 
       const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
