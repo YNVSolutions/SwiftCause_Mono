@@ -1,10 +1,13 @@
 package com.example.swiftcause
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,16 +21,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Contactless
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,8 +45,10 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.swiftcause.domain.models.Campaign
@@ -90,25 +99,91 @@ class MainActivity : ComponentActivity() {
         setContent {
             SwiftCauseTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    var kioskSession by remember { mutableStateOf<KioskSession?>(null) }
-
-                    when {
-                        kioskSession == null -> {
-                            KioskLoginScreen(
-                                onLoginSuccess = { session ->
-                                    kioskSession = session
-                                }
-                            )
-                        }
-                        else -> {
-                            KioskMainContent(
-                                kioskSession = kioskSession!!,
-                                modifier = Modifier.padding(innerPadding)
-                            )
-                        }
-                    }
+                    AppEntryPoint(modifier = Modifier.padding(innerPadding))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AppEntryPoint(
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    var kioskSession by remember { mutableStateOf<KioskSession?>(null) }
+    var hasRequestedLocationPermission by remember { mutableStateOf(false) }
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasRequestedLocationPermission = true
+        hasLocationPermission = isGranted
+        if (!isGranted) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.location_permission_required_to_continue),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    LaunchedEffect(hasLocationPermission, hasRequestedLocationPermission) {
+        if (!hasLocationPermission && !hasRequestedLocationPermission) {
+            hasRequestedLocationPermission = true
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    val shouldShowLocationRationale = remember(hasLocationPermission, hasRequestedLocationPermission, activity) {
+        !hasLocationPermission &&
+            hasRequestedLocationPermission &&
+            activity != null &&
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+    }
+
+    if (!hasLocationPermission) {
+        LocationPermissionRequiredScreen(
+            showRationale = shouldShowLocationRationale || !hasRequestedLocationPermission,
+            onRequestPermission = {
+                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            },
+            onOpenSettings = {
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null)
+                )
+                context.startActivity(intent)
+            }
+        )
+        return
+    }
+
+    when {
+        kioskSession == null -> {
+            KioskLoginScreen(
+                onLoginSuccess = { session ->
+                    kioskSession = session
+                }
+            )
+        }
+        else -> {
+            KioskMainContent(
+                kioskSession = kioskSession!!,
+                modifier = modifier
+            )
         }
     }
 }
@@ -148,45 +223,12 @@ fun KioskMainContent(
         tapToPayState !is TapToPayState.WaitingForCard &&
         tapToPayState !is TapToPayState.ProcessingPayment
 
-    // Track location permission state
-    var hasLocationPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    // Permission launcher
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasLocationPermission = isGranted
-        if (isGranted) {
-            // Initialize Tap to Pay after permission granted
-            val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-            tapToPayViewModel.initializeTapToPay(isSimulated = isDebuggable)
-        } else {
-            Toast.makeText(
-                context,
-                "Location permission is required for Tap to Pay",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
-    // Initialize Tap to Pay on app start (request permission first)
-    LaunchedEffect(Unit) {
+    // Initialize campaigns and Tap to Pay (permission is gated before this screen).
+    LaunchedEffect(kioskSession) {
         viewModel.loadCampaigns(kioskSession)
         viewModel.startPolling(kioskSession)
-        if (hasLocationPermission) {
-            val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-            tapToPayViewModel.initializeTapToPay(isSimulated = isDebuggable)
-        } else {
-            // Request location permission
-            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
+        val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        tapToPayViewModel.initializeTapToPay(isSimulated = isDebuggable)
     }
 
     // Initialize PaymentSheet
@@ -332,10 +374,6 @@ fun KioskMainContent(
             }
             else -> { /* Other states */ }
         }
-    }
-
-    LaunchedEffect(kioskSession) {
-        viewModel.loadCampaigns(kioskSession)
     }
 
     LaunchedEffect(canShowIdleScreensaver) {
@@ -667,6 +705,99 @@ fun KioskMainContent(
                     lastInteractionAtMs = SystemClock.elapsedRealtime()
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun LocationPermissionRequiredScreen(
+    showRationale: Boolean,
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .padding(24.dp)
+                .fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            shadowElevation = 8.dp,
+            tonalElevation = 2.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Contactless,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+
+                Text(
+                    text = stringResource(R.string.location_permission_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = stringResource(R.string.location_permission_why_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = if (showRationale) {
+                        stringResource(R.string.location_permission_message_rationale)
+                    } else {
+                        stringResource(R.string.location_permission_message_denied)
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = stringResource(R.string.location_permission_cannot_continue),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Button(
+                    onClick = if (showRationale) onRequestPermission else onOpenSettings,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (showRationale) {
+                            stringResource(R.string.grant_location_permission)
+                        } else {
+                            stringResource(R.string.open_settings)
+                        }
+                    )
+                }
+
+                if (!showRationale) {
+                    OutlinedButton(
+                        onClick = onRequestPermission,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = stringResource(R.string.retry))
+                    }
+                }
+            }
         }
     }
 }

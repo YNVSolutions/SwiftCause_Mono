@@ -46,6 +46,14 @@
     <string name="organization_logo_content_description">Organization logo</string>
     <string name="idle_screensaver_image_content_description">Idle screensaver image</string>
     <string name="tap_to_continue">Tap to continue</string>
+    <string name="location_permission_title">Location permission required</string>
+    <string name="location_permission_why_title">Why we need this</string>
+    <string name="location_permission_message_rationale">SwiftCause needs location permission to initialize Tap to Pay and process in-person payments securely on this device.</string>
+    <string name="location_permission_message_denied">Location permission is currently denied. Please enable it in Settings to use this kiosk.</string>
+    <string name="location_permission_cannot_continue">You cannot continue without granting this permission.</string>
+    <string name="grant_location_permission">Grant location permission</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="location_permission_required_to_continue">Location permission is required to continue.</string>
 
     <!-- Magic Link / Thank You Screen -->
     <string name="thank_you">Thank You!</string>
