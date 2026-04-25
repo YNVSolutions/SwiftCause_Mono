@@ -33,6 +33,12 @@ export interface GiftAidDetails {
 }
 
 // Donation-related types
+export interface LocationSnapshot {
+  name: string;
+  postcode: string;
+  city: string;
+}
+
 export interface Donation {
   campaignId: string;
   amount: number;
@@ -56,6 +62,9 @@ export interface Donation {
   giftAidDetails?: GiftAidDetails;
   giftAidDeclarationId?: string;
   organizationId?: string;
+  // Location fields — required for GASDS compliance
+  location_id?: string; // Reference to locations/{id} for aggregation
+  location_snapshot?: LocationSnapshot; // Immutable copy at time of donation for audit trail
 }
 
 export interface GiftAidDeclaration {

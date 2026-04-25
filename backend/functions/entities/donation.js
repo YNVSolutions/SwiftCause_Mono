@@ -94,6 +94,8 @@ const createDonationDoc = async (donationData) => {
     invoiceId = null,
     kioskId = null,
     platform = 'web',
+    location_id = null,
+    location_snapshot = null,
     metadata = {},
   } = donationData;
 
@@ -131,6 +133,9 @@ const createDonationDoc = async (donationData) => {
       setIfMissing('invoiceId', invoiceId);
       setIfMissing('recurringInterval', recurringInterval);
       setIfMissing('campaignTitleSnapshot', metadata.campaignTitleSnapshot);
+      // Location fields — never overwrite once set (snapshot is immutable)
+      setIfMissing('location_id', location_id);
+      setIfMissing('location_snapshot', location_snapshot);
 
       if (isRecurring === true && existingData.isRecurring !== true) {
         patch.isRecurring = true;
@@ -199,6 +204,8 @@ const createDonationDoc = async (donationData) => {
       platform,
       transactionId,
       paymentStatus: 'success',
+      location_id: location_id || null,
+      location_snapshot: location_snapshot || null,
       timestamp: ensureFirestoreTimestamp(),
       createdAt: ensureFirestoreTimestamp(),
       ...sanitizedMetadata,
