@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 const { stripe, ensureStripeInitialized } = require('../services/stripe');
 const { verifyAuth } = require('../middleware/auth');
 const cors = require('../middleware/cors');
+const { resolveLocationIdFromKiosk, resolveLocationForDonation } = require('../shared/location');
 
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:3000',
@@ -146,24 +147,15 @@ const createKioskPaymentIntent = (req, res) => {
       const campaignData = campaignSnap.data();
       const orgId = campaignData.organizationId;
 
-      // Resolve location_id from the kiosk so the webhook can attach it to the donation.
-      // Non-blocking — a missing or unlinked kiosk does not fail the payment.
-      let kioskLocationId = null;
+      // Validate location before creating the Stripe payment intent.
+      // A kiosk donation without a valid location cannot be recorded after payment,
+      // so we fail here rather than producing a paid-but-unrecordable donation.
       const kioskId = typeof metadata.kioskId === 'string' ? metadata.kioskId.trim() : null;
+      let kioskLocationId = null;
       if (kioskId) {
-        try {
-          const kioskSnap = await admin.firestore().collection('kiosks').doc(kioskId).get();
-          if (kioskSnap.exists) {
-            kioskLocationId = kioskSnap.data().location_id || null;
-          } else {
-            console.warn('[createKioskPaymentIntent] Kiosk not found:', kioskId);
-          }
-        } catch (kioskErr) {
-          console.warn(
-            '[createKioskPaymentIntent] Failed to fetch kiosk for location_id:',
-            kioskErr.message,
-          );
-        }
+        // Both helpers throw if kiosk/location is missing or fields are incomplete
+        kioskLocationId = await resolveLocationIdFromKiosk(kioskId, `payment:${campaignId}`);
+        await resolveLocationForDonation(kioskLocationId, kioskId, `payment:${campaignId}`);
       }
 
       const canonicalMetadata = {

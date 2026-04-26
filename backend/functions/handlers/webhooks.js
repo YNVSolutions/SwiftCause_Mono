@@ -9,6 +9,7 @@ const { createDonationDoc } = require('../entities/donation');
 const { generateMagicLinkToken, determinePurpose } = require('../entities/magicLink');
 const { updateSubscriptionStatus, getSubscriptionByStripeId } = require('../entities/subscription');
 const { claimWebhookEvent, markEventProcessed, markEventFailed } = require('../shared/firestore');
+const { resolveLocationForDonation } = require('../shared/location');
 const {
   GIFT_AID_DECLARATION_TEXT_VERSION,
   GIFT_AID_DECLARATION_STATUS,
@@ -94,52 +95,6 @@ const withRetries = async (fn, contextLabel, maxAttempts = 3) => {
     }
   }
   throw new Error(`${contextLabel} exhausted retries`);
-};
-
-/**
- * Resolve location_id and location_snapshot for a kiosk-originated donation.
- *
- * Rule: if kioskId is present, location_id and location_snapshot MUST be present.
- * Throws if the location doc is missing or has incomplete required fields.
- * Returns { location_id: null, location_snapshot: null } for non-kiosk donations.
- *
- * @param {string|null} locationId - location_id from Stripe metadata or kiosk doc
- * @param {string|null} kioskId - kioskId to determine if this is a kiosk donation
- * @param {string} context - label for error messages (e.g. payment intent id)
- * @return {Promise<{location_id: string|null, location_snapshot: object|null}>}
- */
-const resolveLocationForDonation = async (locationId, kioskId, context) => {
-  // Non-kiosk donation — location fields are intentionally absent
-  if (!kioskId) {
-    return { location_id: null, location_snapshot: null };
-  }
-
-  // Kiosk donation — location_id must be present
-  if (!locationId) {
-    throw new Error(
-      `[Location] Kiosk donation is missing location_id (kiosk: ${kioskId}, context: ${context})`,
-    );
-  }
-
-  const locationSnap = await admin.firestore().collection('locations').doc(locationId).get();
-  if (!locationSnap.exists) {
-    throw new Error(
-      `[Location] Location doc not found: ${locationId} (kiosk: ${kioskId}, context: ${context})`,
-    );
-  }
-
-  const loc = locationSnap.data();
-  const name = toStringOrNull(loc.name);
-  const postcode = toStringOrNull(loc.postcode);
-  const city = toStringOrNull(loc.city);
-
-  if (!name || !postcode || !city) {
-    throw new Error(
-      `[Location] Location ${locationId} missing required fields (name, postcode, city) — context: ${context}`,
-    );
-  }
-
-  return { location_id: locationId, location_snapshot: { name, postcode, city } };
 };
 
 const writeGiftAidReconciliationIssue = async ({

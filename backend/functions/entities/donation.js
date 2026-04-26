@@ -101,6 +101,27 @@ const createDonationDoc = async (donationData) => {
 
   const donationRef = admin.firestore().collection('donations').doc(transactionId);
 
+  // Entity-boundary validation: kiosk donations must have location data.
+  // This is the last line of defence — callers should validate earlier (payment intent),
+  // but we enforce here so no path can bypass the requirement.
+  if (kioskId) {
+    if (!location_id) {
+      throw new Error(
+        `[createDonationDoc] Kiosk donation missing location_id (kiosk: ${kioskId}, tx: ${transactionId})`,
+      );
+    }
+    if (
+      !location_snapshot ||
+      !location_snapshot.name ||
+      !location_snapshot.postcode ||
+      !location_snapshot.city
+    ) {
+      throw new Error(
+        `[createDonationDoc] Kiosk donation missing complete location_snapshot (kiosk: ${kioskId}, tx: ${transactionId})`,
+      );
+    }
+  }
+
   let writeResult = {
     created: false,
     enrichedFields: [],
@@ -133,9 +154,11 @@ const createDonationDoc = async (donationData) => {
       setIfMissing('invoiceId', invoiceId);
       setIfMissing('recurringInterval', recurringInterval);
       setIfMissing('campaignTitleSnapshot', metadata.campaignTitleSnapshot);
-      // Location fields — never overwrite once set (snapshot is immutable)
+      // location_id: backfill only if missing (safe — it's a reference, not a snapshot)
       setIfMissing('location_id', location_id);
-      setIfMissing('location_snapshot', location_snapshot);
+      // location_snapshot: NEVER backfill — snapshot must reflect state at time of donation.
+      // If it was not written at creation time, it stays absent rather than recording
+      // a later location state.
 
       if (isRecurring === true && existingData.isRecurring !== true) {
         patch.isRecurring = true;

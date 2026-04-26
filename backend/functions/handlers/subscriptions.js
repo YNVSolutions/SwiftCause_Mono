@@ -3,6 +3,7 @@ const { ensureStripeInitialized } = require('../services/stripe');
 const cors = require('../middleware/cors');
 const { createSubscriptionDoc } = require('../entities/subscription');
 const { createDonationDoc } = require('../entities/donation');
+const { resolveLocationForDonation } = require('../shared/location');
 const DEFAULT_GIFT_AID_DECLARATION_TEXT =
   'I want to Gift Aid my donation and any donations I make in the future or have made in the past four years to this charity. I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital Gains Tax than the amount of Gift Aid claimed on all my donations in that tax year it is my responsibility to pay any difference.';
 
@@ -17,41 +18,6 @@ const toStringOrNull = (value) => {
 const normalizeEmail = (value) => {
   const email = toStringOrNull(value);
   return email ? email.toLowerCase() : null;
-};
-
-/**
- * Resolve location_id and location_snapshot for a kiosk-originated donation.
- * Throws if kioskId is present but location data is missing or incomplete.
- * Returns null fields for non-kiosk donations.
- */
-const resolveLocationForDonation = async (locationId, kioskId, context) => {
-  if (!kioskId) return { location_id: null, location_snapshot: null };
-
-  if (!locationId) {
-    throw new Error(
-      `[Location] Kiosk donation missing location_id (kiosk: ${kioskId}, context: ${context})`,
-    );
-  }
-
-  const locationSnap = await admin.firestore().collection('locations').doc(locationId).get();
-  if (!locationSnap.exists) {
-    throw new Error(
-      `[Location] Location doc not found: ${locationId} (kiosk: ${kioskId}, context: ${context})`,
-    );
-  }
-
-  const loc = locationSnap.data();
-  const name = toStringOrNull(loc.name);
-  const postcode = toStringOrNull(loc.postcode);
-  const city = toStringOrNull(loc.city);
-
-  if (!name || !postcode || !city) {
-    throw new Error(
-      `[Location] Location ${locationId} missing required fields (name, postcode, city) — context: ${context}`,
-    );
-  }
-
-  return { location_id: locationId, location_snapshot: { name, postcode, city } };
 };
 
 const getTaxYear = (dateValue) => {
