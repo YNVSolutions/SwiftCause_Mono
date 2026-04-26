@@ -123,6 +123,9 @@ const createDonationDoc = async (donationData) => {
         `[createDonationDoc] Kiosk donation missing complete location_snapshot (kiosk: ${kioskId}, tx: ${transactionId})`,
       );
     }
+    console.log(
+      `[createDonationDoc] Location validated for kiosk donation: location_id=${location_id}, postcode=${location_snapshot.postcode}, tx=${transactionId}`,
+    );
   }
 
   let writeResult = {

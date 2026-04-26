@@ -19,6 +19,9 @@ const admin = require('firebase-admin');
 const resolveLocationForDonation = async (locationId, kioskId, context) => {
   // Non-kiosk donation — location fields are intentionally absent
   if (!kioskId) {
+    console.log(
+      `[Location] Non-kiosk donation — skipping location resolution (context: ${context})`,
+    );
     return { location_id: null, location_snapshot: null };
   }
 
@@ -29,6 +32,9 @@ const resolveLocationForDonation = async (locationId, kioskId, context) => {
     );
   }
 
+  console.log(
+    `[Location] Fetching location doc: ${locationId} (kiosk: ${kioskId}, context: ${context})`,
+  );
   const locationSnap = await admin.firestore().collection('locations').doc(locationId).get();
   if (!locationSnap.exists) {
     throw new Error(
@@ -48,6 +54,9 @@ const resolveLocationForDonation = async (locationId, kioskId, context) => {
     );
   }
 
+  console.log(
+    `[Location] Snapshot resolved: ${locationId} → { name: "${name}", postcode: "${postcode}", city: "${city}" } (context: ${context})`,
+  );
   return { location_id: locationId, location_snapshot: { name, postcode, city } };
 };
 
@@ -62,6 +71,7 @@ const resolveLocationForDonation = async (locationId, kioskId, context) => {
 const resolveLocationIdFromKiosk = async (kioskId, context) => {
   if (!kioskId) return null;
 
+  console.log(`[Location] Fetching kiosk doc: ${kioskId} (context: ${context})`);
   const kioskSnap = await admin.firestore().collection('kiosks').doc(kioskId).get();
   if (!kioskSnap.exists) {
     throw new Error(`[Location] Kiosk not found: ${kioskId} (context: ${context})`);
@@ -74,6 +84,7 @@ const resolveLocationIdFromKiosk = async (kioskId, context) => {
     throw new Error(`[Location] Kiosk ${kioskId} has no location_id set (context: ${context})`);
   }
 
+  console.log(`[Location] Kiosk ${kioskId} → location_id: ${locationId} (context: ${context})`);
   return locationId;
 };
 

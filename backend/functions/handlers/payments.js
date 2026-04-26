@@ -153,9 +153,13 @@ const createKioskPaymentIntent = (req, res) => {
       const kioskId = typeof metadata.kioskId === 'string' ? metadata.kioskId.trim() : null;
       let kioskLocationId = null;
       if (kioskId) {
+        console.log(
+          `[Payment] Validating location for kiosk: ${kioskId} (campaign: ${campaignId})`,
+        );
         // Both helpers throw if kiosk/location is missing or fields are incomplete
         kioskLocationId = await resolveLocationIdFromKiosk(kioskId, `payment:${campaignId}`);
         await resolveLocationForDonation(kioskLocationId, kioskId, `payment:${campaignId}`);
+        console.log(`[Payment] Location validated: ${kioskLocationId} (kiosk: ${kioskId})`);
       }
 
       const canonicalMetadata = {
