@@ -263,3 +263,192 @@ describe('createDonationDoc', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// createDonationDoc — location handling (#679)
+// ---------------------------------------------------------------------------
+
+describe('createDonationDoc — location handling', () => {
+  beforeEach(() => {
+    admin.__reset();
+  });
+
+  const VALID_LOCATION_SNAPSHOT = { name: "St Mary's Hall", postcode: 'SW1A 1AA', city: 'London' };
+
+  it('stores location_id and location_snapshot on a new kiosk donation', async () => {
+    await createDonationDoc({
+      transactionId: 'pi_loc_create',
+      campaignId: 'camp_1',
+      organizationId: 'org_1',
+      amount: 1000,
+      currency: 'gbp',
+      kioskId: 'kiosk_1',
+      location_id: 'loc_abc',
+      location_snapshot: VALID_LOCATION_SNAPSHOT,
+      metadata: { source: 'stripe_webhook' },
+    });
+
+    const doc = admin.__getDoc('donations', 'pi_loc_create');
+    expect(doc.location_id).toBe('loc_abc');
+    expect(doc.location_snapshot).toEqual(VALID_LOCATION_SNAPSHOT);
+  });
+
+  it('throws when kioskId is present but location_id is missing', async () => {
+    await expect(
+      createDonationDoc({
+        transactionId: 'pi_loc_missing',
+        campaignId: 'camp_1',
+        organizationId: 'org_1',
+        amount: 1000,
+        currency: 'gbp',
+        kioskId: 'kiosk_1',
+        // no location_id
+        metadata: { source: 'stripe_webhook' },
+      }),
+    ).rejects.toThrow('missing location_id');
+  });
+
+  it('throws when kioskId is present but location_snapshot is missing', async () => {
+    await expect(
+      createDonationDoc({
+        transactionId: 'pi_loc_no_snapshot',
+        campaignId: 'camp_1',
+        organizationId: 'org_1',
+        amount: 1000,
+        currency: 'gbp',
+        kioskId: 'kiosk_1',
+        location_id: 'loc_abc',
+        // no location_snapshot
+        metadata: { source: 'stripe_webhook' },
+      }),
+    ).rejects.toThrow('missing complete location_snapshot');
+  });
+
+  it('throws when location_snapshot is missing postcode', async () => {
+    await expect(
+      createDonationDoc({
+        transactionId: 'pi_loc_no_postcode',
+        campaignId: 'camp_1',
+        organizationId: 'org_1',
+        amount: 1000,
+        currency: 'gbp',
+        kioskId: 'kiosk_1',
+        location_id: 'loc_abc',
+        location_snapshot: { name: "St Mary's Hall", postcode: '', city: 'London' },
+        metadata: { source: 'stripe_webhook' },
+      }),
+    ).rejects.toThrow('missing complete location_snapshot');
+  });
+
+  it('throws when location_id is whitespace-only', async () => {
+    await expect(
+      createDonationDoc({
+        transactionId: 'pi_loc_whitespace_id',
+        campaignId: 'camp_1',
+        organizationId: 'org_1',
+        amount: 1000,
+        currency: 'gbp',
+        kioskId: 'kiosk_1',
+        location_id: '   ',
+        location_snapshot: VALID_LOCATION_SNAPSHOT,
+        metadata: { source: 'stripe_webhook' },
+      }),
+    ).rejects.toThrow('missing location_id');
+  });
+
+  it('throws when location_snapshot has whitespace-only postcode', async () => {
+    await expect(
+      createDonationDoc({
+        transactionId: 'pi_loc_whitespace_postcode',
+        campaignId: 'camp_1',
+        organizationId: 'org_1',
+        amount: 1000,
+        currency: 'gbp',
+        kioskId: 'kiosk_1',
+        location_id: 'loc_abc',
+        location_snapshot: { name: "St Mary's Hall", postcode: '   ', city: 'London' },
+        metadata: { source: 'stripe_webhook' },
+      }),
+    ).rejects.toThrow('missing complete location_snapshot');
+  });
+  it('allows null location fields for non-kiosk (web) donations', async () => {
+    await createDonationDoc({
+      transactionId: 'pi_web_no_loc',
+      campaignId: 'camp_1',
+      organizationId: 'org_1',
+      amount: 1000,
+      currency: 'gbp',
+      // no kioskId, no location fields
+      metadata: { source: 'stripe_webhook' },
+    });
+
+    const doc = admin.__getDoc('donations', 'pi_web_no_loc');
+    expect(doc.location_id).toBeNull();
+    expect(doc.location_snapshot).toBeNull();
+  });
+
+  it('does NOT backfill location_snapshot on enrichment (snapshot immutability)', async () => {
+    // Create donation without snapshot (simulates pre-#679 donation)
+    const db = admin.firestore();
+    await db.collection('donations').doc('pi_no_snapshot').set({
+      transactionId: 'pi_no_snapshot',
+      campaignId: 'camp_1',
+      amount: 1000,
+      kioskId: 'kiosk_1',
+      location_id: 'loc_abc',
+      // no location_snapshot
+    });
+
+    // Enrich with a new field — snapshot should NOT be backfilled
+    await createDonationDoc({
+      transactionId: 'pi_no_snapshot',
+      campaignId: 'camp_1',
+      organizationId: 'org_1',
+      amount: 1000,
+      currency: 'gbp',
+      kioskId: 'kiosk_1',
+      location_id: 'loc_abc',
+      location_snapshot: VALID_LOCATION_SNAPSHOT,
+      donorEmail: 'new@example.com',
+      metadata: { source: 'stripe_webhook' },
+    });
+
+    const doc = admin.__getDoc('donations', 'pi_no_snapshot');
+    // location_snapshot must remain absent — not backfilled from later webhook
+    expect(doc.location_snapshot).toBeUndefined();
+    // But other enrichment still happened
+    expect(doc.donorEmail).toBe('new@example.com');
+  });
+
+  it('does NOT overwrite an existing location_snapshot on retry', async () => {
+    // Create with original snapshot
+    await createDonationDoc({
+      transactionId: 'pi_snapshot_immutable',
+      campaignId: 'camp_1',
+      organizationId: 'org_1',
+      amount: 1000,
+      currency: 'gbp',
+      kioskId: 'kiosk_1',
+      location_id: 'loc_abc',
+      location_snapshot: VALID_LOCATION_SNAPSHOT,
+      metadata: { source: 'stripe_webhook' },
+    });
+
+    // Retry with a different snapshot (simulates location being edited)
+    await createDonationDoc({
+      transactionId: 'pi_snapshot_immutable',
+      campaignId: 'camp_1',
+      organizationId: 'org_1',
+      amount: 1000,
+      currency: 'gbp',
+      kioskId: 'kiosk_1',
+      location_id: 'loc_abc',
+      location_snapshot: { name: 'New Name', postcode: 'W1A 1AA', city: 'Westminster' },
+      metadata: { source: 'stripe_webhook' },
+    });
+
+    const doc = admin.__getDoc('donations', 'pi_snapshot_immutable');
+    // Original snapshot must be preserved
+    expect(doc.location_snapshot).toEqual(VALID_LOCATION_SNAPSHOT);
+  });
+});
