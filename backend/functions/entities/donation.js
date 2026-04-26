@@ -230,8 +230,14 @@ const createDonationDoc = async (donationData) => {
       platform,
       transactionId,
       paymentStatus: 'success',
-      location_id: location_id || null,
-      location_snapshot: location_snapshot || null,
+      location_id: typeof location_id === 'string' ? location_id.trim() || null : null,
+      location_snapshot: location_snapshot
+        ? {
+            name: location_snapshot.name?.trim() || null,
+            postcode: location_snapshot.postcode?.trim() || null,
+            city: location_snapshot.city?.trim() || null,
+          }
+        : null,
       timestamp: ensureFirestoreTimestamp(),
       createdAt: ensureFirestoreTimestamp(),
       ...sanitizedMetadata,
