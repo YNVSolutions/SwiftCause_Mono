@@ -515,7 +515,7 @@ export function KioskManagement({
         hasPermission={hasPermission}
         activeScreen="admin-kiosks"
       >
-        <div className="min-h-screen bg-gray-50">
+        <div className="space-y-6 sm:space-y-8">
           <div className="text-center py-12">
             <div className="animate-pulse">
               <div className="w-12 h-12 bg-gray-300 rounded-full mx-auto mb-3"></div>
@@ -580,7 +580,7 @@ export function KioskManagement({
         ) : null
       }
     >
-      <div className="min-h-screen bg-gray-50">
+      <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8">
           {/* Stat Cards Section */}
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-12">
