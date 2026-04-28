@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
 import { Label } from '../../shared/ui/label';
-import { Card, CardContent } from '../../shared/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../shared/ui/card';
 import { Badge } from '../../shared/ui/badge';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '../../shared/ui/table';
 import {
@@ -14,7 +14,6 @@ import {
 } from '../../shared/ui/dialog';
 import {
   Download,
-  RefreshCw,
   DollarSign,
   Users,
   TrendingUp,
@@ -35,12 +34,12 @@ import {
 } from '../../entities/donation/api/donationExportApi';
 import { useDonations } from '../../shared/lib/hooks/useDonations';
 import { PaginationControls } from '../../shared/ui/PaginationControls';
+import { SortableTableHeader } from './components/SortableTableHeader';
+import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import {
   AdminSearchFilterHeader,
   AdminSearchFilterConfig,
 } from './components/AdminSearchFilterHeader';
-import { SortableTableHeader } from './components/SortableTableHeader';
-import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import { formatCurrency } from '../../shared/lib/currencyFormatter';
 import { useToast } from '../../shared/ui/ToastProvider';
 
@@ -99,6 +98,13 @@ function formatDonationDate(value?: string, withLeadingZero = true): string {
   });
 }
 
+function formatFilterDateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function DonationManagement({
   onNavigate,
   onLogout,
@@ -135,11 +141,13 @@ export function DonationManagement({
     goNext,
     goPrev,
     pageSize,
-    refresh: refreshDonations,
   } = useDonations(userSession.user.organizationId, {
     status: statusFilter !== 'all' ? statusFilter : undefined,
     campaignId: campaignFilter !== 'all' ? campaignFilter : undefined,
-    // isRecurring handled client-side to avoid needing compound indexes
+    isRecurring:
+      recurringFilter === 'all' ? undefined : recurringFilter === 'recurring' ? true : false,
+    donationDate: dateFilter ? formatFilterDateKey(dateFilter) : undefined,
+    searchTerm: searchTerm.trim() || undefined,
   });
 
   const fetchAllData = useCallback(async () => {
@@ -210,95 +218,13 @@ export function DonationManagement({
     return false;
   };
 
-  // Configuration for AdminSearchFilterHeader
-  const searchFilterConfig: AdminSearchFilterConfig = {
-    filters: [
-      {
-        key: 'statusFilter',
-        label: 'Status',
-        type: 'select',
-        options: [
-          { label: 'Success', value: 'success' },
-          { label: 'Pending', value: 'pending' },
-          { label: 'Failed', value: 'failed' },
-        ],
-      },
-      {
-        key: 'campaignFilter',
-        label: 'Campaign',
-        type: 'select',
-        options: campaigns.map((campaign) => ({ label: campaign.title, value: campaign.id })),
-      },
-      {
-        key: 'recurringFilter',
-        label: 'Recurring',
-        type: 'select',
-        options: [
-          { label: 'Recurring', value: 'recurring' },
-          { label: 'One-time', value: 'one_time' },
-        ],
-      },
-      {
-        key: 'dateFilter',
-        label: 'Filter by date',
-        type: 'date',
-      },
-    ],
-  };
-
-  const filterValues = {
-    statusFilter,
-    campaignFilter,
-    recurringFilter,
-    dateFilter,
-  };
-
-  const handleFilterChange = (key: string, value: string | Date | undefined) => {
-    switch (key) {
-      case 'statusFilter':
-        setStatusFilter(typeof value === 'string' ? value : 'all');
-        break;
-      case 'campaignFilter':
-        setCampaignFilter(typeof value === 'string' ? value : 'all');
-        break;
-      case 'dateFilter':
-        setDateFilter(value instanceof Date ? value : undefined);
-        break;
-      case 'recurringFilter':
-        setRecurringFilter(typeof value === 'string' ? value : 'all');
-        break;
-    }
-  };
-
-  const filteredDonationsData = pagedDonations
-    .filter((donation: Donation) => {
-      const campaignName = getCampaignDisplayName(donation as FetchedDonation);
-      const d = donation as FetchedDonation;
-      const matchesSearch =
-        !searchTerm ||
-        (d.donorName && d.donorName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (d.stripePaymentIntentId &&
-          d.stripePaymentIntentId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (d.transactionId && d.transactionId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        campaignName.toLowerCase().includes(searchTerm.toLowerCase());
-      const donationDate = parseDonationDate(d.timestamp);
-      const matchesDate =
-        !dateFilter ||
-        (donationDate ? donationDate.toDateString() === dateFilter.toDateString() : false);
-      const recurring = isRecurringDonation(d);
-      const matchesRecurring =
-        recurringFilter === 'all' ||
-        (recurringFilter === 'recurring' && recurring) ||
-        (recurringFilter === 'one_time' && !recurring);
-      return matchesSearch && matchesDate && matchesRecurring;
-    })
-    .map((donation: Donation) => {
-      const d = donation as FetchedDonation;
-      return {
-        ...d,
-        timestampTs: parseDonationDate(d.timestamp)?.getTime() || 0,
-      } as FetchedDonation;
-    });
+  const filteredDonationsData = pagedDonations.map((donation: Donation) => {
+    const d = donation as FetchedDonation;
+    return {
+      ...d,
+      timestampTs: parseDonationDate(d.timestamp)?.getTime() || 0,
+    } as FetchedDonation;
+  });
 
   const {
     sortedData: filteredDonations,
@@ -351,6 +277,71 @@ export function DonationManagement({
       filteredDonations.length > 0
         ? filteredDonations.reduce((sum, d) => sum + (d.amount || 0), 0) / filteredDonations.length
         : 0,
+  };
+  const searchFilterConfig: AdminSearchFilterConfig = {
+    filters: [
+      {
+        key: 'statusFilter',
+        label: 'Status',
+        type: 'select',
+        allOptionLabel: 'All statuses',
+        options: [
+          { label: 'Success', value: 'success' },
+          { label: 'Pending', value: 'pending' },
+          { label: 'Failed', value: 'failed' },
+        ],
+      },
+      {
+        key: 'campaignFilter',
+        label: 'Campaign',
+        type: 'select',
+        allOptionLabel: 'All campaigns',
+        options: campaigns.map((campaign) => ({
+          label: campaign.title,
+          value: campaign.id,
+        })),
+      },
+      {
+        key: 'recurringFilter',
+        label: 'Recurring',
+        type: 'select',
+        allOptionLabel: 'All',
+        options: [
+          { label: 'Recurring', value: 'recurring' },
+          { label: 'One-time', value: 'one_time' },
+        ],
+      },
+      {
+        key: 'dateFilter',
+        label: 'Filter by date',
+        type: 'date',
+        clearLabel: 'Clear date',
+      },
+    ],
+  };
+
+  const filterValues = {
+    statusFilter,
+    campaignFilter,
+    recurringFilter,
+    dateFilter,
+  };
+
+  const handleFilterChange = (key: string, value: unknown) => {
+    switch (key) {
+      case 'statusFilter':
+        if (typeof value === 'string') setStatusFilter(value);
+        break;
+      case 'campaignFilter':
+        if (typeof value === 'string') setCampaignFilter(value);
+        break;
+      case 'recurringFilter':
+        if (typeof value === 'string') setRecurringFilter(value);
+        break;
+      case 'dateFilter':
+        setDateFilter(value instanceof Date ? value : undefined);
+        break;
+    }
   };
 
   const handleExportDonations = async () => {
@@ -425,7 +416,7 @@ export function DonationManagement({
       onHeaderSearchChange={setSearchTerm}
       headerTopRightActions={
         hasPermission('export_donations') ? (
-          <div className="flex w-full justify-end">
+          <div className="flex justify-end">
             <div className="relative sm:hidden">
               <Button
                 variant="outline"
@@ -627,365 +618,338 @@ export function DonationManagement({
           </div>
 
           {/* Unified Header Component */}
-          <AdminSearchFilterHeader
-            config={searchFilterConfig}
-            filterValues={filterValues}
-            onFilterChange={handleFilterChange}
-            actions={
-              <Button
-                variant="outline"
-                onClick={refreshDonations}
-                disabled={loading}
-                aria-label="Refresh"
-                className="border-[#064e3b]/20 text-[#064e3b] hover:bg-[#064e3b]/10 hover:text-[#064e3b] hover:border-[#064e3b]/30"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''} sm:mr-2`} />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-            }
-          />
+          <Card className="rounded-3xl border border-gray-100 shadow-sm">
+            <CardHeader>
+              <CardTitle>Donations</CardTitle>
+              <CardDescription>Track and analyze donation transactions</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AdminSearchFilterHeader
+                config={searchFilterConfig}
+                filterValues={filterValues}
+                onFilterChange={handleFilterChange}
+                filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-4"
+                summaryText={`Showing ${filteredDonations.length} of ${pagedDonations.length} donations`}
+              />
 
-          {/* Modern Table Container - Desktop */}
-          <Card className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm mt-6 hidden md:block">
-            <CardContent className="p-0">
               {loading ? (
-                <div className="space-y-4 p-6">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="grid grid-cols-6 gap-4 py-4 border-b border-gray-100">
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="hidden space-y-4 md:block">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} className="grid grid-cols-6 gap-4 border-b border-gray-100 py-4">
+                        <Skeleton className="col-span-1 h-10 w-full" />
+                        <Skeleton className="col-span-1 h-10 w-full" />
+                        <Skeleton className="col-span-1 h-10 w-full" />
+                        <Skeleton className="col-span-1 h-10 w-full" />
+                        <Skeleton className="col-span-1 h-10 w-full" />
+                        <Skeleton className="col-span-1 h-10 w-full" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-4 md:hidden">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Card key={i} className="overflow-hidden rounded-3xl">
+                        <CardContent className="p-4">
+                          <Skeleton className="h-20 w-full" />
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </>
               ) : error ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center text-red-600">
-                  <AlertCircle className="h-10 w-10 text-red-500 mb-3" />
+                  <AlertCircle className="mb-3 h-10 w-10 text-red-500" />
                   <p className="text-lg">{error}</p>
                 </div>
               ) : filteredDonations.length > 0 ? (
-                <div className="overflow-hidden">
-                  <Table className="table-fixed">
-                    <TableHeader>
-                      <TableRow>
-                        <SortableTableHeader
-                          sortKey="donorName"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3 w-[20%]"
-                        >
-                          Donor
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortKey="campaignId"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3 w-[20%]"
-                        >
-                          Campaign
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortKey="amount"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3 w-[14%]"
-                        >
-                          Amount
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortKey="kioskId"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3 w-[12%]"
-                        >
-                          Kiosk
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortKey="paymentStatus"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3 w-[12%]"
-                        >
-                          Status
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortKey="timestampTs"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3 w-[12%]"
-                        >
-                          Date
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortable={false}
-                          sortKey="actions"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3 w-[10%]"
-                        >
-                          Actions
-                        </SortableTableHeader>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredDonations.map((donation) => {
-                        const kiosk =
-                          donation.kioskId && kioskMap[donation.kioskId]
-                            ? kioskMap[donation.kioskId]
-                            : null;
-                        return (
-                          <TableRow
-                            key={donation.id}
-                            className="hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 align-middle"
+                <>
+                  <div className="hidden overflow-hidden md:block">
+                    <Table className="table-fixed">
+                      <TableHeader>
+                        <TableRow>
+                          <SortableTableHeader
+                            sortKey="donorName"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 w-[20%]"
                           >
-                            <TableCell className="p-3 align-middle">
-                              <span
-                                className="text-sm font-medium text-gray-900 block truncate max-w-[220px]"
-                                title={donation.donorName || 'Anonymous'}
-                              >
-                                {donation.donorName || 'Anonymous'}
-                              </span>
-                            </TableCell>
-
-                            <TableCell className="p-3 align-middle">
-                              <p
-                                className="text-sm font-medium text-gray-900 truncate max-w-[220px]"
-                                title={getCampaignDisplayName(donation)}
-                              >
-                                {getCampaignDisplayName(donation)}
-                              </p>
-                            </TableCell>
-
-                            <TableCell className="p-3 align-middle">
-                              <div className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900 tabular-nums">
-                                <span className="inline-flex w-6 flex-col items-start justify-center gap-1">
-                                  {isRecurringDonation(donation) ? (
-                                    <span
-                                      className="inline-flex items-center rounded-md bg-sky-50 px-1.5 py-0.5 text-sky-700 ring-1 ring-sky-600/20"
-                                      title="Recurring donation"
-                                    >
-                                      <CreditCard className="h-3 w-3" />
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center rounded-md px-1.5 py-0.5 invisible">
-                                      <CreditCard className="h-3 w-3" />
-                                    </span>
-                                  )}
-                                  {donation.isGiftAid ? (
-                                    <span
-                                      className="inline-flex items-center rounded-md bg-purple-50 px-1.5 py-0.5 text-purple-700 ring-1 ring-purple-600/20"
-                                      title="Gift Aid donation"
-                                    >
-                                      <Gift className="h-3 w-3" />
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center rounded-md px-1.5 py-0.5 invisible">
-                                      <Gift className="h-3 w-3" />
-                                    </span>
-                                  )}
-                                </span>
-                                <span>{formatCurrency(donation.amount || 0)}</span>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="p-3 align-middle">
-                              {kiosk ? (
+                            Donor
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortKey="campaignId"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 w-[20%]"
+                          >
+                            Campaign
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortKey="amount"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 w-[14%]"
+                          >
+                            Amount
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortKey="kioskId"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 w-[12%]"
+                          >
+                            Kiosk
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortKey="paymentStatus"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 w-[12%]"
+                          >
+                            Status
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortKey="timestampTs"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 w-[12%]"
+                          >
+                            Date
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortable={false}
+                            sortKey="actions"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 w-[10%]"
+                          >
+                            Actions
+                          </SortableTableHeader>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredDonations.map((donation) => {
+                          const kiosk =
+                            donation.kioskId && kioskMap[donation.kioskId]
+                              ? kioskMap[donation.kioskId]
+                              : null;
+                          return (
+                            <TableRow
+                              key={donation.id}
+                              className="hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 align-middle"
+                            >
+                              <TableCell className="p-3 align-middle">
                                 <span
-                                  className="text-sm font-medium text-gray-900 block truncate"
-                                  title={kiosk.name}
+                                  className="text-sm font-medium text-gray-900 block truncate max-w-[220px]"
+                                  title={donation.donorName || 'Anonymous'}
                                 >
-                                  {kiosk.name}
+                                  {donation.donorName || 'Anonymous'}
                                 </span>
-                              ) : (
-                                <span className="text-sm text-gray-500">Online</span>
-                              )}
-                            </TableCell>
+                              </TableCell>
 
-                            <TableCell className="p-3 align-middle">
-                              {getStatusBadge(donation.paymentStatus)}
-                            </TableCell>
+                              <TableCell className="p-3 align-middle">
+                                <p
+                                  className="text-sm font-medium text-gray-900 truncate max-w-[220px]"
+                                  title={getCampaignDisplayName(donation)}
+                                >
+                                  {getCampaignDisplayName(donation)}
+                                </p>
+                              </TableCell>
 
-                            <TableCell className="p-3 align-middle">
-                              <span className="text-sm text-gray-500">
-                                {donation.timestamp
-                                  ? formatDonationDate(donation.timestamp, true)
-                                  : 'N/A'}
-                              </span>
-                            </TableCell>
-                            <TableCell className="p-3 align-middle">
+                              <TableCell className="p-3 align-middle">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900 tabular-nums">
+                                  <span className="inline-flex w-6 flex-col items-start justify-center gap-1">
+                                    {isRecurringDonation(donation) ? (
+                                      <span
+                                        className="inline-flex items-center rounded-md bg-sky-50 px-1.5 py-0.5 text-sky-700 ring-1 ring-sky-600/20"
+                                        title="Recurring donation"
+                                      >
+                                        <CreditCard className="h-3 w-3" />
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center rounded-md px-1.5 py-0.5 invisible">
+                                        <CreditCard className="h-3 w-3" />
+                                      </span>
+                                    )}
+                                    {donation.isGiftAid ? (
+                                      <span
+                                        className="inline-flex items-center rounded-md bg-purple-50 px-1.5 py-0.5 text-purple-700 ring-1 ring-purple-600/20"
+                                        title="Gift Aid donation"
+                                      >
+                                        <Gift className="h-3 w-3" />
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center rounded-md px-1.5 py-0.5 invisible">
+                                        <Gift className="h-3 w-3" />
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span>{formatCurrency(donation.amount || 0)}</span>
+                                </div>
+                              </TableCell>
+
+                              <TableCell className="p-3 align-middle">
+                                {kiosk ? (
+                                  <span
+                                    className="text-sm font-medium text-gray-900 block truncate"
+                                    title={kiosk.name}
+                                  >
+                                    {kiosk.name}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-500">Online</span>
+                                )}
+                              </TableCell>
+
+                              <TableCell className="p-3 align-middle">
+                                {getStatusBadge(donation.paymentStatus)}
+                              </TableCell>
+
+                              <TableCell className="p-3 align-middle">
+                                <span className="text-sm text-gray-500">
+                                  {donation.timestamp
+                                    ? formatDonationDate(donation.timestamp, true)
+                                    : 'N/A'}
+                                </span>
+                              </TableCell>
+                              <TableCell className="p-3 align-middle">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleViewDetails(donation)}
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                    {(filteredDonations.length > 0 || canGoPrev) && (
+                      <div className="border-t border-gray-100 px-4">
+                        <PaginationControls
+                          pageNumber={pageNumber}
+                          pageSize={pageSize}
+                          totalOnPage={filteredDonations.length}
+                          canGoNext={canGoNext}
+                          canGoPrev={canGoPrev}
+                          onNext={goNext}
+                          onPrev={goPrev}
+                          loading={fetching}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4 md:hidden">
+                    {filteredDonations.map((donation) => {
+                      const kiosk =
+                        donation.kioskId && kioskMap[donation.kioskId]
+                          ? kioskMap[donation.kioskId]
+                          : null;
+                      return (
+                        <Card
+                          key={donation.id}
+                          className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
+                        >
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-semibold text-slate-900">
+                                  {donation.donorName || 'Anonymous'}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {getCampaignDisplayName(donation)}
+                                </div>
+                                <div className="mt-2 flex items-center gap-2">
+                                  {donation.isGiftAid && (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-purple-50 text-purple-700 border-purple-200"
+                                    >
+                                      <Gift className="h-3 w-3 mr-1" />
+                                      Gift Aid
+                                    </Badge>
+                                  )}
+                                  {isRecurringDonation(donation) && (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-sky-50 text-sky-700 border-sky-200"
+                                    >
+                                      <CreditCard className="h-3 w-3 mr-1" />
+                                      Recurring
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                              <div>{getStatusBadge(donation.paymentStatus)}</div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-gray-500">Amount</p>
+                                <p className="font-semibold text-slate-900">
+                                  {formatCurrency(donation.amount || 0)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Date</p>
+                                <p className="text-slate-900">
+                                  {donation.timestamp
+                                    ? formatDonationDate(donation.timestamp, false)
+                                    : 'N/A'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Platform</p>
+                                <p className="text-slate-900 capitalize">
+                                  {donation.platform || 'N/A'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Source</p>
+                                <p className="text-slate-900">{kiosk ? kiosk.name : 'Online'}</p>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-100">
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="w-full"
                                 onClick={() => handleViewDetails(donation)}
                               >
                                 <Eye className="h-4 w-4 mr-2" />
                                 View
                               </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </>
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <Ghost className="mx-auto h-12 w-12 text-gray-400 mb-3" />
                   <p className="text-lg font-medium mb-2">No Donations Found</p>
                   <p className="text-sm mb-4">
-                    No donations have been made to your organization yet.
+                    {searchTerm || statusFilter !== 'all' || campaignFilter !== 'all' || dateFilter
+                      ? 'Try adjusting your search or filters'
+                      : 'No donations have been made to your organization yet.'}
                   </p>
-                </div>
-              )}
-              {(filteredDonations.length > 0 || canGoPrev) && (
-                <div className="border-t border-gray-100 px-4">
-                  <PaginationControls
-                    pageNumber={pageNumber}
-                    pageSize={pageSize}
-                    totalOnPage={filteredDonations.length}
-                    canGoNext={canGoNext}
-                    canGoPrev={canGoPrev}
-                    onNext={goNext}
-                    onPrev={goPrev}
-                    loading={fetching}
-                  />
                 </div>
               )}
             </CardContent>
           </Card>
-
-          {/* Donations Cards - Mobile */}
-          <div className="md:hidden space-y-4 mt-6">
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="overflow-hidden rounded-3xl">
-                  <CardContent className="p-4">
-                    <Skeleton className="h-20 w-full" />
-                  </CardContent>
-                </Card>
-              ))
-            ) : error ? (
-              <Card className="overflow-hidden rounded-3xl border-red-200 bg-red-50">
-                <CardContent className="p-6">
-                  <div className="flex flex-col items-center justify-center text-center text-red-600">
-                    <AlertCircle className="h-10 w-10 text-red-500 mb-3" />
-                    <p className="text-lg">{error}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : filteredDonations.length > 0 ? (
-              filteredDonations.map((donation) => {
-                const kiosk =
-                  donation.kioskId && kioskMap[donation.kioskId]
-                    ? kioskMap[donation.kioskId]
-                    : null;
-                return (
-                  <Card
-                    key={donation.id}
-                    className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
-                  >
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-semibold text-slate-900">
-                            {donation.donorName || 'Anonymous'}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {getCampaignDisplayName(donation)}
-                          </div>
-                          <div className="mt-2 flex items-center gap-2">
-                            {donation.isGiftAid && (
-                              <Badge
-                                variant="outline"
-                                className="bg-purple-50 text-purple-700 border-purple-200"
-                              >
-                                <Gift className="h-3 w-3 mr-1" />
-                                Gift Aid
-                              </Badge>
-                            )}
-                            {isRecurringDonation(donation) && (
-                              <Badge
-                                variant="outline"
-                                className="bg-sky-50 text-sky-700 border-sky-200"
-                              >
-                                <CreditCard className="h-3 w-3 mr-1" />
-                                Recurring
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div>{getStatusBadge(donation.paymentStatus)}</div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <p className="text-gray-500">Amount</p>
-                          <p className="font-semibold text-slate-900">
-                            {formatCurrency(donation.amount || 0)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500">Date</p>
-                          <p className="text-slate-900">
-                            {donation.timestamp
-                              ? formatDonationDate(donation.timestamp, false)
-                              : 'N/A'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500">Platform</p>
-                          <p className="text-slate-900 capitalize">{donation.platform || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500">Source</p>
-                          <p className="text-slate-900">{kiosk ? kiosk.name : 'Online'}</p>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-gray-100">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => handleViewDetails(donation)}
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
-            ) : (
-              <Card className="overflow-hidden rounded-3xl">
-                <CardContent className="p-8">
-                  <div className="flex flex-col items-center gap-2 text-center">
-                    <Ghost className="h-12 w-12 text-gray-400" />
-                    <p className="text-xl font-bold text-gray-600">No Donations Found</p>
-                    <p className="text-base text-gray-500 mt-2">
-                      {searchTerm ||
-                      statusFilter !== 'all' ||
-                      campaignFilter !== 'all' ||
-                      dateFilter
-                        ? 'Try adjusting your search or filters'
-                        : 'No donations have been made to your organization yet.'}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
         </main>
 
         {/* Donation Details Dialog */}
