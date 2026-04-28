@@ -107,25 +107,6 @@ const toDateInputValue = (value: unknown): string => {
   return '';
 };
 
-const toDateValue = (value: unknown): Date | null => {
-  if (!value) return null;
-
-  if (isTimestampLike(value)) {
-    return new Date(value.seconds * 1000);
-  }
-
-  if (value instanceof Date) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  return null;
-};
-
 const getInitialFormData = () => ({
   title: '',
   description: '',
@@ -1341,7 +1322,12 @@ const CampaignManagement = ({
     goPrev,
     pageSize,
     refresh: refreshPaged,
-  } = useCampaignsPaginated(userSession.user.organizationId || '');
+  } = useCampaignsPaginated(userSession.user.organizationId || '', {
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+    category: categoryFilter !== 'all' ? categoryFilter : undefined,
+    dateRange: dateRange as 'all' | 'last30' | 'last90' | 'last365',
+    searchTerm: searchTerm.trim() || undefined,
+  });
 
   // Invalidates both the management hook cache and the paginated query cache
   const refreshAll = useCallback(() => {
@@ -2234,28 +2220,13 @@ const CampaignManagement = ({
         ? { label: 'Needs Attention', className: 'bg-amber-100 text-amber-700' }
         : { label: 'At Risk', className: 'bg-red-100 text-red-700' };
 
-  const getDateRangeStart = (range: string) => {
-    const today = new Date();
-    switch (range) {
-      case 'last30':
-        return new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-      case 'last90':
-        return new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
-      case 'last365':
-        return new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
-      default:
-        return null;
-    }
-  };
-
-  const dateRangeStart = getDateRangeStart(dateRange);
-
   const searchFilterConfig: AdminSearchFilterConfig = {
     filters: [
       {
         key: 'statusFilter',
         label: 'Status',
         type: 'select',
+        allOptionLabel: 'All statuses',
         options: [
           { label: 'Active', value: 'active' },
           { label: 'Paused', value: 'paused' },
@@ -2267,6 +2238,7 @@ const CampaignManagement = ({
         key: 'categoryFilter',
         label: 'Category',
         type: 'select',
+        allOptionLabel: 'All categories',
         options: uniqueCategories.map((category) => ({
           label: category,
           value: category,
@@ -2274,7 +2246,7 @@ const CampaignManagement = ({
       },
       {
         key: 'dateRange',
-        label: 'Date Range',
+        label: 'Date range',
         type: 'select',
         includeAllOption: false,
         options: [
@@ -2293,7 +2265,8 @@ const CampaignManagement = ({
     dateRange,
   };
 
-  const handleFilterChange = (key: string, value: string) => {
+  const handleFilterChange = (key: string, value: unknown) => {
+    if (typeof value !== 'string') return;
     switch (key) {
       case 'statusFilter':
         setStatusFilter(value);
@@ -2307,21 +2280,6 @@ const CampaignManagement = ({
     }
   };
 
-  // Client-side search, status, category, and date filters on current page
-  const filteredCampaigns = campaigns.filter((campaign) => {
-    const matchesSearch =
-      !searchTerm ||
-      campaign.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      campaign.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (Array.isArray(campaign.tags) &&
-        campaign.tags.some((tag: string) => tag.toLowerCase().includes(searchTerm.toLowerCase())));
-    const matchesStatus = statusFilter === 'all' || campaign.status === statusFilter;
-    const matchesCategory = categoryFilter === 'all' || campaign.category === categoryFilter;
-    const campaignEndDate = toDateValue(campaign.endDate);
-    const matchesDate = !dateRangeStart || !campaignEndDate || campaignEndDate >= dateRangeStart;
-    return matchesSearch && matchesStatus && matchesCategory && matchesDate;
-  });
-
   // Use sorting hook
   const {
     sortedData: filteredAndSortedCampaigns,
@@ -2329,7 +2287,7 @@ const CampaignManagement = ({
     sortDirection,
     handleSort,
   } = useTableSort({
-    data: filteredCampaigns,
+    data: campaigns,
   });
 
   const handleExportCampaigns = async () => {
@@ -2483,36 +2441,41 @@ const CampaignManagement = ({
               </Card>
             </div>
 
-            <AdminSearchFilterHeader
-              config={searchFilterConfig}
-              filterValues={filterValues}
-              onFilterChange={handleFilterChange}
-              actions={
-                <div className="hidden sm:flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className={`h-9 w-9 rounded-xl border-gray-200 ${viewMode === 'table' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-500'}`}
-                    onClick={() => setViewMode('table')}
-                    aria-label="Table view"
-                  >
-                    <List className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className={`h-9 w-9 rounded-xl border-gray-200 ${viewMode === 'grid' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-500'}`}
-                    onClick={() => setViewMode('grid')}
-                    aria-label="Grid view"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </Button>
-                </div>
-              }
-            />
             {/* Campaigns Table/List */}
             <Card className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm mt-6">
               <CardContent className="p-0">
+                <AdminSearchFilterHeader
+                  config={searchFilterConfig}
+                  filterValues={filterValues}
+                  onFilterChange={handleFilterChange}
+                  wrapperClassName="border-b border-gray-100 px-6 py-5"
+                  filterGridClassName="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3"
+                  summaryText={`Showing ${filteredAndSortedCampaigns.length} of ${campaigns.length} campaigns`}
+                  showMobileActions={false}
+                  actions={
+                    <>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className={`h-9 w-9 rounded-xl border-gray-200 ${viewMode === 'table' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-500'}`}
+                        onClick={() => setViewMode('table')}
+                        aria-label="Table view"
+                      >
+                        <List className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className={`h-9 w-9 rounded-xl border-gray-200 ${viewMode === 'grid' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-500'}`}
+                        onClick={() => setViewMode('grid')}
+                        aria-label="Grid view"
+                      >
+                        <LayoutGrid className="h-4 w-4" />
+                      </Button>
+                    </>
+                  }
+                />
+
                 {loading ? (
                   <div className="space-y-4 p-6">
                     {Array.from({ length: 5 }).map((_, i) => (
