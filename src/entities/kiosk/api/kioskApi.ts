@@ -21,6 +21,7 @@ import { PAGE_SIZE } from '../../../shared/lib/hooks/usePagination';
 
 export interface KioskFilters {
   status?: 'all' | 'online' | 'offline' | 'maintenance';
+  searchTerm?: string;
 }
 
 export interface KioskPage {
@@ -45,29 +46,42 @@ export async function fetchKiosksPaginated(
   cursor: DocumentSnapshot | null,
   filters: KioskFilters = {},
 ): Promise<KioskPage> {
-  // Constraint order MUST be: where → where → orderBy → orderBy → limit → startAfter
-  // Firestore rejects queries where where() follows orderBy()
+  const normalizedSearch = (filters.searchTerm || '').trim().toLowerCase();
+  const hasSearch = normalizedSearch.length > 0;
+
+  const normalizeKiosk = (d: QueryDocumentSnapshot): Kiosk =>
+    ({
+      ...d.data(),
+      id: d.id,
+    }) as Kiosk;
+
+  const matchesSearch = (kiosk: Kiosk): boolean => {
+    if (!hasSearch) return true;
+    const name = (kiosk.name || '').toLowerCase();
+    const location = (kiosk.location || '').toLowerCase();
+    const id = (kiosk.id || '').toLowerCase();
+    return (
+      name.includes(normalizedSearch) ||
+      location.includes(normalizedSearch) ||
+      id.includes(normalizedSearch)
+    );
+  };
+
   const constraints: Parameters<typeof query>[1][] = [
     where('organizationId', '==', organizationId),
   ];
 
-  // Status where() must precede all orderBy() calls
   if (filters.status && filters.status !== 'all') {
     constraints.push(where('status', '==', filters.status));
   }
 
-  // Dual orderBy guarantees stable page boundaries even when names collide.
-  // Without __name__, two kiosks with identical names can appear on both pages
-  // or be skipped entirely depending on Firestore's internal ordering.
-  constraints.push(
-    orderBy('name', 'asc'),
-    orderBy('__name__', 'asc'),
-    limit(PAGE_SIZE + 1), // fetch one extra to detect next page without a count query
-  );
+  constraints.push(orderBy('name', 'asc'), orderBy('__name__', 'asc'));
 
-  // startAfter uses the raw DocumentSnapshot — never a derived or manually built cursor
-  // Only applied when navigating past page 1; omitting it returns from the beginning
-  if (cursor) {
+  if (!hasSearch) {
+    constraints.push(limit(PAGE_SIZE + 1));
+  }
+
+  if (cursor && !hasSearch) {
     constraints.push(startAfter(cursor));
   }
 
@@ -83,36 +97,49 @@ export async function fetchKiosksPaginated(
       console.warn('fetchKiosksPaginated: index not ready for filtered query, returning empty');
       return { kiosks: [], lastDoc: null, hasNextPage: false };
     }
+
     const fallbackQ = query(
       collection(db, 'kiosks'),
       where('organizationId', '==', organizationId),
-      limit(PAGE_SIZE + 1),
     );
-    snapshot = await getDocs(fallbackQ);
+    snapshot = hasSearch
+      ? await getDocs(fallbackQ)
+      : await getDocs(query(fallbackQ, limit(PAGE_SIZE + 1)));
   }
 
-  // Empty result — safe defaults, no undefined access
   if (snapshot.empty) {
     return { kiosks: [], lastDoc: null, hasNextPage: false };
   }
-  const hasNextPage = snapshot.docs.length > PAGE_SIZE;
 
-  // Slice off the probe document before returning — it must never reach the UI
+  if (hasSearch) {
+    const sortedDocs = [...snapshot.docs].sort((a, b) => {
+      const nameA = ((a.data() as { name?: string }).name || '').toLowerCase();
+      const nameB = ((b.data() as { name?: string }).name || '').toLowerCase();
+      const nameComparison = nameA.localeCompare(nameB);
+      if (nameComparison !== 0) return nameComparison;
+      return a.id.localeCompare(b.id);
+    });
+    const matchingDocs = sortedDocs.filter((docSnap) => matchesSearch(normalizeKiosk(docSnap)));
+    const startIndex = cursor
+      ? matchingDocs.findIndex((docSnap) => docSnap.id === cursor.id) + 1
+      : 0;
+    const docs = matchingDocs.slice(startIndex, startIndex + PAGE_SIZE);
+    const hasNextPage = startIndex + PAGE_SIZE < matchingDocs.length;
+
+    return {
+      kiosks: docs.map((d) => normalizeKiosk(d)),
+      lastDoc: docs[docs.length - 1] ?? null,
+      hasNextPage,
+    };
+  }
+
+  const hasNextPage = snapshot.docs.length > PAGE_SIZE;
   const docs: QueryDocumentSnapshot[] = hasNextPage
     ? snapshot.docs.slice(0, PAGE_SIZE)
     : snapshot.docs;
 
-  // Spread data() then override id — avoids blindly trusting Firestore field named 'id'
-  const kiosks: Kiosk[] = docs.map(
-    (d) =>
-      ({
-        ...d.data(),
-        id: d.id,
-      }) as Kiosk,
-  );
-
   return {
-    kiosks,
+    kiosks: docs.map((d) => normalizeKiosk(d)),
     lastDoc: docs[docs.length - 1] ?? null,
     hasNextPage,
   };

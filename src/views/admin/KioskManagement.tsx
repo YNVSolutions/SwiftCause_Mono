@@ -1,6 +1,6 @@
-﻿'use client';
+'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../../shared/lib/firebase';
 import { useKiosks } from '../../shared/lib/hooks/useKiosks';
 import { useLocations } from '../../shared/lib/hooks/useLocations';
@@ -91,7 +91,10 @@ export function KioskManagement({
     goPrev,
     pageSize,
     refresh: refreshKiosks,
-  } = useKiosks(userSession.user.organizationId, { status: statusFilter });
+  } = useKiosks(userSession.user.organizationId, {
+    status: statusFilter,
+    searchTerm: searchTerm.trim() || undefined,
+  });
 
   const {
     locations,
@@ -124,12 +127,7 @@ export function KioskManagement({
     return map;
   }, [locations]);
 
-  const filteredKiosksData = kiosks.filter(
-    (kiosk) =>
-      kiosk.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      kiosk.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      kiosk.id.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filteredKiosksData = kiosks;
 
   const {
     sortedData: filteredKiosks,
@@ -175,13 +173,13 @@ export function KioskManagement({
 
   const normalizeAssignedCampaigns = (campaignIds?: string[]) =>
     Array.from(new Set((campaignIds || []).filter(Boolean)));
-
   const searchFilterConfig: AdminSearchFilterConfig = {
     filters: [
       {
         key: 'statusFilter',
         label: 'Status',
         type: 'select',
+        allOptionLabel: 'All statuses',
         options: [
           { label: 'Online', value: 'online' },
           { label: 'Offline', value: 'offline' },
@@ -192,12 +190,11 @@ export function KioskManagement({
   };
 
   const filterValues = { statusFilter };
-
-  const handleFilterChange = useCallback((key: string, value: string) => {
-    if (key === 'statusFilter') {
+  const handleFilterChange = (key: string, value: unknown) => {
+    if (key === 'statusFilter' && typeof value === 'string') {
       setStatusFilter(value as typeof statusFilter);
     }
-  }, []);
+  };
 
   useEffect(() => {
     refreshCampaigns();
@@ -642,16 +639,18 @@ export function KioskManagement({
             </Card>
           </div>
 
-          {/* Unified Header Component */}
-          <AdminSearchFilterHeader
-            config={searchFilterConfig}
-            filterValues={filterValues}
-            onFilterChange={handleFilterChange}
-          />
-
           {/* Modern Table Container */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm">
             <CardContent className="p-0">
+              <AdminSearchFilterHeader
+                config={searchFilterConfig}
+                filterValues={filterValues}
+                onFilterChange={handleFilterChange}
+                wrapperClassName="border-b border-gray-100 px-6 py-5"
+                filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
+                summaryText={`Showing ${filteredKiosks.length} of ${kiosks.length} kiosks`}
+              />
+
               {filteredKiosks.length > 0 ? (
                 <>
                   <div className="md:hidden px-6 py-6 space-y-4">
