@@ -15,9 +15,16 @@ export interface GiftAidExportResult {
   success: true;
   empty: boolean;
   rowCount: number;
+  skippedCount?: number;
   message?: string;
   batchId?: string;
   exportedAt?: string;
+  validationErrorCount?: number;
+  validationErrors?: Array<{
+    declarationId: string;
+    donationId: string | null;
+    missingFields: string[];
+  }>;
   hmrcFile?: GiftAidExportFile;
   internalFile?: GiftAidExportFile;
 }
@@ -103,6 +110,35 @@ export async function exportGiftAidDeclarations(
   const responseData = await response.json();
 
   if (!response.ok) {
+    const validationErrors = Array.isArray(responseData?.validationErrors)
+      ? responseData.validationErrors
+      : [];
+    const validationErrorCount =
+      typeof responseData?.validationErrorCount === 'number' &&
+      Number.isFinite(responseData.validationErrorCount)
+        ? responseData.validationErrorCount
+        : validationErrors.length;
+
+    if (validationErrors.length > 0) {
+      const previewCount = Math.min(validationErrors.length, 3);
+      const preview = validationErrors
+        .slice(0, previewCount)
+        .map((validationError: { declarationId?: string; missingFields?: string[] }) => {
+          const declarationId = validationError?.declarationId || 'unknown';
+          const missingFields = Array.isArray(validationError?.missingFields)
+            ? validationError.missingFields.join(', ')
+            : 'unknown fields';
+          return `${declarationId} (${missingFields})`;
+        })
+        .join('; ');
+      const remaining =
+        validationErrorCount > previewCount
+          ? ` (+${validationErrorCount - previewCount} more)`
+          : '';
+      const baseError = responseData.error || 'Failed to export Gift Aid declarations.';
+      throw new Error(`${baseError} Invalid declarations: ${preview}${remaining}`);
+    }
+
     throw new Error(responseData.error || 'Failed to export Gift Aid declarations.');
   }
 

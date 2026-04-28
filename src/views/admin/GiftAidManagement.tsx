@@ -374,10 +374,19 @@ export function GiftAidManagement({
       refresh();
       setExportHistoryPage(1);
       await loadExportBatches(userSession.user.organizationId);
-      showToast(
-        `Exported ${exportResult.rowCount} Gift Aid declarations in batch ${exportResult.batchId}.`,
-        'success',
-      );
+      if (exportResult.skippedCount && exportResult.skippedCount > 0) {
+        showToast(
+          exportResult.message ||
+            `Exported ${exportResult.rowCount} declaration(s). Skipped ${exportResult.skippedCount} declaration(s) missing HMRC fields.`,
+          'warning',
+        );
+      } else {
+        showToast(
+          exportResult.message ||
+            `Exported ${exportResult.rowCount} Gift Aid declarations in batch ${exportResult.batchId}.`,
+          'success',
+        );
+      }
     } catch (exportError) {
       console.error('Failed to export Gift Aid declarations:', exportError);
       const message =

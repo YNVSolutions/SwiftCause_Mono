@@ -54,7 +54,7 @@ const escapeCsvValue = (value) => {
 };
 
 const formatHmrcDate = (dateValue) => {
-  const date = new Date(dateValue);
+  const date = toDate(dateValue);
   if (Number.isNaN(date.getTime())) {
     return null;
   }
@@ -66,7 +66,7 @@ const formatHmrcDate = (dateValue) => {
 };
 
 const formatIsoDate = (dateValue) => {
-  const date = new Date(dateValue);
+  const date = toDate(dateValue);
   if (Number.isNaN(date.getTime())) {
     return null;
   }
@@ -85,6 +85,29 @@ const formatPoundsFromPence = (amountPence) => {
   return (amountPence / 100).toFixed(2);
 };
 
+const toDate = (value) => {
+  if (!value) return new Date('invalid');
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && typeof value.toDate === 'function') {
+    return value.toDate();
+  }
+  if (typeof value === 'object' && typeof value.seconds === 'number') {
+    return new Date(value.seconds * 1000);
+  }
+  return new Date(value);
+};
+
+const resolveExportDate = (declaration) => {
+  const candidates = [declaration.donationDate, declaration.declarationDate, declaration.createdAt];
+
+  for (const candidate of candidates) {
+    const parsed = toDate(candidate);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  return null;
+};
+
 const buildMissingFieldList = (declaration) => {
   const missing = [];
 
@@ -92,8 +115,7 @@ const buildMissingFieldList = (declaration) => {
   if (!String(declaration.donorSurname || '').trim()) missing.push('donorSurname');
   if (!String(declaration.donorHouseNumber || '').trim()) missing.push('donorHouseNumber');
   if (!String(declaration.donorPostcode || '').trim()) missing.push('donorPostcode');
-  if (!declaration.donationDate || !formatHmrcDate(declaration.donationDate))
-    missing.push('donationDate');
+  if (!resolveExportDate(declaration)) missing.push('donationDate');
   if (!Number.isFinite(declaration.donationAmount) || declaration.donationAmount <= 0)
     missing.push('donationAmount');
 
@@ -112,8 +134,8 @@ const validateGiftAidDeclarationsForHmrcSchedule = (declarations) => {
 
 const sortDeclarationsForExport = (declarations) => {
   return [...declarations].sort((left, right) => {
-    const leftDate = Date.parse(left.donationDate || '');
-    const rightDate = Date.parse(right.donationDate || '');
+    const leftDate = resolveExportDate(left)?.getTime() || 0;
+    const rightDate = resolveExportDate(right)?.getTime() || 0;
 
     if (leftDate !== rightDate) {
       return leftDate - rightDate;
@@ -125,7 +147,8 @@ const sortDeclarationsForExport = (declarations) => {
 
 const buildHmrcScheduleCsv = (declarations) => {
   const rows = sortDeclarationsForExport(declarations).map((declaration) => {
-    const hmrcDate = formatHmrcDate(declaration.donationDate);
+    const exportDate = resolveExportDate(declaration);
+    const hmrcDate = exportDate ? formatHmrcDate(exportDate) : null;
     const amount = formatPoundsFromPence(declaration.donationAmount);
 
     if (!hmrcDate || !amount) {
@@ -150,7 +173,8 @@ const buildHmrcScheduleCsv = (declarations) => {
 
 const buildInternalGiftAidCsv = (declarations) => {
   const rows = sortDeclarationsForExport(declarations).map((declaration) => {
-    const donationDate = formatIsoDate(declaration.donationDate);
+    const exportDate = resolveExportDate(declaration);
+    const donationDate = exportDate ? formatIsoDate(exportDate) : null;
 
     if (!donationDate) {
       throw new Error(`Unable to format internal export row for declaration ${declaration.id}`);

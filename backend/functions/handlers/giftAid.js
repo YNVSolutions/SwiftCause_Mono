@@ -230,10 +230,20 @@ const exportGiftAidDeclarations = (req, res) => {
       }
 
       const validationErrors = validateGiftAidDeclarationsForHmrcSchedule(declarations);
-      if (validationErrors.length > 0) {
+      const invalidDeclarationIds = new Set(
+        validationErrors.map((validationError) => validationError.declarationId),
+      );
+      const exportableDeclarations = declarations.filter(
+        (declaration) => !invalidDeclarationIds.has(declaration.id),
+      );
+      const skippedCount = declarations.length - exportableDeclarations.length;
+      const validationErrorPreview = validationErrors.slice(0, 50);
+
+      if (exportableDeclarations.length === 0) {
         return res.status(400).send({
           error: 'Some Gift Aid declarations are missing required HMRC schedule fields.',
-          validationErrors,
+          validationErrors: validationErrorPreview,
+          validationErrorCount: validationErrors.length,
         });
       }
 
@@ -253,8 +263,11 @@ const exportGiftAidDeclarations = (req, res) => {
             operationalStatus: GIFT_AID_OPERATIONAL_STATUS.CAPTURED,
             exportPath: 'standard-uk-schedule',
           },
-          rowCount: declarations.length,
-          declarationIds: declarations.map((declaration) => declaration.id),
+          rowCount: exportableDeclarations.length,
+          skippedCount,
+          declarationIds: exportableDeclarations.map((declaration) => declaration.id),
+          validationErrors: validationErrors.length > 0 ? validationErrorPreview : [],
+          validationErrorCount: validationErrors.length,
         });
 
       const batchId = batchRef.id;
@@ -264,8 +277,8 @@ const exportGiftAidDeclarations = (req, res) => {
       const storageBasePath = `giftAidExports/${organizationId}/${batchId}`;
       const bucket = admin.storage().bucket();
 
-      const hmrcCsv = buildHmrcScheduleCsv(declarations);
-      const internalCsv = buildInternalGiftAidCsv(declarations);
+      const hmrcCsv = buildHmrcScheduleCsv(exportableDeclarations);
+      const internalCsv = buildInternalGiftAidCsv(exportableDeclarations);
 
       const hmrcFile = await createCsvStorageFile({
         bucket,
@@ -281,17 +294,17 @@ const exportGiftAidDeclarations = (req, res) => {
       });
 
       await updateDeclarationsAsExported({
-        declarationIds: declarations.map((declaration) => declaration.id),
+        declarationIds: exportableDeclarations.map((declaration) => declaration.id),
         batchId,
         actorId: auth.uid,
         exportedAt,
       });
 
-      const giftAidTotalPence = declarations.reduce(
+      const giftAidTotalPence = exportableDeclarations.reduce(
         (sum, declaration) => sum + (Number(declaration.giftAidAmount) || 0),
         0,
       );
-      const donationTotalPence = declarations.reduce(
+      const donationTotalPence = exportableDeclarations.reduce(
         (sum, declaration) => sum + (Number(declaration.donationAmount) || 0),
         0,
       );
@@ -305,6 +318,9 @@ const exportGiftAidDeclarations = (req, res) => {
           internalFile,
           giftAidTotalPence,
           donationTotalPence,
+          skippedCount,
+          validationErrors: validationErrors.length > 0 ? validationErrorPreview : [],
+          validationErrorCount: validationErrors.length,
           updatedAt: exportedAt,
         },
         { merge: true },
@@ -314,7 +330,14 @@ const exportGiftAidDeclarations = (req, res) => {
         success: true,
         empty: false,
         batchId,
-        rowCount: declarations.length,
+        rowCount: exportableDeclarations.length,
+        skippedCount,
+        validationErrors: validationErrors.length > 0 ? validationErrorPreview : [],
+        validationErrorCount: validationErrors.length,
+        message:
+          skippedCount > 0
+            ? `Exported ${exportableDeclarations.length} declaration(s). Skipped ${skippedCount} declaration(s) missing HMRC fields.`
+            : undefined,
         exportedAt,
         hmrcFile,
         internalFile,
