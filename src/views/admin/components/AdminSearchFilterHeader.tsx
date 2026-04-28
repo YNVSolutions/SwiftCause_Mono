@@ -1,10 +1,15 @@
 import React from 'react';
 import { Button } from '../../../shared/ui/button';
-import { Card, CardContent } from '../../../shared/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../shared/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../shared/ui/select';
 import { Calendar } from '../../../shared/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
-import { Calendar as CalendarIcon } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronDownIcon } from 'lucide-react';
 
 export interface FilterConfig {
   key: string;
@@ -12,6 +17,8 @@ export interface FilterConfig {
   type: 'select' | 'date' | 'dateRange';
   options?: { label: string; value: string }[];
   includeAllOption?: boolean;
+  allOptionLabel?: string;
+  clearLabel?: string;
 }
 
 export interface AdminSearchFilterConfig {
@@ -20,34 +27,52 @@ export interface AdminSearchFilterConfig {
 
 interface AdminPageHeaderProps {
   config: AdminSearchFilterConfig;
-  filterValues: Record<string, any>;
-  onFilterChange: (key: string, value: any) => void;
+  filterValues: Record<string, unknown>;
+  onFilterChange: (key: string, value: unknown) => void;
   actions?: React.ReactNode;
+  showFiltersLabel?: boolean;
+  wrapperClassName?: string;
+  filterGridClassName?: string;
+  summaryText?: React.ReactNode;
+  dateLocale?: string;
+  showMobileActions?: boolean;
 }
+
+const cx = (...classes: Array<string | false | null | undefined>) =>
+  classes.filter(Boolean).join(' ');
 
 export function AdminPageHeader({
   config,
   filterValues,
   onFilterChange,
-  actions
+  actions,
+  showFiltersLabel = false,
+  wrapperClassName,
+  filterGridClassName = 'grid grid-cols-1 gap-3 md:grid-cols-3',
+  summaryText,
+  dateLocale = 'en-GB',
+  showMobileActions = true,
 }: AdminPageHeaderProps) {
   const renderFilter = (filter: FilterConfig) => {
     const value = filterValues[filter.key];
 
     switch (filter.type) {
       case 'select':
+      case 'dateRange':
         return (
-          <Select 
+          <Select
             key={filter.key}
-            value={value || 'all'} 
+            value={(typeof value === 'string' && value) || 'all'}
             onValueChange={(newValue) => onFilterChange(filter.key, newValue)}
           >
-            <SelectTrigger className="w-full sm:w-auto sm:min-w-[120px] h-8 text-sm border border-black rounded-2xl bg-[#F7F6F2] hover:bg-[#064e3b]/10 transition-all duration-300">
+            <SelectTrigger>
               <SelectValue placeholder={filter.label} />
             </SelectTrigger>
             <SelectContent>
               {filter.includeAllOption !== false && (
-                <SelectItem value="all">All {filter.label}</SelectItem>
+                <SelectItem value="all">
+                  {filter.allOptionLabel ?? `All ${filter.label}`}
+                </SelectItem>
               )}
               {filter.options?.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
@@ -64,20 +89,19 @@ export function AdminPageHeader({
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className="w-full sm:w-auto sm:min-w-[120px] h-8 text-sm border border-black rounded-2xl bg-[#F7F6F2] hover:bg-[#064e3b]/10 transition-all duration-300 justify-start"
+                className="w-full justify-start border-input bg-input-background px-3 font-normal text-foreground hover:bg-input-background hover:text-foreground"
               >
-                <CalendarIcon className="mr-2 h-3 w-3 shrink-0" />
+                <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
                 <span className="truncate">
-                  {value
-                    ? value.toLocaleDateString()
-                    : filter.label}
+                  {value instanceof Date ? value.toLocaleDateString(dateLocale) : filter.label}
                 </span>
+                <ChevronDownIcon className="ml-auto h-4 w-4 opacity-50" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
               <Calendar
                 mode="single"
-                selected={value}
+                selected={value instanceof Date ? value : undefined}
                 onSelect={(date) => {
                   onFilterChange(filter.key, date);
                 }}
@@ -91,7 +115,7 @@ export function AdminPageHeader({
                   }}
                   className="w-full"
                 >
-                  Clear {filter.label}
+                  {filter.clearLabel ?? `Clear ${filter.label}`}
                 </Button>
               </div>
             </PopoverContent>
@@ -104,35 +128,30 @@ export function AdminPageHeader({
   };
 
   return (
-    <Card className="mb-4 sm:mb-6 bg-[#F7F6F2] rounded-4xl border border-black shadow-lg shadow-emerald-900/4">
-      <CardContent className="p-6 sm:p-8">
-        {/* Filter Row with Label - Responsive Layout */}
-        {config.filters.length > 0 && (
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
-              <span className="text-sm font-medium text-slate-700 shrink-0">Filters:</span>
-              <div className="flex flex-wrap items-center gap-2">
-                {config.filters.map(renderFilter)}
-              </div>
-            </div>
-            {actions && (
-              <div className="flex items-center gap-2">
-                {typeof actions === 'object' && React.isValidElement(actions) ? (
-                  actions
-                ) : Array.isArray(actions) ? (
-                  actions.map((action) => action)
-                ) : (
-                  actions
-                )}
-              </div>
-            )}
+    <div className={wrapperClassName}>
+      {config.filters.length > 0 && (
+        <div
+          className={cx(
+            'flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between',
+            summaryText ? 'mb-4' : undefined,
+          )}
+        >
+          <div className="flex-1">
+            {showFiltersLabel ? (
+              <span className="mb-2 block text-sm font-medium text-slate-700">Filters:</span>
+            ) : null}
+            <div className={filterGridClassName}>{config.filters.map(renderFilter)}</div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+          {actions ? <div className="hidden sm:flex items-center gap-2">{actions}</div> : null}
+        </div>
+      )}
+      {summaryText ? <div className="text-sm text-gray-600">{summaryText}</div> : null}
+      {actions && showMobileActions ? (
+        <div className="mt-3 flex items-center gap-2 sm:hidden">{actions}</div>
+      ) : null}
+    </div>
   );
 }
-
 
 // Keep the old component name for backward compatibility
 export const AdminSearchFilterHeader = AdminPageHeader;
