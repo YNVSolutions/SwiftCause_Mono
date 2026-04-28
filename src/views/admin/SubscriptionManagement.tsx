@@ -46,10 +46,10 @@ import { RecurringStatsResponse, Subscription } from '../../shared/types/subscri
 import { formatCurrencyFromMajor } from '../../shared/lib/currencyFormatter';
 import { getSubscriptionDisplayInterval } from '../../entities/subscription/model/selectors';
 import { SortableTableHeader } from './components/SortableTableHeader';
-import {
-  AdminSearchFilterHeader,
-  AdminSearchFilterConfig,
-} from './components/AdminSearchFilterHeader';
+import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
+import { AdminDataSection } from './components/AdminDataSection';
+import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import { AdminLayout } from './AdminLayout';
 import { Screen, AdminSession, Permission } from '../../shared/types';
@@ -521,7 +521,7 @@ export function SubscriptionManagement({
           ) : (
             <>
               {stats && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 lg:gap-6">
+                <AdminStatsGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 lg:gap-6">
                   <Card className="rounded-3xl border border-gray-100 shadow-sm">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -633,212 +633,201 @@ export function SubscriptionManagement({
                       </div>
                     </CardContent>
                   </Card>
-                </div>
+                </AdminStatsGrid>
               )}
 
-              <Card className="rounded-3xl border border-gray-100 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Recurring Subscriptions</CardTitle>
-                  <CardDescription>Manage all recurring donations</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <AdminSearchFilterHeader
-                    config={searchFilterConfig}
-                    filterValues={filterValues}
-                    onFilterChange={handleFilterChange}
-                    filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
-                    summaryText={`Showing ${sortedData.length} of ${totalSubscriptionsCount} subscriptions`}
+              <AdminDataSection
+                title="Recurring Subscriptions"
+                description="Manage all recurring donations"
+                config={searchFilterConfig}
+                filterValues={filterValues}
+                onFilterChange={handleFilterChange}
+                filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
+                summaryText={`Showing ${sortedData.length} of ${totalSubscriptionsCount} subscriptions`}
+              >
+                {sortedData.length === 0 ? (
+                  <AdminEmptyState
+                    icon={RefreshCw}
+                    title="No subscriptions match your current filters"
+                    className="text-center py-8 text-gray-500"
                   />
-
-                  {sortedData.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <RefreshCw className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                      <p>No subscriptions match your current filters</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="hidden md:block">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <SortableTableHeader
-                                sortKey="donorName"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Donor
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="amount"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Amount
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="intervalLabel"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Interval
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="status"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Status
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="nextPaymentTs"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Next Payment
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="createdAtTs"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Created
-                              </SortableTableHeader>
-                              <TableHead className="p-3">Started</TableHead>
-                              <TableHead className="p-3">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {sortedData.map((sub) => (
-                              <TableRow key={sub.id}>
-                                <TableCell className="p-3">
-                                  <div>
-                                    <div className="font-medium">
-                                      {sub.metadata?.donorName || 'Anonymous'}
-                                    </div>
-                                    <div className="text-sm text-gray-500">
-                                      {sub.metadata?.donorEmail || 'N/A'}
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="p-3 font-semibold">
-                                  {formatCurrencyFromMajor(sub.amount / 100)}
-                                </TableCell>
-                                <TableCell className="p-3">
-                                  <Badge variant="outline">
-                                    {getSubscriptionDisplayInterval(
-                                      sub.interval,
-                                      sub.intervalCount,
-                                    )}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="p-3">{getStatusBadge(sub.status)}</TableCell>
-                                <TableCell className="p-3 text-sm">
-                                  {sub.status === 'active' || sub.status === 'trialing'
-                                    ? formatDate(sub.nextPayment)
-                                    : 'N/A'}
-                                </TableCell>
-                                <TableCell className="p-3 text-sm text-gray-500">
-                                  {formatDate(sub.createdAt)}
-                                </TableCell>
-                                <TableCell className="p-3 text-sm text-gray-500">
-                                  {formatDate(sub.startedAt)}
-                                </TableCell>
-                                <TableCell className="p-3">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setSelectedSubscription(sub)}
-                                  >
-                                    <Eye className="h-4 w-4 mr-2" />
-                                    View
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-
-                      <div className="md:hidden space-y-4">
-                        {sortedData.map((sub) => (
-                          <Card
-                            key={sub.id}
-                            className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
-                          >
-                            <CardContent className="p-4 space-y-3">
-                              <div className="flex items-start justify-between gap-3">
+                ) : (
+                  <>
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <SortableTableHeader
+                              sortKey="donorName"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Donor
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="amount"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Amount
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="intervalLabel"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Interval
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="status"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Status
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="nextPaymentTs"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Next Payment
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="createdAtTs"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Created
+                            </SortableTableHeader>
+                            <TableHead className="p-3">Started</TableHead>
+                            <TableHead className="p-3">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedData.map((sub) => (
+                            <TableRow key={sub.id}>
+                              <TableCell className="p-3">
                                 <div>
-                                  <div className="font-semibold text-slate-900">
+                                  <div className="font-medium">
                                     {sub.metadata?.donorName || 'Anonymous'}
                                   </div>
-                                  <div className="text-sm text-gray-500 break-all">
+                                  <div className="text-sm text-gray-500">
                                     {sub.metadata?.donorEmail || 'N/A'}
                                   </div>
                                 </div>
-                                <div>{getStatusBadge(sub.status)}</div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500">Amount</p>
-                                  <p className="font-semibold">
-                                    {formatCurrencyFromMajor(sub.amount / 100)}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Interval</p>
-                                  <p className="font-semibold">
-                                    {getSubscriptionDisplayInterval(
-                                      sub.interval,
-                                      sub.intervalCount,
-                                    )}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Next Payment</p>
-                                  <p>
-                                    {sub.status === 'active' || sub.status === 'trialing'
-                                      ? formatDate(sub.nextPayment)
-                                      : 'N/A'}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Created</p>
-                                  <p>{formatDate(sub.createdAt)}</p>
-                                </div>
-                              </div>
-
-                              <div className="pt-2 border-t border-gray-100">
+                              </TableCell>
+                              <TableCell className="p-3 font-semibold">
+                                {formatCurrencyFromMajor(sub.amount / 100)}
+                              </TableCell>
+                              <TableCell className="p-3">
+                                <Badge variant="outline">
+                                  {getSubscriptionDisplayInterval(sub.interval, sub.intervalCount)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="p-3">{getStatusBadge(sub.status)}</TableCell>
+                              <TableCell className="p-3 text-sm">
+                                {sub.status === 'active' || sub.status === 'trialing'
+                                  ? formatDate(sub.nextPayment)
+                                  : 'N/A'}
+                              </TableCell>
+                              <TableCell className="p-3 text-sm text-gray-500">
+                                {formatDate(sub.createdAt)}
+                              </TableCell>
+                              <TableCell className="p-3 text-sm text-gray-500">
+                                {formatDate(sub.startedAt)}
+                              </TableCell>
+                              <TableCell className="p-3">
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="w-full"
                                   onClick={() => setSelectedSubscription(sub)}
                                 >
                                   <Eye className="h-4 w-4 mr-2" />
                                   View
                                 </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="md:hidden space-y-4">
+                      {sortedData.map((sub) => (
+                        <Card
+                          key={sub.id}
+                          className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
+                        >
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-semibold text-slate-900">
+                                  {sub.metadata?.donorName || 'Anonymous'}
+                                </div>
+                                <div className="text-sm text-gray-500 break-all">
+                                  {sub.metadata?.donorEmail || 'N/A'}
+                                </div>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+                              <div>{getStatusBadge(sub.status)}</div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-gray-500">Amount</p>
+                                <p className="font-semibold">
+                                  {formatCurrencyFromMajor(sub.amount / 100)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Interval</p>
+                                <p className="font-semibold">
+                                  {getSubscriptionDisplayInterval(sub.interval, sub.intervalCount)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Next Payment</p>
+                                <p>
+                                  {sub.status === 'active' || sub.status === 'trialing'
+                                    ? formatDate(sub.nextPayment)
+                                    : 'N/A'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Created</p>
+                                <p>{formatDate(sub.createdAt)}</p>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-100">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={() => setSelectedSubscription(sub)}
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                View
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </AdminDataSection>
 
               <Card className="rounded-3xl border border-gray-100 shadow-sm">
                 <CardHeader>

@@ -53,10 +53,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../../shared/ui/dropdown-menu';
-import {
-  AdminSearchFilterHeader,
-  AdminSearchFilterConfig,
-} from './components/AdminSearchFilterHeader';
+import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
+import { AdminDataSection } from './components/AdminDataSection';
+import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import { CampaignForm, CampaignFormData } from './components/CampaignForm';
@@ -2374,7 +2374,7 @@ const CampaignManagement = ({
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-10 pb-10">
           <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-3">
+            <AdminStatsGrid className="grid gap-4 md:grid-cols-3">
               <Card className="rounded-3xl border border-gray-100 shadow-sm">
                 <CardContent className="p-5 flex items-center gap-4">
                   <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -2439,80 +2439,263 @@ const CampaignManagement = ({
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </AdminStatsGrid>
 
-            {/* Campaigns Table/List */}
-            <Card className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm mt-6">
-              <CardContent className="p-0">
-                <AdminSearchFilterHeader
-                  config={searchFilterConfig}
-                  filterValues={filterValues}
-                  onFilterChange={handleFilterChange}
-                  wrapperClassName="border-b border-gray-100 px-6 py-5"
-                  filterGridClassName="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3"
-                  summaryText={`Showing ${filteredAndSortedCampaigns.length} of ${campaigns.length} campaigns`}
-                  showMobileActions={false}
-                  actions={
-                    <>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className={`h-9 w-9 rounded-xl border-gray-200 ${viewMode === 'table' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-500'}`}
-                        onClick={() => setViewMode('table')}
-                        aria-label="Table view"
-                      >
-                        <List className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className={`h-9 w-9 rounded-xl border-gray-200 ${viewMode === 'grid' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-500'}`}
-                        onClick={() => setViewMode('grid')}
-                        aria-label="Grid view"
-                      >
-                        <LayoutGrid className="h-4 w-4" />
-                      </Button>
-                    </>
-                  }
-                />
+            <AdminDataSection
+              title="Campaigns"
+              description="Manage active and draft fundraising campaigns"
+              config={searchFilterConfig}
+              filterValues={filterValues}
+              onFilterChange={handleFilterChange}
+              filterGridClassName="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3"
+              summaryText={`Showing ${filteredAndSortedCampaigns.length} of ${campaigns.length} campaigns`}
+              showMobileActions={false}
+              cardClassName="overflow-hidden rounded-3xl border border-gray-100 shadow-sm mt-6"
+              actions={
+                <>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-9 w-9 rounded-xl border-gray-200 ${viewMode === 'table' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-500'}`}
+                    onClick={() => setViewMode('table')}
+                    aria-label="Table view"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-9 w-9 rounded-xl border-gray-200 ${viewMode === 'grid' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-500'}`}
+                    onClick={() => setViewMode('grid')}
+                    aria-label="Grid view"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                </>
+              }
+            >
+              {loading ? (
+                <div className="space-y-4 p-6">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="grid grid-cols-6 gap-4 py-4 border-b border-gray-200">
+                      <Skeleton className="h-10 w-full col-span-2" />
+                      <Skeleton className="h-10 w-full col-span-1" />
+                      <Skeleton className="h-10 w-full col-span-1" />
+                      <Skeleton className="h-10 w-full col-span-1" />
+                      <Skeleton className="h-10 w-full col-span-1" />
+                    </div>
+                  ))}
+                </div>
+              ) : filteredAndSortedCampaigns.length > 0 ? (
+                <>
+                  {/* Card View (mobile default, optional desktop) */}
+                  <div
+                    className={`p-4 ${
+                      viewMode === 'grid'
+                        ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
+                        : 'space-y-4 md:hidden'
+                    }`}
+                  >
+                    {filteredAndSortedCampaigns.map((campaign) => {
+                      const raisedAmount = Number(campaign.raised) || 0;
+                      const goalAmount = Number(campaign.goal) || 0;
+                      const donationCount = Number(campaign.donationCount) || 0;
+                      const progress = goalAmount > 0 ? (raisedAmount / 100 / goalAmount) * 100 : 0;
 
-                {loading ? (
-                  <div className="space-y-4 p-6">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="grid grid-cols-6 gap-4 py-4 border-b border-gray-200">
-                        <Skeleton className="h-10 w-full col-span-2" />
-                        <Skeleton className="h-10 w-full col-span-1" />
-                        <Skeleton className="h-10 w-full col-span-1" />
-                        <Skeleton className="h-10 w-full col-span-1" />
-                        <Skeleton className="h-10 w-full col-span-1" />
-                      </div>
-                    ))}
-                  </div>
-                ) : filteredAndSortedCampaigns.length > 0 ? (
-                  <>
-                    {/* Card View (mobile default, optional desktop) */}
-                    <div
-                      className={`p-4 ${
-                        viewMode === 'grid'
-                          ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
-                          : 'space-y-4 md:hidden'
-                      }`}
-                    >
-                      {filteredAndSortedCampaigns.map((campaign) => {
-                        const raisedAmount = Number(campaign.raised) || 0;
-                        const goalAmount = Number(campaign.goal) || 0;
-                        const donationCount = Number(campaign.donationCount) || 0;
-                        const progress =
-                          goalAmount > 0 ? (raisedAmount / 100 / goalAmount) * 100 : 0;
+                      return (
+                        <div
+                          key={campaign.id ?? campaign.title}
+                          className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div
+                              className="flex items-center gap-3 cursor-pointer"
+                              onClick={() => handleOpenOverview(campaign as Campaign)}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  handleOpenOverview(campaign as Campaign);
+                                }
+                              }}
+                            >
+                              <ImageWithFallback
+                                src={campaign.coverImageUrl}
+                                alt={campaign.title}
+                                className="h-12 w-12 rounded-2xl border border-gray-200 object-cover bg-gray-100"
+                                fallbackSrc="/campaign-fallback.svg"
+                              />
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {campaign.title}
+                                </div>
+                              </div>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-gray-500 hover:bg-gray-100"
+                                  aria-label="Campaign actions"
+                                  disabled={
+                                    !hasPermission('edit_campaign') &&
+                                    !hasPermission('delete_campaign')
+                                  }
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {hasPermission('edit_campaign') && (
+                                  <DropdownMenuItem
+                                    onSelect={() => handleEditClick(campaign)}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <FaEdit className="h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                )}
+                                {hasPermission('delete_campaign') && (
+                                  <DropdownMenuItem
+                                    onSelect={() => handleDeleteClick(campaign)}
+                                    className="flex items-center gap-2 text-red-600 focus:text-red-600"
+                                  >
+                                    <FaTrashAlt className="h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
 
-                        return (
-                          <div
-                            key={campaign.id ?? campaign.title}
-                            className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-                          >
-                            <div className="flex items-start justify-between gap-3">
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <Badge
+                              className={`text-xs px-2 py-1 rounded-full inline-flex items-center gap-1 ${getStatusColor(
+                                campaign.status ?? 'unknown',
+                              )}`}
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                              {campaign.status ?? 'Unknown'}
+                            </Badge>
+                            {campaign.category && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs uppercase tracking-wide"
+                              >
+                                {campaign.category}
+                              </Badge>
+                            )}
+                          </div>
+
+                          <div className="mt-4">
+                            <div className="flex items-center justify-between text-xs text-gray-500">
+                              <span>
+                                {formatCurrency(raisedAmount)} /{' '}
+                                {formatCurrencyFromMajor(goalAmount)}
+                              </span>
+                              <span>{progress.toFixed(0)}%</span>
+                            </div>
+                            <div className="mt-2 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
                               <div
-                                className="flex items-center gap-3 cursor-pointer"
+                                className={`h-full ${getProgressColor(progress)} transition-all duration-300`}
+                                style={{ width: `${Math.min(100, progress)}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+                            <span>Donors</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {donationCount.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop Table View */}
+                  {viewMode === 'table' && (
+                    <Table className="hidden md:table w-full">
+                      <TableHeader>
+                        <TableRow className="grid grid-cols-[1.3fr_0.7fr_1fr_1.1fr_0.5fr] items-center">
+                          <SortableTableHeader
+                            sortKey="title"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 text-left"
+                          >
+                            Campaign Details
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortKey="status"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 text-left"
+                          >
+                            Status
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortKey="category"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 text-left"
+                          >
+                            Category
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortable={false}
+                            sortKey="progress"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 text-left"
+                          >
+                            Progress
+                          </SortableTableHeader>
+                          <SortableTableHeader
+                            sortable={false}
+                            sortKey="actions"
+                            currentSortKey={sortKey}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            className="p-3 text-left"
+                          >
+                            Actions
+                          </SortableTableHeader>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredAndSortedCampaigns.map((campaign) => {
+                          const raisedAmount = Number(campaign.raised) || 0;
+                          const goalAmount = Number(campaign.goal) || 0;
+                          const progress =
+                            goalAmount > 0
+                              ? Math.min((raisedAmount / 100 / goalAmount) * 100, 100)
+                              : 0;
+                          const status = (campaign.status ?? 'inactive').toString();
+                          const statusTone = status.toLowerCase();
+                          const statusClass =
+                            statusTone === 'active'
+                              ? 'bg-green-100 text-green-800'
+                              : statusTone === 'paused'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : statusTone === 'completed'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-gray-100 text-gray-700';
+
+                          return (
+                            <TableRow
+                              key={campaign.id ?? campaign.title}
+                              className="border border-gray-100 hover:bg-gray-50 grid grid-cols-[1.3fr_0.7fr_1fr_1.1fr_0.5fr] items-center"
+                            >
+                              <TableCell
+                                className="px-4 py-3 whitespace-normal cursor-pointer"
                                 onClick={() => handleOpenOverview(campaign as Campaign)}
                                 role="button"
                                 tabIndex={0}
@@ -2523,312 +2706,124 @@ const CampaignManagement = ({
                                   }
                                 }}
                               >
-                                <ImageWithFallback
-                                  src={campaign.coverImageUrl}
-                                  alt={campaign.title}
-                                  className="h-12 w-12 rounded-2xl border border-gray-200 object-cover bg-gray-100"
-                                  fallbackSrc="/campaign-fallback.svg"
-                                />
-                                <div>
-                                  <div className="text-sm font-semibold text-gray-900">
-                                    {campaign.title}
+                                <div className="flex items-center gap-2">
+                                  <ImageWithFallback
+                                    src={campaign.coverImageUrl}
+                                    alt={campaign.title}
+                                    className="w-10 h-10 object-cover rounded-lg border border-gray-200 shrink-0 bg-gray-100"
+                                    fallbackSrc="/campaign-fallback.svg"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-gray-900 text-sm whitespace-normal break-normal">
+                                      {campaign.title}
+                                    </p>
                                   </div>
                                 </div>
-                              </div>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-gray-500 hover:bg-gray-100"
-                                    aria-label="Campaign actions"
-                                    disabled={
-                                      !hasPermission('edit_campaign') &&
-                                      !hasPermission('delete_campaign')
-                                    }
-                                  >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {hasPermission('edit_campaign') && (
-                                    <DropdownMenuItem
-                                      onSelect={() => handleEditClick(campaign)}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <FaEdit className="h-4 w-4" />
-                                      Edit
-                                    </DropdownMenuItem>
-                                  )}
-                                  {hasPermission('delete_campaign') && (
-                                    <DropdownMenuItem
-                                      onSelect={() => handleDeleteClick(campaign)}
-                                      className="flex items-center gap-2 text-red-600 focus:text-red-600"
-                                    >
-                                      <FaTrashAlt className="h-4 w-4" />
-                                      Delete
-                                    </DropdownMenuItem>
-                                  )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <Badge
-                                className={`text-xs px-2 py-1 rounded-full inline-flex items-center gap-1 ${getStatusColor(
-                                  campaign.status ?? 'unknown',
-                                )}`}
-                              >
-                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                                {campaign.status ?? 'Unknown'}
-                              </Badge>
-                              {campaign.category && (
-                                <Badge
-                                  variant="secondary"
-                                  className="text-xs uppercase tracking-wide"
+                              </TableCell>
+                              <TableCell className="px-4 py-3 pl-6">
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${statusClass}`}
                                 >
-                                  {campaign.category}
-                                </Badge>
-                              )}
-                            </div>
-
-                            <div className="mt-4">
-                              <div className="flex items-center justify-between text-xs text-gray-500">
-                                <span>
-                                  {formatCurrency(raisedAmount)} /{' '}
-                                  {formatCurrencyFromMajor(goalAmount)}
+                                  {status}
                                 </span>
-                                <span>{progress.toFixed(0)}%</span>
-                              </div>
-                              <div className="mt-2 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-                                <div
-                                  className={`h-full ${getProgressColor(progress)} transition-all duration-300`}
-                                  style={{ width: `${Math.min(100, progress)}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
-                              <span>Donors</span>
-                              <span className="text-sm font-semibold text-gray-900">
-                                {donationCount.toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Desktop Table View */}
-                    {viewMode === 'table' && (
-                      <Table className="hidden md:table w-full">
-                        <TableHeader>
-                          <TableRow className="bg-gray-100 border-b-2 border-gray-200 text-gray-700 grid grid-cols-[1.3fr_0.7fr_1fr_1.1fr_0.5fr] items-center">
-                            <SortableTableHeader
-                              sortKey="title"
-                              currentSortKey={sortKey}
-                              currentSortDirection={sortDirection}
-                              onSort={handleSort}
-                              className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
-                            >
-                              Campaign Details
-                            </SortableTableHeader>
-                            <SortableTableHeader
-                              sortKey="status"
-                              currentSortKey={sortKey}
-                              currentSortDirection={sortDirection}
-                              onSort={handleSort}
-                              className="px-4 py-3 pl-6 text-xs font-semibold text-gray-700 uppercase tracking-wide"
-                            >
-                              Status
-                            </SortableTableHeader>
-                            <SortableTableHeader
-                              sortKey="category"
-                              currentSortKey={sortKey}
-                              currentSortDirection={sortDirection}
-                              onSort={handleSort}
-                              className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
-                            >
-                              Category
-                            </SortableTableHeader>
-                            <SortableTableHeader
-                              sortable={false}
-                              sortKey="progress"
-                              currentSortKey={sortKey}
-                              currentSortDirection={sortDirection}
-                              onSort={handleSort}
-                              className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
-                            >
-                              Progress
-                            </SortableTableHeader>
-                            <SortableTableHeader
-                              sortable={false}
-                              sortKey="actions"
-                              currentSortKey={sortKey}
-                              currentSortDirection={sortDirection}
-                              onSort={handleSort}
-                              className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide text-right"
-                            >
-                              Actions
-                            </SortableTableHeader>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredAndSortedCampaigns.map((campaign) => {
-                            const raisedAmount = Number(campaign.raised) || 0;
-                            const goalAmount = Number(campaign.goal) || 0;
-                            const progress =
-                              goalAmount > 0
-                                ? Math.min((raisedAmount / 100 / goalAmount) * 100, 100)
-                                : 0;
-                            const status = (campaign.status ?? 'inactive').toString();
-                            const statusTone = status.toLowerCase();
-                            const statusClass =
-                              statusTone === 'active'
-                                ? 'bg-green-100 text-green-800'
-                                : statusTone === 'paused'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : statusTone === 'completed'
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-gray-100 text-gray-700';
-
-                            return (
-                              <TableRow
-                                key={campaign.id ?? campaign.title}
-                                className="border border-gray-100 hover:bg-gray-50 grid grid-cols-[1.3fr_0.7fr_1fr_1.1fr_0.5fr] items-center"
-                              >
-                                <TableCell
-                                  className="px-4 py-3 whitespace-normal cursor-pointer"
-                                  onClick={() => handleOpenOverview(campaign as Campaign)}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter' || event.key === ' ') {
-                                      event.preventDefault();
-                                      handleOpenOverview(campaign as Campaign);
-                                    }
-                                  }}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <ImageWithFallback
-                                      src={campaign.coverImageUrl}
-                                      alt={campaign.title}
-                                      className="w-10 h-10 object-cover rounded-lg border border-gray-200 shrink-0 bg-gray-100"
-                                      fallbackSrc="/campaign-fallback.svg"
-                                    />
-                                    <div className="min-w-0">
-                                      <p className="font-medium text-gray-900 text-sm whitespace-normal break-normal">
-                                        {campaign.title}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="px-4 py-3 pl-6">
-                                  <span
-                                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${statusClass}`}
+                              </TableCell>
+                              <TableCell className="px-4 py-3 whitespace-normal">
+                                {campaign.category ? (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-xs uppercase tracking-wide whitespace-normal break-normal text-left"
                                   >
-                                    {status}
-                                  </span>
-                                </TableCell>
-                                <TableCell className="px-4 py-3 whitespace-normal">
-                                  {campaign.category ? (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-xs uppercase tracking-wide whitespace-normal break-normal text-left"
-                                    >
-                                      {campaign.category}
-                                    </Badge>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">--</span>
-                                  )}
-                                </TableCell>
-                                <TableCell className="px-4 py-3">
-                                  <div className="w-[220px] max-w-full">
-                                    <div className="flex items-center justify-between text-xs text-gray-500">
-                                      <span>
-                                        {formatCurrency(raisedAmount)} /{' '}
-                                        {formatCurrencyFromMajor(goalAmount)}
-                                      </span>
-                                      <span>{progress.toFixed(0)}%</span>
-                                    </div>
-                                    <div className="mt-2 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-                                      <div
-                                        className={`h-full ${getProgressColor(progress)} transition-all duration-300`}
-                                        style={{ width: `${progress}%` }}
-                                      />
-                                    </div>
+                                    {campaign.category}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-xs text-gray-400">--</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="px-4 py-3">
+                                <div className="w-[220px] max-w-full">
+                                  <div className="flex items-center justify-between text-xs text-gray-500">
+                                    <span>
+                                      {formatCurrency(raisedAmount)} /{' '}
+                                      {formatCurrencyFromMajor(goalAmount)}
+                                    </span>
+                                    <span>{progress.toFixed(0)}%</span>
                                   </div>
-                                </TableCell>
-                                <TableCell className="px-4 py-3 text-right">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-gray-500 hover:bg-gray-100"
-                                        aria-label="Campaign actions"
-                                        disabled={
-                                          !hasPermission('edit_campaign') &&
-                                          !hasPermission('delete_campaign')
-                                        }
+                                  <div className="mt-2 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                                    <div
+                                      className={`h-full ${getProgressColor(progress)} transition-all duration-300`}
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="px-4 py-3 text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-gray-500 hover:bg-gray-100"
+                                      aria-label="Campaign actions"
+                                      disabled={
+                                        !hasPermission('edit_campaign') &&
+                                        !hasPermission('delete_campaign')
+                                      }
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    {hasPermission('edit_campaign') && (
+                                      <DropdownMenuItem
+                                        onSelect={() => handleEditClick(campaign)}
+                                        className="flex items-center gap-2"
                                       >
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      {hasPermission('edit_campaign') && (
-                                        <DropdownMenuItem
-                                          onSelect={() => handleEditClick(campaign)}
-                                          className="flex items-center gap-2"
-                                        >
-                                          <FaEdit className="h-4 w-4" />
-                                          Edit
-                                        </DropdownMenuItem>
-                                      )}
-                                      {hasPermission('delete_campaign') && (
-                                        <DropdownMenuItem
-                                          onSelect={() => handleDeleteClick(campaign)}
-                                          className="flex items-center gap-2 text-red-600 focus:text-red-600"
-                                        >
-                                          <FaTrashAlt className="h-4 w-4" />
-                                          Delete
-                                        </DropdownMenuItem>
-                                      )}
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-center py-8 text-gray-500 p-6">
-                    <Ghost className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                    <p className="text-lg font-medium mb-2">No Campaigns Found</p>
-                    <p className="text-sm mb-4">
-                      No campaigns have been added to your organization yet.
-                    </p>
-                  </div>
-                )}
-                {(filteredAndSortedCampaigns.length > 0 || canGoPrev) && (
-                  <div className="border-t border-gray-100 px-4">
-                    <PaginationControls
-                      pageNumber={pageNumber}
-                      pageSize={pageSize}
-                      totalOnPage={filteredAndSortedCampaigns.length}
-                      canGoNext={canGoNext}
-                      canGoPrev={canGoPrev}
-                      onNext={goNext}
-                      onPrev={goPrev}
-                      loading={fetching}
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                                        <FaEdit className="h-4 w-4" />
+                                        Edit
+                                      </DropdownMenuItem>
+                                    )}
+                                    {hasPermission('delete_campaign') && (
+                                      <DropdownMenuItem
+                                        onSelect={() => handleDeleteClick(campaign)}
+                                        className="flex items-center gap-2 text-red-600 focus:text-red-600"
+                                      >
+                                        <FaTrashAlt className="h-4 w-4" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </>
+              ) : (
+                <AdminEmptyState
+                  icon={Ghost}
+                  title="No Campaigns Found"
+                  description="No campaigns have been added to your organization yet."
+                  className="text-center py-8 text-gray-500 p-6"
+                />
+              )}
+              {(filteredAndSortedCampaigns.length > 0 || canGoPrev) && (
+                <div className="border-t border-gray-100 px-4">
+                  <PaginationControls
+                    pageNumber={pageNumber}
+                    pageSize={pageSize}
+                    totalOnPage={filteredAndSortedCampaigns.length}
+                    canGoNext={canGoNext}
+                    canGoPrev={canGoPrev}
+                    onNext={goNext}
+                    onPrev={goPrev}
+                    loading={fetching}
+                  />
+                </div>
+              )}
+            </AdminDataSection>
           </div>
         </main>
       </div>
