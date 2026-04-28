@@ -256,6 +256,7 @@ export function UserManagement({
     pageSize,
   } = useUsersPaginated(userSession.user.organizationId, {
     role: roleFilter === 'all' ? undefined : roleFilter,
+    searchTerm: searchTerm.trim() || undefined,
   });
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -372,15 +373,10 @@ export function UserManagement({
     }
   };
 
-  // Client-side search on current page only (Firestore can't do CONTAINS)
-  const filteredUsersData = pagedUsers.filter((user) => {
-    const matchesSearch =
-      !searchTerm || user.username?.toLowerCase().includes(searchTerm.toLowerCase());
-    // Role filter is server-side via useUsersPaginated — this guards super_admin visibility only
-    const canViewSuperAdmin =
-      userSession.user.role === 'super_admin' || user.role !== 'super_admin';
-    return matchesSearch && canViewSuperAdmin;
-  });
+  // Keep super_admin visibility guard client-side.
+  const filteredUsersData = pagedUsers.filter(
+    (user) => userSession.user.role === 'super_admin' || user.role !== 'super_admin',
+  );
 
   // Use sorting hook
   const {
@@ -393,14 +389,13 @@ export function UserManagement({
   });
 
   const stats = calculateUserStats(users);
-
-  // Configuration for AdminSearchFilterHeader
   const searchFilterConfig: AdminSearchFilterConfig = {
     filters: [
       {
         key: 'roleFilter',
         label: 'Role',
         type: 'select',
+        allOptionLabel: 'All roles',
         options: [
           { label: 'Admin', value: 'admin' },
           { label: 'Manager', value: 'manager' },
@@ -411,12 +406,9 @@ export function UserManagement({
     ],
   };
 
-  const filterValues = {
-    roleFilter,
-  };
-
-  const handleFilterChange = (key: string, value: string) => {
-    if (key === 'roleFilter') {
+  const filterValues = { roleFilter };
+  const handleFilterChange = (key: string, value: unknown) => {
+    if (key === 'roleFilter' && typeof value === 'string') {
       setRoleFilter(value);
     }
   };
@@ -519,16 +511,18 @@ export function UserManagement({
             </Card>
           </div>
 
-          {/* Unified Header Component */}
-          <AdminSearchFilterHeader
-            config={searchFilterConfig}
-            filterValues={filterValues}
-            onFilterChange={handleFilterChange}
-          />
-
           {/* Modern Table Container */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm">
             <CardContent className="p-0">
+              <AdminSearchFilterHeader
+                config={searchFilterConfig}
+                filterValues={filterValues}
+                onFilterChange={handleFilterChange}
+                wrapperClassName="border-b border-gray-100 px-6 py-5"
+                filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
+                summaryText={`Showing ${filteredUsers.length} of ${pagedUsers.length} users`}
+              />
+
               {loading ? (
                 <div className="flex justify-center p-12">
                   <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
