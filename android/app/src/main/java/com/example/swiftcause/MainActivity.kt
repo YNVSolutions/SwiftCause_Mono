@@ -113,6 +113,7 @@ private fun AppEntryPoint(
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     var kioskSession by remember { mutableStateOf<KioskSession?>(null) }
+    var continueWithoutLocation by remember { mutableStateOf(false) }
     var hasRequestedLocationPermission by remember { mutableStateOf(false) }
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -128,17 +129,10 @@ private fun AppEntryPoint(
     ) { isGranted ->
         hasRequestedLocationPermission = true
         hasLocationPermission = isGranted
-        if (!isGranted) {
-            Toast.makeText(
-                context,
-                context.getString(R.string.location_permission_required_to_continue),
-                Toast.LENGTH_LONG
-            ).show()
-        }
     }
 
-    LaunchedEffect(hasLocationPermission, hasRequestedLocationPermission) {
-        if (!hasLocationPermission && !hasRequestedLocationPermission) {
+    LaunchedEffect(hasLocationPermission, hasRequestedLocationPermission, continueWithoutLocation) {
+        if (!hasLocationPermission && !hasRequestedLocationPermission && !continueWithoutLocation) {
             hasRequestedLocationPermission = true
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
@@ -154,7 +148,7 @@ private fun AppEntryPoint(
             )
     }
 
-    if (!hasLocationPermission) {
+    if (!hasLocationPermission && !continueWithoutLocation) {
         LocationPermissionRequiredScreen(
             showRationale = shouldShowLocationRationale || !hasRequestedLocationPermission,
             onRequestPermission = {
@@ -166,6 +160,9 @@ private fun AppEntryPoint(
                     Uri.fromParts("package", context.packageName, null)
                 )
                 context.startActivity(intent)
+            },
+            onContinueWithoutLocation = {
+                continueWithoutLocation = true
             }
         )
         return
@@ -182,6 +179,7 @@ private fun AppEntryPoint(
         else -> {
             KioskMainContent(
                 kioskSession = kioskSession!!,
+                hasLocationPermission = hasLocationPermission,
                 modifier = modifier
             )
         }
@@ -191,6 +189,7 @@ private fun AppEntryPoint(
 @Composable
 fun KioskMainContent(
     kioskSession: KioskSession,
+    hasLocationPermission: Boolean,
     modifier: Modifier = Modifier,
     viewModel: CampaignListViewModel = viewModel(),
     paymentViewModel: PaymentViewModel = viewModel(),
@@ -224,12 +223,18 @@ fun KioskMainContent(
         tapToPayState !is TapToPayState.WaitingForCard &&
         tapToPayState !is TapToPayState.ProcessingPayment
 
-    // Initialize campaigns and Tap to Pay (permission is gated before this screen).
+    // Initialize campaigns immediately, independent of Tap to Pay permissions.
     LaunchedEffect(kioskSession) {
         viewModel.loadCampaigns(kioskSession)
         viewModel.startPolling(kioskSession)
-        val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        tapToPayViewModel.initializeTapToPay(isSimulated = isDebuggable)
+    }
+
+    // Initialize Tap to Pay only when location permission is available.
+    LaunchedEffect(hasLocationPermission) {
+        if (hasLocationPermission) {
+            val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            tapToPayViewModel.initializeTapToPay(isSimulated = isDebuggable)
+        }
     }
 
     // Initialize PaymentSheet
@@ -439,7 +444,7 @@ fun KioskMainContent(
                             email = email
                         )
 
-                        val canUseTapToPay = hasNfcCapability && tapToPayViewModel.isReaderReady()
+                        val canUseTapToPay = hasNfcCapability && hasLocationPermission && tapToPayViewModel.isReaderReady()
                         selectedPaymentMethod = if (canUseTapToPay) "tap" else "card"
                         handleDonation(
                             campaign = campaign,
@@ -714,7 +719,8 @@ fun KioskMainContent(
 private fun LocationPermissionRequiredScreen(
     showRationale: Boolean,
     onRequestPermission: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onContinueWithoutLocation: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -769,7 +775,7 @@ private fun LocationPermissionRequiredScreen(
                 )
 
                 Text(
-                    text = stringResource(R.string.location_permission_cannot_continue),
+                    text = stringResource(R.string.location_permission_continue_without_note),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center
@@ -790,13 +796,11 @@ private fun LocationPermissionRequiredScreen(
                     )
                 }
 
-                if (!showRationale) {
-                    OutlinedButton(
-                        onClick = onRequestPermission,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(text = stringResource(R.string.retry))
-                    }
+                OutlinedButton(
+                    onClick = onContinueWithoutLocation,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = stringResource(R.string.continue_without_location))
                 }
             }
         }
