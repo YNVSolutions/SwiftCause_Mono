@@ -204,7 +204,56 @@ export async function fetchGiftAidExportBatchesPaginated(
   }
 
   const batchesQuery = query(collection(db, 'giftAidExportBatches'), ...constraints);
-  const snapshot = await getDocs(batchesQuery);
+
+  let snapshot;
+  try {
+    snapshot = await getDocs(batchesQuery);
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    if (code !== 'failed-precondition') throw err;
+
+    // Fallback when composite index is not created yet.
+    // We fetch by organization and apply ordering/pagination in memory.
+    const fallbackQuery = query(
+      collection(db, 'giftAidExportBatches'),
+      where('organizationId', '==', organizationId),
+    );
+    const fallbackSnapshot = await getDocs(fallbackQuery);
+    const sortedDocs = [...fallbackSnapshot.docs].sort((a, b) => {
+      const aTime = Date.parse(
+        (a.data() as { createdAt?: string; completedAt?: string; failedAt?: string }).createdAt ||
+          (a.data() as { completedAt?: string }).completedAt ||
+          (a.data() as { failedAt?: string }).failedAt ||
+          '',
+      );
+      const bTime = Date.parse(
+        (b.data() as { createdAt?: string; completedAt?: string; failedAt?: string }).createdAt ||
+          (b.data() as { completedAt?: string }).completedAt ||
+          (b.data() as { failedAt?: string }).failedAt ||
+          '',
+      );
+      const safeATime = Number.isFinite(aTime) ? aTime : 0;
+      const safeBTime = Number.isFinite(bTime) ? bTime : 0;
+      if (safeATime !== safeBTime) return safeBTime - safeATime;
+      return b.id.localeCompare(a.id);
+    });
+
+    const startIndex = cursor ? sortedDocs.findIndex((docSnap) => docSnap.id === cursor.id) + 1 : 0;
+    const docs = sortedDocs.slice(startIndex, startIndex + pageSize);
+    const hasNextPage = startIndex + pageSize < sortedDocs.length;
+
+    return {
+      batches: docs.map(
+        (docSnapshot) =>
+          ({
+            id: docSnapshot.id,
+            ...docSnapshot.data(),
+          }) as GiftAidExportBatch,
+      ),
+      lastDoc: docs[docs.length - 1] ?? null,
+      hasNextPage,
+    };
+  }
 
   if (snapshot.empty) {
     return { batches: [], lastDoc: null, hasNextPage: false };
