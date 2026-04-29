@@ -1,7 +1,9 @@
 package com.example.swiftcause.presentation.viewmodels
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.swiftcause.R
 import com.example.swiftcause.data.repository.CampaignRepository
 import com.example.swiftcause.domain.models.Campaign
 import com.example.swiftcause.domain.models.KioskSession
@@ -27,8 +29,9 @@ data class CampaignListUiState(
 )
 
 class CampaignListViewModel(
+    application: Application,
     private val repository: CampaignRepository = CampaignRepository()
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(CampaignListUiState())
     val uiState: StateFlow<CampaignListUiState> = _uiState.asStateFlow()
@@ -80,7 +83,8 @@ class CampaignListViewModel(
                 onFailure = { exception ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = exception.message,
+                        error = exception.message
+                            ?: getApplication<Application>().getString(R.string.campaign_list_error),
                         organizationDisplayName = organizationBranding?.displayName,
                         organizationLogoUrl = organizationBranding?.logoUrl,
                         organizationThankYouMessage = organizationBranding?.thankYouMessage,
@@ -95,6 +99,7 @@ class CampaignListViewModel(
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
                 error = exception.message
+                    ?: getApplication<Application>().getString(R.string.campaign_list_error)
             )
         }
     }
