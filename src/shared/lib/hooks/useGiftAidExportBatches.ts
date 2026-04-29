@@ -53,6 +53,10 @@ export function useGiftAidExportBatches(
     });
   }, [queryClient, organizationId]);
 
+  const goFirst = useCallback(() => {
+    pagination.reset();
+  }, [pagination]);
+
   return {
     exportBatches: data?.batches ?? [],
     loading: isLoading,
@@ -61,6 +65,7 @@ export function useGiftAidExportBatches(
     pageNumber: pagination.pageNumber,
     canGoNext: pagination.canGoNext,
     canGoPrev: pagination.canGoPrev,
+    goFirst,
     goNext: pagination.goNext,
     goPrev: pagination.goPrev,
     pageSize,

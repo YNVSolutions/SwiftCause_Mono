@@ -121,6 +121,7 @@ export function GiftAidManagement({
     pageNumber: exportHistoryPage,
     canGoNext: canGoExportHistoryNext,
     canGoPrev: canGoExportHistoryPrev,
+    goFirst: goToFirstExportHistoryPage,
     goNext: goToNextExportHistoryPage,
     goPrev: goToPrevExportHistoryPage,
     pageSize: exportHistoryPageSize,
@@ -335,8 +336,8 @@ export function GiftAidManagement({
       }
 
       setLocalOverrides({});
-      refresh();
-      refreshExportHistory();
+      goToFirstExportHistoryPage();
+      await Promise.all([refresh(), refreshExportHistory()]);
       if (exportResult.skippedCount && exportResult.skippedCount > 0) {
         showToast(
           exportResult.message ||
