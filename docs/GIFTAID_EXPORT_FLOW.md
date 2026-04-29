@@ -65,7 +65,8 @@ This is the **export** flow for Gift Aid declarations, not the donor capture flo
 - `src/views/admin/GiftAidManagement.tsx`
   - “Export and track” action
   - export history table/cards
-  - pagination (history)
+  - cursor-based history pagination (page size `2`)
+  - standardized Previous/Page/Next controls
   - role/permission-based UI behavior
 
 ---
