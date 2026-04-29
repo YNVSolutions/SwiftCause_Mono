@@ -64,6 +64,73 @@ export interface GiftAidExportBatchPage {
 
 export type GiftAidExportFileKind = 'hmrc' | 'internal';
 
+interface GiftAidBatchTimestampFields {
+  createdAt?: unknown;
+  completedAt?: unknown;
+  failedAt?: unknown;
+}
+
+function normalizeTimestampToMillis(value: unknown): number {
+  if (!value) return 0;
+
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === 'object') {
+    const maybeTimestamp = value as {
+      toDate?: () => Date;
+      seconds?: number | string;
+      nanoseconds?: number | string;
+    };
+
+    if (typeof maybeTimestamp.toDate === 'function') {
+      const dateValue = maybeTimestamp.toDate();
+      if (dateValue instanceof Date) {
+        const time = dateValue.getTime();
+        if (Number.isFinite(time)) return time;
+      }
+    }
+
+    const secondsRaw = maybeTimestamp.seconds;
+    const seconds =
+      typeof secondsRaw === 'number'
+        ? secondsRaw
+        : typeof secondsRaw === 'string'
+          ? Number(secondsRaw)
+          : NaN;
+
+    if (Number.isFinite(seconds)) {
+      const nanosRaw = maybeTimestamp.nanoseconds;
+      const nanos =
+        typeof nanosRaw === 'number'
+          ? nanosRaw
+          : typeof nanosRaw === 'string'
+            ? Number(nanosRaw)
+            : 0;
+
+      const nanosMillis = Number.isFinite(nanos) ? nanos / 1_000_000 : 0;
+      return seconds * 1000 + nanosMillis;
+    }
+  }
+
+  return 0;
+}
+
+function getBatchSortMillis(batch: GiftAidBatchTimestampFields): number {
+  return normalizeTimestampToMillis(batch.createdAt ?? batch.completedAt ?? batch.failedAt);
+}
+
 const getGiftAidExportFunctionUrl = () => {
   return (
     process.env.NEXT_PUBLIC_EXPORT_GIFTAID_FUNCTION_URL?.trim() ||
@@ -179,11 +246,9 @@ export async function fetchGiftAidExportBatches(
         }) as GiftAidExportBatch,
     )
     .sort((left, right) => {
-      const leftTime = Date.parse(left.createdAt || left.completedAt || left.failedAt || '');
-      const rightTime = Date.parse(right.createdAt || right.completedAt || right.failedAt || '');
-      return (
-        (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0)
-      );
+      const leftTime = getBatchSortMillis(left);
+      const rightTime = getBatchSortMillis(right);
+      return rightTime - leftTime;
     });
 }
 
@@ -220,21 +285,9 @@ export async function fetchGiftAidExportBatchesPaginated(
     );
     const fallbackSnapshot = await getDocs(fallbackQuery);
     const sortedDocs = [...fallbackSnapshot.docs].sort((a, b) => {
-      const aTime = Date.parse(
-        (a.data() as { createdAt?: string; completedAt?: string; failedAt?: string }).createdAt ||
-          (a.data() as { completedAt?: string }).completedAt ||
-          (a.data() as { failedAt?: string }).failedAt ||
-          '',
-      );
-      const bTime = Date.parse(
-        (b.data() as { createdAt?: string; completedAt?: string; failedAt?: string }).createdAt ||
-          (b.data() as { completedAt?: string }).completedAt ||
-          (b.data() as { failedAt?: string }).failedAt ||
-          '',
-      );
-      const safeATime = Number.isFinite(aTime) ? aTime : 0;
-      const safeBTime = Number.isFinite(bTime) ? bTime : 0;
-      if (safeATime !== safeBTime) return safeBTime - safeATime;
+      const aTime = getBatchSortMillis(a.data() as GiftAidBatchTimestampFields);
+      const bTime = getBatchSortMillis(b.data() as GiftAidBatchTimestampFields);
+      if (aTime !== bTime) return bTime - aTime;
       return b.id.localeCompare(a.id);
     });
 
