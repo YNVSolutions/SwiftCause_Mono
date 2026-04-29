@@ -1,5 +1,15 @@
 import { getAuth } from 'firebase/auth';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import {
+  collection,
+  DocumentSnapshot,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  QueryDocumentSnapshot,
+  startAfter,
+  where,
+} from 'firebase/firestore';
 import { FUNCTION_URLS } from '@/shared/config/functions';
 import { db } from '@/shared/lib/firebase';
 
@@ -44,6 +54,12 @@ export interface GiftAidExportBatch {
   rowCount: number;
   hmrcFile?: GiftAidExportFile | null;
   internalFile?: GiftAidExportFile | null;
+}
+
+export interface GiftAidExportBatchPage {
+  batches: GiftAidExportBatch[];
+  lastDoc: DocumentSnapshot | null;
+  hasNextPage: boolean;
 }
 
 export type GiftAidExportFileKind = 'hmrc' | 'internal';
@@ -169,6 +185,47 @@ export async function fetchGiftAidExportBatches(
         (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0)
       );
     });
+}
+
+export async function fetchGiftAidExportBatchesPaginated(
+  organizationId: string,
+  cursor: DocumentSnapshot | null,
+  pageSize: number,
+): Promise<GiftAidExportBatchPage> {
+  const constraints: Parameters<typeof query>[1][] = [
+    where('organizationId', '==', organizationId),
+    orderBy('createdAt', 'desc'),
+    orderBy('__name__', 'desc'),
+    limit(pageSize + 1),
+  ];
+
+  if (cursor) {
+    constraints.push(startAfter(cursor));
+  }
+
+  const batchesQuery = query(collection(db, 'giftAidExportBatches'), ...constraints);
+  const snapshot = await getDocs(batchesQuery);
+
+  if (snapshot.empty) {
+    return { batches: [], lastDoc: null, hasNextPage: false };
+  }
+
+  const hasNextPage = snapshot.docs.length > pageSize;
+  const docs: QueryDocumentSnapshot[] = hasNextPage
+    ? snapshot.docs.slice(0, pageSize)
+    : snapshot.docs;
+
+  return {
+    batches: docs.map(
+      (docSnapshot) =>
+        ({
+          id: docSnapshot.id,
+          ...docSnapshot.data(),
+        }) as GiftAidExportBatch,
+    ),
+    lastDoc: docs[docs.length - 1] ?? null,
+    hasNextPage,
+  };
 }
 
 function triggerBlobDownload(blob: Blob, fileName: string) {
