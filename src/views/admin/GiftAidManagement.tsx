@@ -4,9 +4,7 @@ import { GiftAidDeclaration } from '../../entities/giftAid/model/types';
 import {
   downloadGiftAidExportFile,
   exportGiftAidDeclarations,
-  fetchGiftAidExportBatches,
   giftAidApi,
-  type GiftAidExportBatch,
   type GiftAidExportFile,
 } from '../../entities/giftAid/api';
 import { AdminLayout } from './AdminLayout';
@@ -35,6 +33,7 @@ import { AdminEmptyState } from './components/AdminEmptyState';
 import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { formatCurrency } from '../../shared/lib/currencyFormatter';
 import { useGiftAid } from '../../shared/lib/hooks/useGiftAid';
+import { useGiftAidExportBatches } from '../../shared/lib/hooks/useGiftAidExportBatches';
 import { PaginationControls } from '../../shared/ui/PaginationControls';
 import { useToast } from '../../shared/ui/ToastProvider';
 import { getAllCampaigns } from '../../shared/api';
@@ -73,9 +72,6 @@ export function GiftAidManagement({
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isUpdatingPaid, setIsUpdatingPaid] = useState(false);
-  const [exportBatches, setExportBatches] = useState<GiftAidExportBatch[]>([]);
-  const [exportHistoryLoading, setExportHistoryLoading] = useState(true);
-  const [exportHistoryPage, setExportHistoryPage] = useState(1);
   const [activeDownloadKey, setActiveDownloadKey] = useState<string | null>(null);
   const [charitySubmittedReference, setCharitySubmittedReference] = useState('');
   const [unresolvedReconciliationCount, setUnresolvedReconciliationCount] = useState(0);
@@ -115,34 +111,21 @@ export function GiftAidManagement({
   }));
   const canExportGiftAid = hasPermission('export_giftaid');
   const canDownloadGiftAidBatchHistory = hasPermission('download_giftaid_exports');
-
-  const loadExportBatches = useCallback(
-    async (organizationId: string) => {
-      setExportHistoryLoading(true);
-      try {
-        const batches = await fetchGiftAidExportBatches(organizationId);
-        setExportBatches(batches);
-      } catch (batchError) {
-        console.error('Failed to load Gift Aid export batches:', batchError);
-        showToast('Failed to load Gift Aid export history.', 'warning');
-      } finally {
-        setExportHistoryLoading(false);
-      }
-    },
-    [showToast],
+  const {
+    exportBatches,
+    loading: exportHistoryLoading,
+    error: exportHistoryError,
+    pageNumber: exportHistoryPage,
+    canGoNext: canGoExportHistoryNext,
+    canGoPrev: canGoExportHistoryPrev,
+    goNext: goToNextExportHistoryPage,
+    goPrev: goToPrevExportHistoryPage,
+    pageSize: exportHistoryPageSize,
+    refresh: refreshExportHistory,
+  } = useGiftAidExportBatches(
+    canDownloadGiftAidBatchHistory ? userSession.user.organizationId : undefined,
+    EXPORT_HISTORY_PAGE_SIZE,
   );
-
-  const syncExportHistory = useCallback(() => {
-    const organizationId = userSession.user.organizationId;
-    if (!organizationId || !canDownloadGiftAidBatchHistory) {
-      setExportBatches([]);
-      setExportHistoryPage(1);
-      setExportHistoryLoading(false);
-      return;
-    }
-
-    void loadExportBatches(organizationId);
-  }, [canDownloadGiftAidBatchHistory, loadExportBatches, userSession.user.organizationId]);
 
   const getUnresolvedReconciliationCount = useCallback(async (organizationId: string) => {
     const issuesRef = collection(db, 'giftAidReconciliationIssues');
@@ -198,13 +181,9 @@ export function GiftAidManagement({
   }, [userSession.user.organizationId]);
 
   useEffect(() => {
-    syncExportHistory();
-  }, [syncExportHistory]);
-
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(exportBatches.length / EXPORT_HISTORY_PAGE_SIZE));
-    setExportHistoryPage((currentPage) => Math.min(currentPage, totalPages));
-  }, [exportBatches]);
+    if (!exportHistoryError) return;
+    showToast(exportHistoryError, 'warning');
+  }, [exportHistoryError, showToast]);
 
   const filteredDonationsData = giftAidDonations.map((donation) => ({
     ...donation,
@@ -222,24 +201,6 @@ export function GiftAidManagement({
     defaultSortKey: 'donationDateTs',
     defaultSortDirection: 'desc',
   });
-
-  const paginatedExportBatches = exportBatches.slice(
-    (exportHistoryPage - 1) * EXPORT_HISTORY_PAGE_SIZE,
-    exportHistoryPage * EXPORT_HISTORY_PAGE_SIZE,
-  );
-  const canGoExportHistoryNext =
-    exportHistoryPage * EXPORT_HISTORY_PAGE_SIZE < exportBatches.length;
-  const canGoExportHistoryPrev = exportHistoryPage > 1;
-
-  const goToNextExportHistoryPage = () => {
-    if (!canGoExportHistoryNext) return;
-    setExportHistoryPage((currentPage) => currentPage + 1);
-  };
-
-  const goToPrevExportHistoryPage = () => {
-    if (!canGoExportHistoryPrev) return;
-    setExportHistoryPage((currentPage) => Math.max(1, currentPage - 1));
-  };
 
   const getStatusBadge = (status: string, paidConfirmed?: boolean) => {
     if (paidConfirmed) {
@@ -364,8 +325,7 @@ export function GiftAidManagement({
 
       setLocalOverrides({});
       refresh();
-      setExportHistoryPage(1);
-      await loadExportBatches(userSession.user.organizationId);
+      refreshExportHistory();
       if (exportResult.skippedCount && exportResult.skippedCount > 0) {
         showToast(
           exportResult.message ||
@@ -745,7 +705,7 @@ export function GiftAidManagement({
                           </TableRow>
                         ))
                       ) : exportBatches.length > 0 ? (
-                        paginatedExportBatches.map((batch) => (
+                        exportBatches.map((batch) => (
                           <TableRow key={batch.id}>
                             <TableCell className="p-3">
                               <div className="font-medium text-slate-900">
@@ -858,7 +818,7 @@ export function GiftAidManagement({
                       </Card>
                     ))
                   ) : exportBatches.length > 0 ? (
-                    paginatedExportBatches.map((batch) => (
+                    exportBatches.map((batch) => (
                       <Card key={batch.id} className="border border-gray-100 shadow-sm">
                         <CardContent className="space-y-3 p-4">
                           <div className="flex items-start justify-between gap-3">
@@ -963,12 +923,12 @@ export function GiftAidManagement({
                   )}
                 </div>
 
-                {!exportHistoryLoading && exportBatches.length > EXPORT_HISTORY_PAGE_SIZE ? (
+                {!exportHistoryLoading && (canGoExportHistoryPrev || canGoExportHistoryNext) ? (
                   <div className="border-t border-gray-100 px-4 py-2 sm:px-6">
                     <PaginationControls
                       pageNumber={exportHistoryPage}
-                      pageSize={EXPORT_HISTORY_PAGE_SIZE}
-                      totalOnPage={paginatedExportBatches.length}
+                      pageSize={exportHistoryPageSize}
+                      totalOnPage={exportBatches.length}
                       canGoNext={canGoExportHistoryNext}
                       canGoPrev={canGoExportHistoryPrev}
                       onNext={goToNextExportHistoryPage}
