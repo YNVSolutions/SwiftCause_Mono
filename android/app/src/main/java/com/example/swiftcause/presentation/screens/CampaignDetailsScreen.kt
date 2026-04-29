@@ -202,7 +202,11 @@ fun CampaignDetailsScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = if (isLongDescriptionExpanded) "Hide details" else stringResource(R.string.about_campaign),
+                    text = if (isLongDescriptionExpanded) {
+                        stringResource(R.string.hide_details)
+                    } else {
+                        stringResource(R.string.about_campaign)
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { isLongDescriptionExpanded = !isLongDescriptionExpanded }
@@ -684,8 +688,8 @@ private fun DonationPanel(
                     OutlinedTextField(
                         value = recurringEmail,
                         onValueChange = onRecurringEmailChanged,
-                        label = { Text("Email Address *") },
-                        placeholder = { Text("Required to manage your subscription") },
+                        label = { Text(stringResource(R.string.email_address_required)) },
+                        placeholder = { Text(stringResource(R.string.recurring_email_placeholder)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
@@ -700,7 +704,7 @@ private fun DonationPanel(
                         )
                     )
                     Text(
-                        text = "We need your email to send you subscription management links",
+                        text = stringResource(R.string.recurring_email_helper_text),
                         fontSize = 12.sp,
                         color = PremiumBody,
                         modifier = Modifier.padding(top = 4.dp)

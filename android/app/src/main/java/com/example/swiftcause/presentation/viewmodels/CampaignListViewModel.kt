@@ -19,7 +19,7 @@ data class CampaignListUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val selectedCampaign: Campaign? = null,
-    val organizationDisplayName: String = "SwiftCause",
+    val organizationDisplayName: String? = null,
     val organizationLogoUrl: String? = null,
     val organizationThankYouMessage: String? = null,
     val organizationAccentColorHex: String? = null,
@@ -70,7 +70,7 @@ class CampaignListViewModel(
                     _uiState.value = _uiState.value.copy(
                         campaigns = displayCampaigns,
                         isLoading = false,
-                        organizationDisplayName = organizationBranding?.displayName ?: "SwiftCause",
+                        organizationDisplayName = organizationBranding?.displayName,
                         organizationLogoUrl = organizationBranding?.logoUrl,
                         organizationThankYouMessage = organizationBranding?.thankYouMessage,
                         organizationAccentColorHex = organizationBranding?.accentColorHex,
@@ -80,8 +80,8 @@ class CampaignListViewModel(
                 onFailure = { exception ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = exception.message ?: "Failed to load campaigns",
-                        organizationDisplayName = organizationBranding?.displayName ?: "SwiftCause",
+                        error = exception.message,
+                        organizationDisplayName = organizationBranding?.displayName,
                         organizationLogoUrl = organizationBranding?.logoUrl,
                         organizationThankYouMessage = organizationBranding?.thankYouMessage,
                         organizationAccentColorHex = organizationBranding?.accentColorHex,
@@ -94,7 +94,7 @@ class CampaignListViewModel(
         } catch (exception: Exception) {
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
-                error = exception.message ?: "Failed to load campaigns"
+                error = exception.message
             )
         }
     }

@@ -202,6 +202,7 @@ fun KioskMainContent(
     val tapToPayState by tapToPayViewModel.state.collectAsState()
     val isTapToPaySimulated by tapToPayViewModel.isSimulatedMode.collectAsState()
     val context = LocalContext.current
+    val appName = stringResource(R.string.app_name)
     val hasNfcCapability = remember(context) { NfcAdapter.getDefaultAdapter(context) != null }
     val accentColor = remember(uiState.organizationAccentColorHex) {
         parseAccentColorOrNull(uiState.organizationAccentColorHex)
@@ -250,7 +251,7 @@ fun KioskMainContent(
                             paymentSheet.presentWithPaymentIntent(
                                 paymentIntentClientSecret = secret,
                                 configuration = PaymentSheet.Configuration(
-                                    merchantDisplayName = "SwiftCause",
+                                    merchantDisplayName = appName,
                                     allowsDelayedPaymentMethods = false,
                                     billingDetailsCollectionConfiguration = PaymentSheet.BillingDetailsCollectionConfiguration(
                                         name = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
@@ -271,13 +272,13 @@ fun KioskMainContent(
                                 selectedPaymentMethod = "card"
                                 Toast.makeText(
                                     context,
-                                    "Tap to Pay unavailable. Switching to card entry.",
+                                    context.getString(R.string.tap_to_pay_unavailable_switching_card),
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 paymentSheet.presentWithPaymentIntent(
                                     paymentIntentClientSecret = secret,
                                     configuration = PaymentSheet.Configuration(
-                                        merchantDisplayName = "SwiftCause",
+                                        merchantDisplayName = appName,
                                         allowsDelayedPaymentMethods = false,
                                         billingDetailsCollectionConfiguration = PaymentSheet.BillingDetailsCollectionConfiguration(
                                             name = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
@@ -365,7 +366,7 @@ fun KioskMainContent(
                 val error = tapToPayState as TapToPayState.Error
                 Toast.makeText(
                     context,
-                    "Tap to Pay failed: ${error.message}",
+                    context.getString(R.string.tap_to_pay_failed, error.message),
                     Toast.LENGTH_LONG
                 ).show()
                 tapToPayViewModel.reset()
@@ -465,7 +466,7 @@ fun KioskMainContent(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = uiState.error ?: "Error loading campaigns")
+                    Text(text = uiState.error ?: stringResource(R.string.campaign_list_error))
                 }
             }
             else -> {
@@ -514,7 +515,7 @@ fun KioskMainContent(
                         Spacer(modifier = Modifier.height(24.dp))
 
                         Text(
-                            text = "Preparing Payment",
+                            text = stringResource(R.string.preparing_payment),
                             fontSize = 18.sp,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -523,7 +524,7 @@ fun KioskMainContent(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "Please wait...",
+                            text = stringResource(R.string.please_wait),
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
@@ -564,7 +565,7 @@ fun KioskMainContent(
                                 Spacer(modifier = Modifier.height(24.dp))
 
                                 Text(
-                                    text = "Processing Payment",
+                                    text = stringResource(R.string.processing_payment_title),
                                     fontSize = 18.sp,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -573,7 +574,7 @@ fun KioskMainContent(
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 Text(
-                                    text = "Please wait...",
+                                    text = stringResource(R.string.please_wait),
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 )
@@ -602,7 +603,7 @@ fun KioskMainContent(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Contactless,
-                                    contentDescription = "Tap to Pay",
+                                    contentDescription = stringResource(R.string.tap_to_pay_content_description),
                                     tint = accentColor,
                                     modifier = Modifier
                                         .size(72.dp)
@@ -610,7 +611,7 @@ fun KioskMainContent(
                                 )
 
                                 Text(
-                                    text = "Tap Card on Phone",
+                                    text = stringResource(R.string.tap_card_on_phone),
                                     fontSize = 22.sp,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -658,7 +659,7 @@ fun KioskMainContent(
                             Spacer(modifier = Modifier.height(24.dp))
 
                             Text(
-                                text = "Processing Payment",
+                                text = stringResource(R.string.processing_payment_title),
                                 fontSize = 18.sp,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -667,7 +668,7 @@ fun KioskMainContent(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = "Please wait...",
+                                text = stringResource(R.string.please_wait),
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )

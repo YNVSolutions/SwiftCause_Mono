@@ -46,7 +46,7 @@ import com.example.swiftcause.ui.theme.TextPrimary
 fun CampaignListScreen(
     campaigns: List<Campaign>,
     isLoading: Boolean = false,
-    organizationDisplayName: String = "SwiftCause",
+    organizationDisplayName: String? = null,
     organizationLogoUrl: String? = null,
     accentColorHex: String? = null,
     onCampaignClick: (Campaign) -> Unit = {},
@@ -159,7 +159,8 @@ fun CampaignListScreen(
                         )
                     }
                     Text(
-                        text = organizationDisplayName.ifBlank { stringResource(R.string.app_name) },
+                        text = organizationDisplayName?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.app_name),
                         style = MaterialTheme.typography.headlineSmall.copy(
                             fontWeight = FontWeight.Bold,
                             color = accentColor

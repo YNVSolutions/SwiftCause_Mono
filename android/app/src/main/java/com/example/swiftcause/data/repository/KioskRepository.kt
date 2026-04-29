@@ -19,29 +19,27 @@ class KioskRepository(
             
             if (!response.isSuccessful) {
                 val errorBody = response.errorBody()?.string()
-                val errorMsg = errorBody ?: "Authentication failed"
-                return Result.failure(Exception(errorMsg))
+                return Result.failure(Exception(errorBody))
             }
             
             val loginResponse = response.body()
             
             if (loginResponse == null || !loginResponse.success) {
-                val error = loginResponse?.error ?: "Invalid credentials"
-                return Result.failure(Exception(error))
+                return Result.failure(Exception(loginResponse?.error))
             }
             
             val token = loginResponse.token
             val kioskData = loginResponse.kioskData
             
             if (token == null || kioskData == null) {
-                return Result.failure(Exception("Missing authentication data"))
+                return Result.failure(IllegalStateException())
             }
             
             // Sign in with Firebase custom token
             try {
                 firebaseAuth.signInWithCustomToken(token).await()
             } catch (e: Exception) {
-                return Result.failure(Exception("Firebase authentication failed: ${e.message}"))
+                return Result.failure(e)
             }
             
             // Convert to domain model

@@ -3,6 +3,7 @@ package com.example.swiftcause.presentation.viewmodels
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.swiftcause.R
 import com.example.swiftcause.data.api.RetrofitClient
 import com.example.swiftcause.data.repository.KioskRepository
 import com.example.swiftcause.domain.models.KioskSession
@@ -49,7 +50,7 @@ class KioskLoginViewModel(application: Application) : AndroidViewModel(applicati
         
         if (currentState.kioskId.isBlank() || currentState.accessCode.isBlank()) {
             _uiState.value = currentState.copy(
-                error = "Please enter both Kiosk ID and Access Code"
+                error = getApplication<Application>().getString(R.string.kiosk_login_error_required_fields)
             )
             return
         }
@@ -74,14 +75,18 @@ class KioskLoginViewModel(application: Application) : AndroidViewModel(applicati
                     onFailure = { exception ->
                         _uiState.value = currentState.copy(
                             isLoading = false,
-                            error = exception.message ?: "Authentication failed. Please try again."
+                            error = exception.message
+                                ?: getApplication<Application>().getString(R.string.kiosk_login_error_auth_failed)
                         )
                     }
                 )
             } catch (e: Exception) {
                 _uiState.value = currentState.copy(
                     isLoading = false,
-                    error = "Unexpected error: ${e.message}"
+                    error = getApplication<Application>().getString(
+                        R.string.kiosk_login_error_unexpected,
+                        e.message ?: getApplication<Application>().getString(R.string.error_generic)
+                    )
                 )
             }
         }

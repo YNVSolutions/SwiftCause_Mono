@@ -54,6 +54,34 @@
     <string name="grant_location_permission">Grant location permission</string>
     <string name="open_settings">Open Settings</string>
     <string name="location_permission_required_to_continue">Location permission is required to continue.</string>
+    <string name="tap_to_pay_content_description">Tap to Pay</string>
+    <string name="tap_card_on_phone">Tap Card on Phone</string>
+    <string name="tap_to_pay_unavailable_switching_card">Tap to Pay unavailable. Switching to card entry.</string>
+    <string name="tap_to_pay_failed">Tap to Pay failed: %1$s</string>
+    <string name="preparing_payment">Preparing Payment</string>
+    <string name="processing_payment_title">Processing Payment</string>
+    <string name="hide_details">Hide details</string>
+
+    <!-- Kiosk Login -->
+    <string name="kiosk_signing_in">Signing you in…</string>
+    <string name="kiosk_title">SwiftCause Kiosk</string>
+    <string name="kiosk_subtitle">Sign in to start accepting donations</string>
+    <string name="kiosk_id_label">Kiosk ID</string>
+    <string name="kiosk_id_placeholder">Enter your kiosk ID</string>
+    <string name="access_code_label">Access Code</string>
+    <string name="access_code_placeholder">Enter your access code</string>
+    <string name="sign_in">Sign In</string>
+    <string name="success_content_description">Success</string>
+    <string name="welcome">Welcome!</string>
+    <string name="continue_action">Continue</string>
+    <string name="kiosk_login_error_required_fields">Please enter both Kiosk ID and Access Code</string>
+    <string name="kiosk_login_error_auth_failed">Authentication failed. Please try again.</string>
+    <string name="kiosk_login_error_unexpected">Unexpected error: %1$s</string>
+
+    <!-- Recurring Donation -->
+    <string name="email_address_required">Email Address *</string>
+    <string name="recurring_email_placeholder">Required to manage your subscription</string>
+    <string name="recurring_email_helper_text">We need your email to send you subscription management links</string>
 
     <!-- Magic Link / Thank You Screen -->
     <string name="thank_you">Thank You!</string>

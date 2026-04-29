@@ -15,12 +15,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.swiftcause.R
 import com.example.swiftcause.domain.models.KioskSession
 import com.example.swiftcause.presentation.viewmodels.KioskLoginViewModel
 
@@ -55,7 +57,7 @@ fun KioskLoginScreen(
                     CircularProgressIndicator()
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Signing you in...",
+                        text = stringResource(R.string.kiosk_signing_in),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -72,7 +74,7 @@ fun KioskLoginScreen(
                     // Logo/Title
                     Icon(
                         imageVector = Icons.Default.LocationOn,
-                        contentDescription = "Kiosk",
+                        contentDescription = stringResource(R.string.kiosk_id_label),
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -80,7 +82,7 @@ fun KioskLoginScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "SwiftCause Kiosk",
+                        text = stringResource(R.string.kiosk_title),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -88,7 +90,7 @@ fun KioskLoginScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "Sign in to start accepting donations",
+                        text = stringResource(R.string.kiosk_subtitle),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -99,12 +101,12 @@ fun KioskLoginScreen(
                     OutlinedTextField(
                         value = uiState.kioskId,
                         onValueChange = { viewModel.updateKioskId(it) },
-                        label = { Text("Kiosk ID") },
-                        placeholder = { Text("Enter your kiosk ID") },
+                        label = { Text(stringResource(R.string.kiosk_id_label)) },
+                        placeholder = { Text(stringResource(R.string.kiosk_id_placeholder)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.LocationOn,
-                                contentDescription = "Kiosk ID"
+                                contentDescription = stringResource(R.string.kiosk_id_label)
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -125,12 +127,12 @@ fun KioskLoginScreen(
                     OutlinedTextField(
                         value = uiState.accessCode,
                         onValueChange = { viewModel.updateAccessCode(it) },
-                        label = { Text("Access Code") },
-                        placeholder = { Text("Enter your access code") },
+                        label = { Text(stringResource(R.string.access_code_label)) },
+                        placeholder = { Text(stringResource(R.string.access_code_placeholder)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Lock,
-                                contentDescription = "Access Code"
+                                contentDescription = stringResource(R.string.access_code_label)
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -184,7 +186,7 @@ fun KioskLoginScreen(
                             )
                         } else {
                             Text(
-                                text = "Sign In",
+                                text = stringResource(R.string.sign_in),
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
@@ -211,7 +213,7 @@ fun KioskSuccessScreen(
         Icon(
 
             imageVector = Icons.Default.LocationOn,
-            contentDescription = "Success",
+            contentDescription = stringResource(R.string.success_content_description),
             modifier = Modifier.size(80.dp),
             tint = MaterialTheme.colorScheme.primary
         )
@@ -219,7 +221,7 @@ fun KioskSuccessScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "Welcome!",
+            text = stringResource(R.string.welcome),
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold
         )
@@ -241,7 +243,7 @@ fun KioskSuccessScreen(
                 .height(56.dp)
         ) {
             Text(
-                text = "Continue",
+                text = stringResource(R.string.continue_action),
                 style = MaterialTheme.typography.titleMedium
             )
         }
