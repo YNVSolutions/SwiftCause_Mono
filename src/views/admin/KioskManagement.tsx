@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../../shared/lib/firebase';
 import { useKiosks } from '../../shared/lib/hooks/useKiosks';
 import { useLocations } from '../../shared/lib/hooks/useLocations';
@@ -59,6 +59,7 @@ import {
 import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
 import { AdminDataSection } from './components/AdminDataSection';
 import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminPageLoader } from './components/AdminPageStatus';
 import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
@@ -117,7 +118,7 @@ export function KioskManagement({
   const { needsOnboarding } = useStripeOnboarding(organization);
   const [showOnboardingDialog, setShowOnboardingDialog] = useState(false);
 
-  const isLoading = kiosksLoading || campaignsLoading;
+  const isInitialLoading = kiosksLoading && kiosks.length === 0;
 
   const locationNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -196,9 +197,9 @@ export function KioskManagement({
     }
   };
 
-  useEffect(() => {
-    refreshCampaigns();
-  }, [refreshCampaigns]);
+  const refreshKioskSection = useCallback(async () => {
+    await Promise.all([refreshKiosks(), refreshCampaigns(), refetchLocations()]);
+  }, [refreshCampaigns, refreshKiosks, refetchLocations]);
 
   useEffect(() => {
     if (!locationsError) {
@@ -503,7 +504,7 @@ export function KioskManagement({
     }
   };
 
-  if (isLoading) {
+  if (isInitialLoading) {
     return (
       <AdminLayout
         onNavigate={onNavigate}
@@ -512,15 +513,7 @@ export function KioskManagement({
         hasPermission={hasPermission}
         activeScreen="admin-kiosks"
       >
-        <div className="space-y-6 sm:space-y-8">
-          <div className="text-center py-12">
-            <div className="animate-pulse">
-              <div className="w-12 h-12 bg-gray-300 rounded-full mx-auto mb-3"></div>
-              <div className="h-4 bg-gray-300 rounded w-32 mx-auto mb-2"></div>
-              <div className="h-3 bg-gray-300 rounded w-48 mx-auto"></div>
-            </div>
-          </div>
-        </div>
+        <AdminPageLoader message="Loading kiosks..." />
       </AdminLayout>
     );
   }
@@ -580,7 +573,7 @@ export function KioskManagement({
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8">
           {/* Stat Cards Section */}
-          <AdminStatsGrid className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-12">
+          <AdminStatsGrid className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-12">
             <Card>
               <CardContent className="p-3 sm:p-4 lg:p-6">
                 <div className="flex items-center justify-between">
@@ -645,6 +638,8 @@ export function KioskManagement({
             config={searchFilterConfig}
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
+            onRefresh={refreshKioskSection}
+            refreshing={fetching || kiosksLoading || campaignsLoading || locationsLoading}
             filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
             summaryText={`Showing ${filteredKiosks.length} of ${kiosks.length} kiosks`}
             cardClassName="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
