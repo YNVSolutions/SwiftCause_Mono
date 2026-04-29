@@ -47,7 +47,7 @@ export function useGiftAidExportBatches(
   }
 
   const refresh = useCallback(() => {
-    queryClient.invalidateQueries({
+    return queryClient.invalidateQueries({
       predicate: (q) =>
         q.queryKey[0] === 'gift-aid-export-batches' && q.queryKey[1] === organizationId,
     });
