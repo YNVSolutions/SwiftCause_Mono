@@ -293,13 +293,16 @@ This supports recovery if local copies are missing.
 - Export button triggers backend export and tracking flow
 - Immediately attempts both file downloads after successful export
 - Shows clear warning if secondary file download fails while export succeeded
-- Loads and paginates export history
+- Loads export history with cursor-based pagination
+- Uses a fixed export history page size of `2` batches per page
+- Uses the same admin pagination controls (`Previous`, `Page N`, `Next`) on desktop and mobile
 - Disables buttons based on permission + file availability + in-flight state
 
 History source:
 
 - `giftAidExportBatches` collection filtered by org
-- sorted by batch timestamps
+- primary query order: `createdAt desc`, then `__name__ desc`
+- if Firestore composite index is missing, client falls back to org-filtered fetch and in-memory sort/pagination until index is created
 
 ---
 
