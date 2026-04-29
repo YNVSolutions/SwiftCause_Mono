@@ -56,6 +56,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { AdminLayout } from './AdminLayout';
 import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
 import { AdminDataSection } from './components/AdminDataSection';
+import { AdminDataSectionLoading } from './components/AdminDataSectionLoading';
 import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { AdminEmptyState } from './components/AdminEmptyState';
 import { SortableTableHeader } from './components/SortableTableHeader';
@@ -254,6 +255,7 @@ export function UserManagement({
     goNext,
     goPrev,
     pageSize,
+    refresh: refreshUsersPage,
   } = useUsersPaginated(userSession.user.organizationId, {
     role: roleFilter === 'all' ? undefined : roleFilter,
     searchTerm: searchTerm.trim() || undefined,
@@ -449,7 +451,7 @@ export function UserManagement({
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8">
           {/* Stat Cards Section */}
-          <AdminStatsGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+          <AdminStatsGrid className="grid grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
             {/* Total Users Card */}
             <Card className="border-0 shadow-sm bg-white">
               <CardContent className="p-6">
@@ -517,14 +519,19 @@ export function UserManagement({
             config={searchFilterConfig}
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
+            onRefresh={refreshUsersPage}
+            refreshing={fetching}
             filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
             summaryText={`Showing ${filteredUsers.length} of ${pagedUsers.length} users`}
             cardClassName="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
           >
             {loading ? (
-              <div className="flex justify-center p-12">
-                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-              </div>
+              <AdminDataSectionLoading
+                desktopColumns={6}
+                desktopRows={5}
+                mobileRows={3}
+                cardClassName="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
+              />
             ) : error ? (
               <div className="text-center text-red-600 p-12">
                 <AlertCircle className="mx-auto h-8 w-8 mb-2" />
