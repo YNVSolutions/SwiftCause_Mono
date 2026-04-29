@@ -46,7 +46,7 @@ export function useUsersPaginated(organizationId?: string, filters: UserFilters 
   }
 
   const refresh = useCallback(() => {
-    queryClient.invalidateQueries({
+    return queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[0] === 'users-paginated' && q.queryKey[1] === organizationId,
     });
   }, [queryClient, organizationId]);
