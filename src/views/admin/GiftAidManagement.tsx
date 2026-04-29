@@ -36,18 +36,10 @@ import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { formatCurrency } from '../../shared/lib/currencyFormatter';
 import { useGiftAid } from '../../shared/lib/hooks/useGiftAid';
 import { PaginationControls } from '../../shared/ui/PaginationControls';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '../../shared/ui/pagination';
 import { useToast } from '../../shared/ui/ToastProvider';
 import { getAllCampaigns } from '../../shared/api';
 
-const EXPORT_HISTORY_PAGE_SIZE = 8;
+const EXPORT_HISTORY_PAGE_SIZE = 2;
 
 interface GiftAidManagementProps {
   onNavigate: (screen: Screen) => void;
@@ -972,45 +964,17 @@ export function GiftAidManagement({
                 </div>
 
                 {!exportHistoryLoading && exportBatches.length > EXPORT_HISTORY_PAGE_SIZE ? (
-                  <div className="border-t border-gray-100 px-4 py-4 sm:px-6">
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            href="#"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              goToPrevExportHistoryPage();
-                            }}
-                            className={
-                              !canGoExportHistoryPrev ? 'pointer-events-none opacity-50' : ''
-                            }
-                          />
-                        </PaginationItem>
-                        <PaginationItem>
-                          <PaginationLink
-                            href="#"
-                            isActive
-                            size="default"
-                            onClick={(event) => event.preventDefault()}
-                          >
-                            Page {exportHistoryPage}
-                          </PaginationLink>
-                        </PaginationItem>
-                        <PaginationItem>
-                          <PaginationNext
-                            href="#"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              goToNextExportHistoryPage();
-                            }}
-                            className={
-                              !canGoExportHistoryNext ? 'pointer-events-none opacity-50' : ''
-                            }
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
+                  <div className="border-t border-gray-100 px-4 py-2 sm:px-6">
+                    <PaginationControls
+                      pageNumber={exportHistoryPage}
+                      pageSize={EXPORT_HISTORY_PAGE_SIZE}
+                      totalOnPage={paginatedExportBatches.length}
+                      canGoNext={canGoExportHistoryNext}
+                      canGoPrev={canGoExportHistoryPrev}
+                      onNext={goToNextExportHistoryPage}
+                      onPrev={goToPrevExportHistoryPage}
+                      loading={exportHistoryLoading}
+                    />
                   </div>
                 ) : null}
               </CardContent>
