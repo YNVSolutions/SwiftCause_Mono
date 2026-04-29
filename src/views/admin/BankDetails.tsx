@@ -1,12 +1,6 @@
-import { useState } from "react";
-import { Button } from "../../shared/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../shared/ui/card";
+import { useState } from 'react';
+import { Button } from '../../shared/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../shared/ui/card';
 import {
   CreditCard,
   CheckCircle,
@@ -16,13 +10,14 @@ import {
   Mail,
   Calendar,
   DollarSign,
-} from "lucide-react";
-import { useOrganization } from "../../shared/lib/hooks/useOrganization";
-import { AdminSession, Screen, Permission } from "../../shared/types";
-import { AdminLayout } from "./AdminLayout";
-import { useStripeOnboarding, StripeOnboardingDialog } from "../../features/stripe-onboarding";
-import { auth } from "../../shared/lib/firebase";
-import { useToast } from "../../shared/ui/ToastProvider";
+} from 'lucide-react';
+import { useOrganization } from '../../shared/lib/hooks/useOrganization';
+import { AdminSession, Screen, Permission } from '../../shared/types';
+import { AdminLayout } from './AdminLayout';
+import { StripeOnboardingDialog } from '../../features/stripe-onboarding';
+import { auth } from '../../shared/lib/firebase';
+import { useToast } from '../../shared/ui/ToastProvider';
+import { AdminPageError, AdminPageLoader } from './components/AdminPageStatus';
 
 interface BankDetailsProps {
   onNavigate: (screen: Screen) => void;
@@ -31,10 +26,17 @@ interface BankDetailsProps {
   hasPermission: (permission: Permission) => boolean;
 }
 
-export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }: BankDetailsProps) {
-  const { organization, loading: orgLoading, error: orgError } = useOrganization(
-    userSession.user.organizationId ?? null
-  );
+export function BankDetails({
+  onNavigate,
+  onLogout,
+  userSession,
+  hasPermission,
+}: BankDetailsProps) {
+  const {
+    organization,
+    loading: orgLoading,
+    error: orgError,
+  } = useOrganization(userSession.user.organizationId ?? null);
   const [showOnboardingDialog, setShowOnboardingDialog] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const { showToast } = useToast();
@@ -67,7 +69,7 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
           },
           body: JSON.stringify({ orgId: organization.id }),
           signal: controller.signal,
-        }
+        },
       );
 
       clearTimeout(timeoutId);
@@ -75,7 +77,7 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
-          errorData.error || response.statusText || 'Failed to create onboarding link.'
+          errorData.error || response.statusText || 'Failed to create onboarding link.',
         );
       }
 
@@ -85,17 +87,16 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
       } else {
         throw new Error('No onboarding URL received from server.');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating Stripe onboarding link:', error);
-      
-      if (error.name === 'AbortError') {
+
+      const isAbortError = error instanceof Error && error.name === 'AbortError';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      if (isAbortError) {
         showToast('Request timed out. Please check your connection and try again.', 'error', 4000);
       } else {
-        showToast(
-          `Failed to start Stripe onboarding: ${error.message}`,
-          'error',
-          4000
-        );
+        showToast(`Failed to start Stripe onboarding: ${errorMessage}`, 'error', 4000);
       }
       setIsOnboarding(false);
     }
@@ -103,53 +104,48 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
 
   if (orgLoading) {
     return (
-      <AdminLayout 
-        onNavigate={onNavigate} 
-        onLogout={onLogout} 
-        userSession={userSession} 
+      <AdminLayout
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        userSession={userSession}
         hasPermission={hasPermission}
         activeScreen="admin-bank-details"
       >
-        <div className="flex items-center justify-center h-full">
-          <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
-        </div>
+        <AdminPageLoader message="Loading bank details..." />
       </AdminLayout>
     );
   }
 
   if (orgError) {
     return (
-      <AdminLayout 
-        onNavigate={onNavigate} 
-        onLogout={onLogout} 
-        userSession={userSession} 
+      <AdminLayout
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        userSession={userSession}
         hasPermission={hasPermission}
         activeScreen="admin-bank-details"
       >
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <p className="text-red-600">Error loading organization data: {orgError}</p>
-          </div>
-        </div>
+        <AdminPageError
+          title="Unable To Load Bank Details"
+          message={`Error loading organization data: ${orgError}`}
+        />
       </AdminLayout>
     );
   }
 
-  const stripeConnected = organization?.stripe?.accountId;
   const chargesEnabled = organization?.stripe?.chargesEnabled;
   const payoutsEnabled = organization?.stripe?.payoutsEnabled;
-  
+
   const isStripeSetup = chargesEnabled === true || payoutsEnabled === true;
 
   return (
-    <AdminLayout 
-      onNavigate={onNavigate} 
-      onLogout={onLogout} 
-      userSession={userSession} 
+    <AdminLayout
+      onNavigate={onNavigate}
+      onLogout={onLogout}
+      userSession={userSession}
       hasPermission={hasPermission}
       activeScreen="admin-bank-details"
-      headerTitle={(
+      headerTitle={
         <div className="flex flex-col">
           {userSession.user.organizationName && (
             <div className="flex items-center gap-1.5 mb-1">
@@ -159,15 +155,12 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
               </span>
             </div>
           )}
-          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">
-            Bank Details
-          </h1>
+          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">Bank Details</h1>
         </div>
-      )}
+      }
       headerSubtitle="Manage your payment settings and Stripe integration"
     >
       <div className="px-6 lg:px-8 pt-12 pb-8 max-w-6xl mx-auto space-y-8">
-
         {/* Stripe Account Status Card */}
         <Card className="border-2">
           <CardHeader className="pb-4">
@@ -192,7 +185,8 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
                     <div>
                       <h3 className="font-semibold text-gray-900 mb-2">Account Not Set Up</h3>
                       <p className="text-sm text-gray-700 leading-relaxed">
-                        Your Stripe account is not set up yet. Complete the setup to accept donations and receive payouts.
+                        Your Stripe account is not set up yet. Complete the setup to accept
+                        donations and receive payouts.
                       </p>
                     </div>
                   </div>
@@ -222,7 +216,8 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-2">Under Review</h3>
                     <p className="text-sm text-gray-700 leading-relaxed">
-                      Your Stripe account is being reviewed. Payouts will be enabled shortly. You can already accept donations.
+                      Your Stripe account is being reviewed. Payouts will be enabled shortly. You
+                      can already accept donations.
                     </p>
                   </div>
                 </div>
@@ -234,7 +229,8 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-2">Account Setup Successfully</h3>
                     <p className="text-sm text-gray-700 leading-relaxed">
-                      Your Stripe account is fully configured and ready to accept donations and process payouts.
+                      Your Stripe account is fully configured and ready to accept donations and
+                      process payouts.
                     </p>
                   </div>
                 </div>
@@ -245,7 +241,9 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
             {isStripeSetup && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
                 <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <CheckCircle className={`w-5 h-5 ${chargesEnabled ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle
+                    className={`w-5 h-5 ${chargesEnabled ? 'text-green-600' : 'text-gray-400'}`}
+                  />
                   <div>
                     <p className="text-sm font-medium text-gray-700">Charges</p>
                     <p className="text-xs text-gray-500">
@@ -254,7 +252,9 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <CheckCircle className={`w-5 h-5 ${payoutsEnabled ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle
+                    className={`w-5 h-5 ${payoutsEnabled ? 'text-green-600' : 'text-gray-400'}`}
+                  />
                   <div>
                     <p className="text-sm font-medium text-gray-700">Payouts</p>
                     <p className="text-xs text-gray-500">
@@ -308,11 +308,11 @@ export function BankDetails({ onNavigate, onLogout, userSession, hasPermission }
                 <div>
                   <p className="text-sm font-medium text-gray-700 mb-1">Member Since</p>
                   <p className="text-sm text-gray-900">
-                    {userSession.user.createdAt 
+                    {userSession.user.createdAt
                       ? new Date(userSession.user.createdAt).toLocaleDateString('en-US', {
                           year: 'numeric',
                           month: 'long',
-                          day: 'numeric'
+                          day: 'numeric',
                         })
                       : 'N/A'}
                   </p>
