@@ -4,13 +4,6 @@ import { Button } from '../../shared/ui/button';
 import { Badge } from '../../shared/ui/badge';
 import { Input } from '../../shared/ui/input';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../shared/ui/select';
-import {
   Table,
   TableBody,
   TableCell,
@@ -43,6 +36,7 @@ import {
 import {
   getRecurringStats,
   getSubscriptionsByOrganization,
+  getSubscriptionsByOrganizationFiltered,
 } from '../../entities/subscription/api/subscriptionApi';
 import {
   exportSubscriptions,
@@ -52,6 +46,10 @@ import { RecurringStatsResponse, Subscription } from '../../shared/types/subscri
 import { formatCurrencyFromMajor } from '../../shared/lib/currencyFormatter';
 import { getSubscriptionDisplayInterval } from '../../entities/subscription/model/selectors';
 import { SortableTableHeader } from './components/SortableTableHeader';
+import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
+import { AdminDataSection } from './components/AdminDataSection';
+import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import { AdminLayout } from './AdminLayout';
 import { Screen, AdminSession, Permission } from '../../shared/types';
@@ -89,6 +87,7 @@ export function SubscriptionManagement({
 }: SubscriptionManagementProps) {
   const { showToast } = useToast();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [totalSubscriptionsCount, setTotalSubscriptionsCount] = useState(0);
   const [stats, setStats] = useState<SubscriptionStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,15 +122,21 @@ export function SubscriptionManagement({
       const to = new Date();
       const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
 
-      const [subs, recurring] = await Promise.all([
+      const [allSubs, filteredSubs, recurring] = await Promise.all([
         getSubscriptionsByOrganization(organizationId),
+        getSubscriptionsByOrganizationFiltered(organizationId, {
+          status: statusFilter,
+          interval: intervalFilter,
+          searchTerm: searchTerm.trim() || undefined,
+        }),
         getRecurringStats(organizationId, { from, to }),
       ]);
 
-      setSubscriptions(subs);
+      setTotalSubscriptionsCount(allSubs.length);
+      setSubscriptions(filteredSubs);
       setTrends(recurring.trends);
       setStats({
-        total: subs.length,
+        total: allSubs.length,
         active: recurring.summary.activeSubscriptions,
         canceled: recurring.summary.canceledSubscriptions,
         pastDue: recurring.summary.pastDueCount,
@@ -151,7 +156,7 @@ export function SubscriptionManagement({
     } finally {
       setLoading(false);
     }
-  }, [organizationId, windowDays]);
+  }, [organizationId, windowDays, statusFilter, intervalFilter, searchTerm]);
 
   useEffect(() => {
     loadSubscriptions();
@@ -232,24 +237,8 @@ export function SubscriptionManagement({
     });
   }, [subscriptions]);
 
-  const filteredSubscriptions = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-
-    return tableData.filter((sub) => {
-      const matchesSearch =
-        normalizedSearch.length === 0 ||
-        sub.donorName.toLowerCase().includes(normalizedSearch) ||
-        sub.donorEmail.toLowerCase().includes(normalizedSearch) ||
-        sub.stripeSubscriptionId.toLowerCase().includes(normalizedSearch);
-      const matchesStatus = statusFilter === 'all' || sub.status === statusFilter;
-      const matchesInterval = intervalFilter === 'all' || sub.intervalLabel === intervalFilter;
-
-      return matchesSearch && matchesStatus && matchesInterval;
-    });
-  }, [tableData, searchTerm, statusFilter, intervalFilter]);
-
   const { sortedData, sortKey, sortDirection, handleSort } = useTableSort({
-    data: filteredSubscriptions,
+    data: tableData,
     defaultSortKey: 'createdAtTs',
     defaultSortDirection: 'desc',
   });
@@ -258,6 +247,68 @@ export function SubscriptionManagement({
     const unique = Array.from(new Set(tableData.map((s) => s.intervalLabel)));
     return unique.sort((a, b) => a.localeCompare(b));
   }, [tableData]);
+  const searchFilterConfig: AdminSearchFilterConfig = {
+    filters: [
+      {
+        key: 'statusFilter',
+        label: 'Status',
+        type: 'select',
+        allOptionLabel: 'All statuses',
+        options: [
+          { label: 'Active', value: 'active' },
+          { label: 'Trialing', value: 'trialing' },
+          { label: 'Past due', value: 'past_due' },
+          { label: 'Unpaid', value: 'unpaid' },
+          { label: 'Incomplete', value: 'incomplete' },
+          { label: 'Expired', value: 'incomplete_expired' },
+          { label: 'Canceled', value: 'canceled' },
+        ],
+      },
+      {
+        key: 'intervalFilter',
+        label: 'Interval',
+        type: 'select',
+        allOptionLabel: 'All intervals',
+        options: intervalOptions.map((intervalLabel) => ({
+          label: intervalLabel,
+          value: intervalLabel,
+        })),
+      },
+      {
+        key: 'windowDays',
+        label: 'Analytics window',
+        type: 'select',
+        includeAllOption: false,
+        options: [
+          { label: 'Last 30 days', value: '30' },
+          { label: 'Last 90 days', value: '90' },
+          { label: 'Last 180 days', value: '180' },
+          { label: 'Last 365 days', value: '365' },
+        ],
+      },
+    ],
+  };
+
+  const filterValues = {
+    statusFilter,
+    intervalFilter,
+    windowDays,
+  };
+
+  const handleFilterChange = (key: string, value: unknown) => {
+    if (typeof value !== 'string') return;
+    switch (key) {
+      case 'statusFilter':
+        setStatusFilter(value);
+        break;
+      case 'intervalFilter':
+        setIntervalFilter(value);
+        break;
+      case 'windowDays':
+        setWindowDays(value);
+        break;
+    }
+  };
 
   const handleExport = async () => {
     if (!hasPermission('export_subscriptions')) return;
@@ -470,338 +521,313 @@ export function SubscriptionManagement({
           ) : (
             <>
               {stats && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                <AdminStatsGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 lg:gap-6">
                   <Card className="rounded-3xl border border-gray-100 shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardDescription className="flex items-center gap-2">
-                        <Users className="w-4 h-4" />
-                        Active Subscriptions
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{stats.active}</div>
-                      <p className="text-xs text-gray-500">of {stats.total} total</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-3xl border border-gray-100 shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardDescription className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4" />
-                        Monthly Revenue
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {formatCurrencyFromMajor(stats.totalMonthlyRevenue / 100)}
+                    <CardContent className="p-5 flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <Users className="h-6 w-6" />
                       </div>
-                      <p className="text-xs text-gray-500">recurring</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-3xl border border-gray-100 shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardDescription className="flex items-center gap-2">
-                        <TrendingUp className="w-4 h-4" />
-                        Annual Revenue
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {formatCurrencyFromMajor(stats.totalAnnualRevenue / 100)}
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-gray-400">
+                          Active Subscriptions
+                        </p>
+                        <div className="mt-2">
+                          <span className="text-2xl font-semibold text-gray-900">
+                            {stats.active}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">of {stats.total} total</p>
                       </div>
-                      <p className="text-xs text-gray-500">projected</p>
                     </CardContent>
                   </Card>
 
                   <Card className="rounded-3xl border border-gray-100 shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardDescription className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        Average Amount
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {formatCurrencyFromMajor(stats.averageAmount / 100)}
+                    <CardContent className="p-5 flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <DollarSign className="h-6 w-6" />
                       </div>
-                      <p className="text-xs text-gray-500">per month</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-3xl border border-gray-100 shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardDescription className="flex items-center gap-2">
-                        <TrendingUp className="w-4 h-4" />
-                        Churn
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{stats.churnRatePercent.toFixed(2)}%</div>
-                      <p className="text-xs text-gray-500">{stats.windowLabel}</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-3xl border border-gray-100 shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardDescription className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4" />
-                        Cash Collected
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {formatCurrencyFromMajor(stats.recurringCashCollectedMinor / 100)}
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-gray-400">
+                          Monthly Revenue
+                        </p>
+                        <div className="mt-2">
+                          <span className="text-2xl font-semibold text-gray-900">
+                            {formatCurrencyFromMajor(stats.totalMonthlyRevenue / 100)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">recurring</p>
                       </div>
-                      <p className="text-xs text-gray-500">{stats.windowLabel}</p>
                     </CardContent>
                   </Card>
-                </div>
+
+                  <Card className="rounded-3xl border border-gray-100 shadow-sm">
+                    <CardContent className="p-5 flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <TrendingUp className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-gray-400">
+                          Annual Revenue
+                        </p>
+                        <div className="mt-2">
+                          <span className="text-2xl font-semibold text-gray-900">
+                            {formatCurrencyFromMajor(stats.totalAnnualRevenue / 100)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">projected</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="rounded-3xl border border-gray-100 shadow-sm">
+                    <CardContent className="p-5 flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <Calendar className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-gray-400">
+                          Average Amount
+                        </p>
+                        <div className="mt-2">
+                          <span className="text-2xl font-semibold text-gray-900">
+                            {formatCurrencyFromMajor(stats.averageAmount / 100)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">per month</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="rounded-3xl border border-gray-100 shadow-sm">
+                    <CardContent className="p-5 flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <TrendingUp className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-gray-400">Churn</p>
+                        <div className="mt-2">
+                          <span className="text-2xl font-semibold text-gray-900">
+                            {stats.churnRatePercent.toFixed(2)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">{stats.windowLabel}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="rounded-3xl border border-gray-100 shadow-sm">
+                    <CardContent className="p-5 flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <DollarSign className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-gray-400">
+                          Cash Collected
+                        </p>
+                        <div className="mt-2">
+                          <span className="text-2xl font-semibold text-gray-900">
+                            {formatCurrencyFromMajor(stats.recurringCashCollectedMinor / 100)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">{stats.windowLabel}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </AdminStatsGrid>
               )}
 
-              <Card className="rounded-3xl border border-gray-100 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Recurring Subscriptions</CardTitle>
-                  <CardDescription>Manage all recurring donations</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Filter status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="trialing">Trialing</SelectItem>
-                        <SelectItem value="past_due">Past due</SelectItem>
-                        <SelectItem value="unpaid">Unpaid</SelectItem>
-                        <SelectItem value="incomplete">Incomplete</SelectItem>
-                        <SelectItem value="incomplete_expired">Expired</SelectItem>
-                        <SelectItem value="canceled">Canceled</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Select value={intervalFilter} onValueChange={setIntervalFilter}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Filter interval" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All intervals</SelectItem>
-                        {intervalOptions.map((intervalLabel) => (
-                          <SelectItem key={intervalLabel} value={intervalLabel}>
-                            {intervalLabel}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <Select value={windowDays} onValueChange={setWindowDays}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Analytics window" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="30">Last 30 days</SelectItem>
-                        <SelectItem value="90">Last 90 days</SelectItem>
-                        <SelectItem value="180">Last 180 days</SelectItem>
-                        <SelectItem value="365">Last 365 days</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="mb-3 text-sm text-gray-600">
-                    Showing {sortedData.length} of {subscriptions.length} subscriptions
-                  </div>
-
-                  {sortedData.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <RefreshCw className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                      <p>No subscriptions match your current filters</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="hidden md:block">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <SortableTableHeader
-                                sortKey="donorName"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Donor
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="amount"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Amount
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="intervalLabel"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Interval
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="status"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Status
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="nextPaymentTs"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Next Payment
-                              </SortableTableHeader>
-                              <SortableTableHeader
-                                sortKey="createdAtTs"
-                                currentSortKey={sortKey}
-                                currentSortDirection={sortDirection}
-                                onSort={handleSort}
-                                className="p-3"
-                              >
-                                Created
-                              </SortableTableHeader>
-                              <TableHead className="p-3">Started</TableHead>
-                              <TableHead className="p-3">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {sortedData.map((sub) => (
-                              <TableRow key={sub.id}>
-                                <TableCell className="p-3">
-                                  <div>
-                                    <div className="font-medium">
-                                      {sub.metadata?.donorName || 'Anonymous'}
-                                    </div>
-                                    <div className="text-sm text-gray-500">
-                                      {sub.metadata?.donorEmail || 'N/A'}
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="p-3 font-semibold">
-                                  {formatCurrencyFromMajor(sub.amount / 100)}
-                                </TableCell>
-                                <TableCell className="p-3">
-                                  <Badge variant="outline">
-                                    {getSubscriptionDisplayInterval(
-                                      sub.interval,
-                                      sub.intervalCount,
-                                    )}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="p-3">{getStatusBadge(sub.status)}</TableCell>
-                                <TableCell className="p-3 text-sm">
-                                  {sub.status === 'active' || sub.status === 'trialing'
-                                    ? formatDate(sub.nextPayment)
-                                    : 'N/A'}
-                                </TableCell>
-                                <TableCell className="p-3 text-sm text-gray-500">
-                                  {formatDate(sub.createdAt)}
-                                </TableCell>
-                                <TableCell className="p-3 text-sm text-gray-500">
-                                  {formatDate(sub.startedAt)}
-                                </TableCell>
-                                <TableCell className="p-3">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setSelectedSubscription(sub)}
-                                  >
-                                    <Eye className="h-4 w-4 mr-2" />
-                                    View
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-
-                      <div className="md:hidden space-y-4">
-                        {sortedData.map((sub) => (
-                          <Card
-                            key={sub.id}
-                            className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
-                          >
-                            <CardContent className="p-4 space-y-3">
-                              <div className="flex items-start justify-between gap-3">
+              <AdminDataSection
+                title="Recurring Subscriptions"
+                description="Manage all recurring donations"
+                config={searchFilterConfig}
+                filterValues={filterValues}
+                onFilterChange={handleFilterChange}
+                filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
+                summaryText={`Showing ${sortedData.length} of ${totalSubscriptionsCount} subscriptions`}
+              >
+                {sortedData.length === 0 ? (
+                  <AdminEmptyState
+                    icon={RefreshCw}
+                    title="No subscriptions match your current filters"
+                    className="text-center py-8 text-gray-500"
+                  />
+                ) : (
+                  <>
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <SortableTableHeader
+                              sortKey="donorName"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Donor
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="amount"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Amount
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="intervalLabel"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Interval
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="status"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Status
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="nextPaymentTs"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Next Payment
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortKey="createdAtTs"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Created
+                            </SortableTableHeader>
+                            <TableHead className="p-3">Started</TableHead>
+                            <TableHead className="p-3">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedData.map((sub) => (
+                            <TableRow key={sub.id}>
+                              <TableCell className="p-3">
                                 <div>
-                                  <div className="font-semibold text-slate-900">
+                                  <div className="font-medium">
                                     {sub.metadata?.donorName || 'Anonymous'}
                                   </div>
-                                  <div className="text-sm text-gray-500 break-all">
+                                  <div className="text-sm text-gray-500">
                                     {sub.metadata?.donorEmail || 'N/A'}
                                   </div>
                                 </div>
-                                <div>{getStatusBadge(sub.status)}</div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500">Amount</p>
-                                  <p className="font-semibold">
-                                    {formatCurrencyFromMajor(sub.amount / 100)}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Interval</p>
-                                  <p className="font-semibold">
-                                    {getSubscriptionDisplayInterval(
-                                      sub.interval,
-                                      sub.intervalCount,
-                                    )}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Next Payment</p>
-                                  <p>
-                                    {sub.status === 'active' || sub.status === 'trialing'
-                                      ? formatDate(sub.nextPayment)
-                                      : 'N/A'}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Created</p>
-                                  <p>{formatDate(sub.createdAt)}</p>
-                                </div>
-                              </div>
-
-                              <div className="pt-2 border-t border-gray-100">
+                              </TableCell>
+                              <TableCell className="p-3 font-semibold">
+                                {formatCurrencyFromMajor(sub.amount / 100)}
+                              </TableCell>
+                              <TableCell className="p-3">
+                                <Badge variant="outline">
+                                  {getSubscriptionDisplayInterval(sub.interval, sub.intervalCount)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="p-3">{getStatusBadge(sub.status)}</TableCell>
+                              <TableCell className="p-3 text-sm">
+                                {sub.status === 'active' || sub.status === 'trialing'
+                                  ? formatDate(sub.nextPayment)
+                                  : 'N/A'}
+                              </TableCell>
+                              <TableCell className="p-3 text-sm text-gray-500">
+                                {formatDate(sub.createdAt)}
+                              </TableCell>
+                              <TableCell className="p-3 text-sm text-gray-500">
+                                {formatDate(sub.startedAt)}
+                              </TableCell>
+                              <TableCell className="p-3">
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="w-full"
                                   onClick={() => setSelectedSubscription(sub)}
                                 >
                                   <Eye className="h-4 w-4 mr-2" />
                                   View
                                 </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="md:hidden space-y-4">
+                      {sortedData.map((sub) => (
+                        <Card
+                          key={sub.id}
+                          className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
+                        >
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-semibold text-slate-900">
+                                  {sub.metadata?.donorName || 'Anonymous'}
+                                </div>
+                                <div className="text-sm text-gray-500 break-all">
+                                  {sub.metadata?.donorEmail || 'N/A'}
+                                </div>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+                              <div>{getStatusBadge(sub.status)}</div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-gray-500">Amount</p>
+                                <p className="font-semibold">
+                                  {formatCurrencyFromMajor(sub.amount / 100)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Interval</p>
+                                <p className="font-semibold">
+                                  {getSubscriptionDisplayInterval(sub.interval, sub.intervalCount)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Next Payment</p>
+                                <p>
+                                  {sub.status === 'active' || sub.status === 'trialing'
+                                    ? formatDate(sub.nextPayment)
+                                    : 'N/A'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Created</p>
+                                <p>{formatDate(sub.createdAt)}</p>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-100">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={() => setSelectedSubscription(sub)}
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                View
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </AdminDataSection>
 
               <Card className="rounded-3xl border border-gray-100 shadow-sm">
                 <CardHeader>

@@ -8,17 +8,19 @@ export function useUsersPaginated(organizationId?: string, filters: UserFilters 
   const queryClient = useQueryClient();
 
   const roleKey = filters.role ?? 'all';
+  const searchKey = (filters.searchTerm ?? '').trim().toLowerCase() || 'all';
 
   useEffect(() => {
     pagination.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roleKey, organizationId]);
+  }, [roleKey, searchKey, organizationId]);
 
   const queryKey = [
     'users-paginated',
     organizationId,
     pagination.currentCursor?.id ?? 'page-1',
     roleKey,
+    searchKey,
   ] as const;
 
   const { data, isLoading, isFetching, error } = useQuery({

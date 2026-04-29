@@ -14,7 +14,6 @@ import {
 } from '../../shared/ui/dialog';
 import {
   Download,
-  RefreshCw,
   DollarSign,
   Users,
   TrendingUp,
@@ -35,12 +34,12 @@ import {
 } from '../../entities/donation/api/donationExportApi';
 import { useDonations } from '../../shared/lib/hooks/useDonations';
 import { PaginationControls } from '../../shared/ui/PaginationControls';
-import {
-  AdminSearchFilterHeader,
-  AdminSearchFilterConfig,
-} from './components/AdminSearchFilterHeader';
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
+import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
+import { AdminDataSection } from './components/AdminDataSection';
+import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { formatCurrency } from '../../shared/lib/currencyFormatter';
 import { useToast } from '../../shared/ui/ToastProvider';
 
@@ -99,6 +98,13 @@ function formatDonationDate(value?: string, withLeadingZero = true): string {
   });
 }
 
+function formatFilterDateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function DonationManagement({
   onNavigate,
   onLogout,
@@ -135,11 +141,13 @@ export function DonationManagement({
     goNext,
     goPrev,
     pageSize,
-    refresh: refreshDonations,
   } = useDonations(userSession.user.organizationId, {
     status: statusFilter !== 'all' ? statusFilter : undefined,
     campaignId: campaignFilter !== 'all' ? campaignFilter : undefined,
-    // isRecurring handled client-side to avoid needing compound indexes
+    isRecurring:
+      recurringFilter === 'all' ? undefined : recurringFilter === 'recurring' ? true : false,
+    donationDate: dateFilter ? formatFilterDateKey(dateFilter) : undefined,
+    searchTerm: searchTerm.trim() || undefined,
   });
 
   const fetchAllData = useCallback(async () => {
@@ -210,95 +218,13 @@ export function DonationManagement({
     return false;
   };
 
-  // Configuration for AdminSearchFilterHeader
-  const searchFilterConfig: AdminSearchFilterConfig = {
-    filters: [
-      {
-        key: 'statusFilter',
-        label: 'Status',
-        type: 'select',
-        options: [
-          { label: 'Success', value: 'success' },
-          { label: 'Pending', value: 'pending' },
-          { label: 'Failed', value: 'failed' },
-        ],
-      },
-      {
-        key: 'campaignFilter',
-        label: 'Campaign',
-        type: 'select',
-        options: campaigns.map((campaign) => ({ label: campaign.title, value: campaign.id })),
-      },
-      {
-        key: 'recurringFilter',
-        label: 'Recurring',
-        type: 'select',
-        options: [
-          { label: 'Recurring', value: 'recurring' },
-          { label: 'One-time', value: 'one_time' },
-        ],
-      },
-      {
-        key: 'dateFilter',
-        label: 'Filter by date',
-        type: 'date',
-      },
-    ],
-  };
-
-  const filterValues = {
-    statusFilter,
-    campaignFilter,
-    recurringFilter,
-    dateFilter,
-  };
-
-  const handleFilterChange = (key: string, value: string | Date | undefined) => {
-    switch (key) {
-      case 'statusFilter':
-        setStatusFilter(typeof value === 'string' ? value : 'all');
-        break;
-      case 'campaignFilter':
-        setCampaignFilter(typeof value === 'string' ? value : 'all');
-        break;
-      case 'dateFilter':
-        setDateFilter(value instanceof Date ? value : undefined);
-        break;
-      case 'recurringFilter':
-        setRecurringFilter(typeof value === 'string' ? value : 'all');
-        break;
-    }
-  };
-
-  const filteredDonationsData = pagedDonations
-    .filter((donation: Donation) => {
-      const campaignName = getCampaignDisplayName(donation as FetchedDonation);
-      const d = donation as FetchedDonation;
-      const matchesSearch =
-        !searchTerm ||
-        (d.donorName && d.donorName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (d.stripePaymentIntentId &&
-          d.stripePaymentIntentId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (d.transactionId && d.transactionId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        campaignName.toLowerCase().includes(searchTerm.toLowerCase());
-      const donationDate = parseDonationDate(d.timestamp);
-      const matchesDate =
-        !dateFilter ||
-        (donationDate ? donationDate.toDateString() === dateFilter.toDateString() : false);
-      const recurring = isRecurringDonation(d);
-      const matchesRecurring =
-        recurringFilter === 'all' ||
-        (recurringFilter === 'recurring' && recurring) ||
-        (recurringFilter === 'one_time' && !recurring);
-      return matchesSearch && matchesDate && matchesRecurring;
-    })
-    .map((donation: Donation) => {
-      const d = donation as FetchedDonation;
-      return {
-        ...d,
-        timestampTs: parseDonationDate(d.timestamp)?.getTime() || 0,
-      } as FetchedDonation;
-    });
+  const filteredDonationsData = pagedDonations.map((donation: Donation) => {
+    const d = donation as FetchedDonation;
+    return {
+      ...d,
+      timestampTs: parseDonationDate(d.timestamp)?.getTime() || 0,
+    } as FetchedDonation;
+  });
 
   const {
     sortedData: filteredDonations,
@@ -351,6 +277,71 @@ export function DonationManagement({
       filteredDonations.length > 0
         ? filteredDonations.reduce((sum, d) => sum + (d.amount || 0), 0) / filteredDonations.length
         : 0,
+  };
+  const searchFilterConfig: AdminSearchFilterConfig = {
+    filters: [
+      {
+        key: 'statusFilter',
+        label: 'Status',
+        type: 'select',
+        allOptionLabel: 'All statuses',
+        options: [
+          { label: 'Success', value: 'success' },
+          { label: 'Pending', value: 'pending' },
+          { label: 'Failed', value: 'failed' },
+        ],
+      },
+      {
+        key: 'campaignFilter',
+        label: 'Campaign',
+        type: 'select',
+        allOptionLabel: 'All campaigns',
+        options: campaigns.map((campaign) => ({
+          label: campaign.title,
+          value: campaign.id,
+        })),
+      },
+      {
+        key: 'recurringFilter',
+        label: 'Recurring',
+        type: 'select',
+        allOptionLabel: 'All',
+        options: [
+          { label: 'Recurring', value: 'recurring' },
+          { label: 'One-time', value: 'one_time' },
+        ],
+      },
+      {
+        key: 'dateFilter',
+        label: 'Filter by date',
+        type: 'date',
+        clearLabel: 'Clear date',
+      },
+    ],
+  };
+
+  const filterValues = {
+    statusFilter,
+    campaignFilter,
+    recurringFilter,
+    dateFilter,
+  };
+
+  const handleFilterChange = (key: string, value: unknown) => {
+    switch (key) {
+      case 'statusFilter':
+        if (typeof value === 'string') setStatusFilter(value);
+        break;
+      case 'campaignFilter':
+        if (typeof value === 'string') setCampaignFilter(value);
+        break;
+      case 'recurringFilter':
+        if (typeof value === 'string') setRecurringFilter(value);
+        break;
+      case 'dateFilter':
+        setDateFilter(value instanceof Date ? value : undefined);
+        break;
+    }
   };
 
   const handleExportDonations = async () => {
@@ -425,7 +416,7 @@ export function DonationManagement({
       onHeaderSearchChange={setSearchTerm}
       headerTopRightActions={
         hasPermission('export_donations') ? (
-          <div className="flex w-full justify-end">
+          <div className="flex justify-end">
             <div className="relative sm:hidden">
               <Button
                 variant="outline"
@@ -558,7 +549,7 @@ export function DonationManagement({
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8">
           {/* Stat Cards Section */}
-          <div className="grid gap-4 md:grid-cols-4 mb-6">
+          <AdminStatsGrid className="grid gap-4 md:grid-cols-4 mb-6">
             <Card className="rounded-3xl border border-gray-100 shadow-sm">
               <CardContent className="p-5 flex items-center gap-4">
                 <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -624,50 +615,49 @@ export function DonationManagement({
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </AdminStatsGrid>
 
-          {/* Unified Header Component */}
-          <AdminSearchFilterHeader
+          <AdminDataSection
+            title="Donations"
+            description="Track and analyze donation transactions"
             config={searchFilterConfig}
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
-            actions={
-              <Button
-                variant="outline"
-                onClick={refreshDonations}
-                disabled={loading}
-                aria-label="Refresh"
-                className="border-[#064e3b]/20 text-[#064e3b] hover:bg-[#064e3b]/10 hover:text-[#064e3b] hover:border-[#064e3b]/30"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''} sm:mr-2`} />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-            }
-          />
-
-          {/* Modern Table Container - Desktop */}
-          <Card className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm mt-6 hidden md:block">
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="space-y-4 p-6">
+            filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-4"
+            summaryText={`Showing ${filteredDonations.length} of ${pagedDonations.length} donations`}
+          >
+            {loading ? (
+              <>
+                <div className="hidden space-y-4 md:block">
                   {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="grid grid-cols-6 gap-4 py-4 border-b border-gray-100">
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
+                    <div key={i} className="grid grid-cols-6 gap-4 border-b border-gray-100 py-4">
+                      <Skeleton className="col-span-1 h-10 w-full" />
+                      <Skeleton className="col-span-1 h-10 w-full" />
+                      <Skeleton className="col-span-1 h-10 w-full" />
+                      <Skeleton className="col-span-1 h-10 w-full" />
+                      <Skeleton className="col-span-1 h-10 w-full" />
+                      <Skeleton className="col-span-1 h-10 w-full" />
                     </div>
                   ))}
                 </div>
-              ) : error ? (
-                <div className="flex flex-col items-center justify-center p-12 text-center text-red-600">
-                  <AlertCircle className="h-10 w-10 text-red-500 mb-3" />
-                  <p className="text-lg">{error}</p>
+                <div className="space-y-4 md:hidden">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Card key={i} className="overflow-hidden rounded-3xl">
+                      <CardContent className="p-4">
+                        <Skeleton className="h-20 w-full" />
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-              ) : filteredDonations.length > 0 ? (
-                <div className="overflow-hidden">
+              </>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center p-12 text-center text-red-600">
+                <AlertCircle className="mb-3 h-10 w-10 text-red-500" />
+                <p className="text-lg">{error}</p>
+              </div>
+            ) : filteredDonations.length > 0 ? (
+              <>
+                <div className="hidden overflow-hidden md:block">
                   <Table className="table-fixed">
                     <TableHeader>
                       <TableRow>
@@ -837,155 +827,122 @@ export function DonationManagement({
                       })}
                     </TableBody>
                   </Table>
+                  {(filteredDonations.length > 0 || canGoPrev) && (
+                    <div className="border-t border-gray-100 px-4">
+                      <PaginationControls
+                        pageNumber={pageNumber}
+                        pageSize={pageSize}
+                        totalOnPage={filteredDonations.length}
+                        canGoNext={canGoNext}
+                        canGoPrev={canGoPrev}
+                        onNext={goNext}
+                        onPrev={goPrev}
+                        loading={fetching}
+                      />
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Ghost className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                  <p className="text-lg font-medium mb-2">No Donations Found</p>
-                  <p className="text-sm mb-4">
-                    No donations have been made to your organization yet.
-                  </p>
+
+                <div className="space-y-4 md:hidden">
+                  {filteredDonations.map((donation) => {
+                    const kiosk =
+                      donation.kioskId && kioskMap[donation.kioskId]
+                        ? kioskMap[donation.kioskId]
+                        : null;
+                    return (
+                      <Card
+                        key={donation.id}
+                        className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
+                      >
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold text-slate-900">
+                                {donation.donorName || 'Anonymous'}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {getCampaignDisplayName(donation)}
+                              </div>
+                              <div className="mt-2 flex items-center gap-2">
+                                {donation.isGiftAid && (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-purple-50 text-purple-700 border-purple-200"
+                                  >
+                                    <Gift className="h-3 w-3 mr-1" />
+                                    Gift Aid
+                                  </Badge>
+                                )}
+                                {isRecurringDonation(donation) && (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-sky-50 text-sky-700 border-sky-200"
+                                  >
+                                    <CreditCard className="h-3 w-3 mr-1" />
+                                    Recurring
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div>{getStatusBadge(donation.paymentStatus)}</div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <p className="text-gray-500">Amount</p>
+                              <p className="font-semibold text-slate-900">
+                                {formatCurrency(donation.amount || 0)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Date</p>
+                              <p className="text-slate-900">
+                                {donation.timestamp
+                                  ? formatDonationDate(donation.timestamp, false)
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Platform</p>
+                              <p className="text-slate-900 capitalize">
+                                {donation.platform || 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Source</p>
+                              <p className="text-slate-900">{kiosk ? kiosk.name : 'Online'}</p>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-gray-100">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => handleViewDetails(donation)}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
-              )}
-              {(filteredDonations.length > 0 || canGoPrev) && (
-                <div className="border-t border-gray-100 px-4">
-                  <PaginationControls
-                    pageNumber={pageNumber}
-                    pageSize={pageSize}
-                    totalOnPage={filteredDonations.length}
-                    canGoNext={canGoNext}
-                    canGoPrev={canGoPrev}
-                    onNext={goNext}
-                    onPrev={goPrev}
-                    loading={fetching}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Donations Cards - Mobile */}
-          <div className="md:hidden space-y-4 mt-6">
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="overflow-hidden rounded-3xl">
-                  <CardContent className="p-4">
-                    <Skeleton className="h-20 w-full" />
-                  </CardContent>
-                </Card>
-              ))
-            ) : error ? (
-              <Card className="overflow-hidden rounded-3xl border-red-200 bg-red-50">
-                <CardContent className="p-6">
-                  <div className="flex flex-col items-center justify-center text-center text-red-600">
-                    <AlertCircle className="h-10 w-10 text-red-500 mb-3" />
-                    <p className="text-lg">{error}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : filteredDonations.length > 0 ? (
-              filteredDonations.map((donation) => {
-                const kiosk =
-                  donation.kioskId && kioskMap[donation.kioskId]
-                    ? kioskMap[donation.kioskId]
-                    : null;
-                return (
-                  <Card
-                    key={donation.id}
-                    className="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
-                  >
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-semibold text-slate-900">
-                            {donation.donorName || 'Anonymous'}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {getCampaignDisplayName(donation)}
-                          </div>
-                          <div className="mt-2 flex items-center gap-2">
-                            {donation.isGiftAid && (
-                              <Badge
-                                variant="outline"
-                                className="bg-purple-50 text-purple-700 border-purple-200"
-                              >
-                                <Gift className="h-3 w-3 mr-1" />
-                                Gift Aid
-                              </Badge>
-                            )}
-                            {isRecurringDonation(donation) && (
-                              <Badge
-                                variant="outline"
-                                className="bg-sky-50 text-sky-700 border-sky-200"
-                              >
-                                <CreditCard className="h-3 w-3 mr-1" />
-                                Recurring
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div>{getStatusBadge(donation.paymentStatus)}</div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <p className="text-gray-500">Amount</p>
-                          <p className="font-semibold text-slate-900">
-                            {formatCurrency(donation.amount || 0)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500">Date</p>
-                          <p className="text-slate-900">
-                            {donation.timestamp
-                              ? formatDonationDate(donation.timestamp, false)
-                              : 'N/A'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500">Platform</p>
-                          <p className="text-slate-900 capitalize">{donation.platform || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500">Source</p>
-                          <p className="text-slate-900">{kiosk ? kiosk.name : 'Online'}</p>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-gray-100">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => handleViewDetails(donation)}
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
+              </>
             ) : (
-              <Card className="overflow-hidden rounded-3xl">
-                <CardContent className="p-8">
-                  <div className="flex flex-col items-center gap-2 text-center">
-                    <Ghost className="h-12 w-12 text-gray-400" />
-                    <p className="text-xl font-bold text-gray-600">No Donations Found</p>
-                    <p className="text-base text-gray-500 mt-2">
-                      {searchTerm ||
-                      statusFilter !== 'all' ||
-                      campaignFilter !== 'all' ||
-                      dateFilter
-                        ? 'Try adjusting your search or filters'
-                        : 'No donations have been made to your organization yet.'}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              <AdminEmptyState
+                icon={Ghost}
+                title="No Donations Found"
+                description={
+                  searchTerm || statusFilter !== 'all' || campaignFilter !== 'all' || dateFilter
+                    ? 'Try adjusting your search or filters'
+                    : 'No donations have been made to your organization yet.'
+                }
+              />
             )}
-          </div>
+          </AdminDataSection>
         </main>
 
         {/* Donation Details Dialog */}

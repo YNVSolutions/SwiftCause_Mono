@@ -1,7 +1,18 @@
 import {
-  collection, query, where, getDocs, doc, getDoc,
-  addDoc, updateDoc, deleteDoc, orderBy,
-  limit, startAfter, DocumentSnapshot, QueryDocumentSnapshot,
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  orderBy,
+  limit,
+  startAfter,
+  DocumentSnapshot,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../../../shared/lib/firebase';
 import { Campaign } from '../model';
@@ -9,6 +20,9 @@ import { PAGE_SIZE } from '../../../shared/lib/hooks/usePagination';
 
 export interface CampaignFilters {
   status?: string;
+  category?: string;
+  dateRange?: 'all' | 'last30' | 'last90' | 'last365';
+  searchTerm?: string;
 }
 
 export interface CampaignPage {
@@ -31,8 +45,74 @@ export interface CampaignPage {
 export async function fetchCampaignsPaginated(
   organizationId: string,
   cursor: DocumentSnapshot | null,
-  filters: CampaignFilters = {}
+  filters: CampaignFilters = {},
 ): Promise<CampaignPage> {
+  const normalizedSearch = (filters.searchTerm || '').trim().toLowerCase();
+  const hasSearch = normalizedSearch.length > 0;
+  const hasDateRange = Boolean(filters.dateRange && filters.dateRange !== 'all');
+  const hasInMemoryFilters = hasSearch || hasDateRange;
+
+  const getDateRangeStart = (range?: CampaignFilters['dateRange']): Date | null => {
+    if (!range || range === 'all') return null;
+    const today = new Date();
+    switch (range) {
+      case 'last30':
+        return new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      case 'last90':
+        return new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
+      case 'last365':
+        return new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
+      default:
+        return null;
+    }
+  };
+
+  const toDate = (value: unknown): Date | null => {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    if (typeof value === 'object' && value !== null) {
+      if (typeof (value as { toDate?: unknown }).toDate === 'function') {
+        const dateValue = (value as { toDate: () => Date }).toDate();
+        return Number.isNaN(dateValue.getTime()) ? null : dateValue;
+      }
+      if ('seconds' in value && typeof (value as { seconds?: unknown }).seconds === 'number') {
+        const dateValue = new Date((value as { seconds: number }).seconds * 1000);
+        return Number.isNaN(dateValue.getTime()) ? null : dateValue;
+      }
+    }
+    return null;
+  };
+
+  const toMillis = (value: unknown): number => {
+    const dateValue = toDate(value);
+    return dateValue ? dateValue.getTime() : 0;
+  };
+
+  const matchesSearch = (campaign: Campaign): boolean => {
+    if (!hasSearch) return true;
+    const title = (campaign.title || '').toLowerCase();
+    const description = (campaign.description || '').toLowerCase();
+    const tags = Array.isArray(campaign.tags)
+      ? campaign.tags.map((tag) => String(tag).toLowerCase())
+      : [];
+    return (
+      title.includes(normalizedSearch) ||
+      description.includes(normalizedSearch) ||
+      tags.some((tag) => tag.includes(normalizedSearch))
+    );
+  };
+
+  const dateRangeStart = getDateRangeStart(filters.dateRange);
+  const matchesDateRange = (campaign: Campaign): boolean => {
+    if (!dateRangeStart) return true;
+    const campaignEndDate = toDate(campaign.endDate);
+    return !campaignEndDate || campaignEndDate >= dateRangeStart;
+  };
+
   const constraints: Parameters<typeof query>[1][] = [
     where('organizationId', '==', organizationId),
   ];
@@ -40,14 +120,17 @@ export async function fetchCampaignsPaginated(
   if (filters.status && filters.status !== 'all') {
     constraints.push(where('status', '==', filters.status));
   }
+  if (filters.category && filters.category !== 'all') {
+    constraints.push(where('category', '==', filters.category));
+  }
 
-  constraints.push(
-    orderBy('createdAt', 'desc'),
-    orderBy('__name__', 'desc'),
-    limit(PAGE_SIZE + 1),
-  );
+  constraints.push(orderBy('createdAt', 'desc'), orderBy('__name__', 'desc'));
 
-  if (cursor) {
+  if (!hasInMemoryFilters) {
+    constraints.push(limit(PAGE_SIZE + 1));
+  }
+
+  if (cursor && !hasInMemoryFilters) {
     constraints.push(startAfter(cursor));
   }
 
@@ -59,20 +142,47 @@ export async function fetchCampaignsPaginated(
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code;
     if (code !== 'failed-precondition') throw err;
-    if (filters.status && filters.status !== 'all') {
+    const hasIndexedFilters =
+      (filters.status && filters.status !== 'all') ||
+      (filters.category && filters.category !== 'all');
+    if (hasIndexedFilters) {
       console.warn('fetchCampaignsPaginated: index not ready for filtered query, returning empty');
       return { campaigns: [], lastDoc: null, hasNextPage: false };
     }
     const fallbackQ = query(
       collection(db, 'campaigns'),
       where('organizationId', '==', organizationId),
-      limit(PAGE_SIZE + 1),
     );
-    snapshot = await getDocs(fallbackQ);
+    snapshot = hasInMemoryFilters
+      ? await getDocs(fallbackQ)
+      : await getDocs(query(fallbackQ, limit(PAGE_SIZE + 1)));
   }
 
   if (snapshot.empty) {
     return { campaigns: [], lastDoc: null, hasNextPage: false };
+  }
+
+  if (hasInMemoryFilters) {
+    const sortedDocs = [...snapshot.docs].sort((a, b) => {
+      const aMillis = toMillis((a.data() as { createdAt?: unknown }).createdAt);
+      const bMillis = toMillis((b.data() as { createdAt?: unknown }).createdAt);
+      if (aMillis !== bMillis) return bMillis - aMillis;
+      return b.id.localeCompare(a.id);
+    });
+    const matchingDocs = sortedDocs.filter((docSnap) => {
+      const campaign = { ...docSnap.data(), id: docSnap.id } as Campaign;
+      return matchesSearch(campaign) && matchesDateRange(campaign);
+    });
+    const startIndex = cursor
+      ? matchingDocs.findIndex((docSnap) => docSnap.id === cursor.id) + 1
+      : 0;
+    const docs = matchingDocs.slice(startIndex, startIndex + PAGE_SIZE);
+    const hasNextPage = startIndex + PAGE_SIZE < matchingDocs.length;
+    return {
+      campaigns: docs.map((d) => ({ ...d.data(), id: d.id }) as Campaign),
+      lastDoc: docs[docs.length - 1] ?? null,
+      hasNextPage,
+    };
   }
 
   const hasNextPage = snapshot.docs.length > PAGE_SIZE;
@@ -81,7 +191,7 @@ export async function fetchCampaignsPaginated(
     : snapshot.docs;
 
   return {
-    campaigns: docs.map(d => ({ ...d.data(), id: d.id } as Campaign)),
+    campaigns: docs.map((d) => ({ ...d.data(), id: d.id }) as Campaign),
     lastDoc: docs[docs.length - 1] ?? null,
     hasNextPage,
   };
@@ -92,20 +202,23 @@ export const campaignApi = {
   async getCampaigns(organizationId?: string): Promise<Campaign[]> {
     try {
       let q = query(collection(db, 'campaigns'), orderBy('createdAt', 'desc'));
-      
+
       if (organizationId) {
         q = query(
           collection(db, 'campaigns'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
         );
       }
 
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Campaign));
+      return querySnapshot.docs.map(
+        (doc) =>
+          ({
+            id: doc.id,
+            ...doc.data(),
+          }) as Campaign,
+      );
     } catch (error) {
       console.error('Error fetching campaigns:', error);
       throw error;
@@ -117,11 +230,11 @@ export const campaignApi = {
     try {
       const docRef = doc(db, 'campaigns', id);
       const docSnap = await getDoc(docRef);
-      
+
       if (docSnap.exists()) {
         return {
           id: docSnap.id,
-          ...docSnap.data()
+          ...docSnap.data(),
         } as Campaign;
       }
       return null;
@@ -137,7 +250,7 @@ export const campaignApi = {
       const docRef = await addDoc(collection(db, 'campaigns'), {
         ...campaign,
         createdAt: new Date().toISOString(),
-        status: 'active'
+        status: 'active',
       });
       return docRef.id;
     } catch (error) {
@@ -172,12 +285,12 @@ export const campaignApi = {
   async getCampaignsForKiosk(kioskId: string, organizationId?: string): Promise<Campaign[]> {
     try {
       const campaigns = await this.getCampaigns(organizationId);
-      return campaigns.filter(campaign => 
-        campaign.isGlobal || campaign.assignedKiosks?.includes(kioskId)
+      return campaigns.filter(
+        (campaign) => campaign.isGlobal || campaign.assignedKiosks?.includes(kioskId),
       );
     } catch (error) {
       console.error('Error fetching campaigns for kiosk:', error);
       throw error;
     }
-  }
+  },
 };

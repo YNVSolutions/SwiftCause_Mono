@@ -54,10 +54,10 @@ import { Label } from '../../shared/ui/label';
 import { Checkbox } from '../../shared/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../shared/ui/tooltip';
 import { AdminLayout } from './AdminLayout';
-import {
-  AdminSearchFilterHeader,
-  AdminSearchFilterConfig,
-} from './components/AdminSearchFilterHeader';
+import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
+import { AdminDataSection } from './components/AdminDataSection';
+import { AdminStatsGrid } from './components/AdminStatsGrid';
+import { AdminEmptyState } from './components/AdminEmptyState';
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import {
@@ -256,6 +256,7 @@ export function UserManagement({
     pageSize,
   } = useUsersPaginated(userSession.user.organizationId, {
     role: roleFilter === 'all' ? undefined : roleFilter,
+    searchTerm: searchTerm.trim() || undefined,
   });
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -372,15 +373,10 @@ export function UserManagement({
     }
   };
 
-  // Client-side search on current page only (Firestore can't do CONTAINS)
-  const filteredUsersData = pagedUsers.filter((user) => {
-    const matchesSearch =
-      !searchTerm || user.username?.toLowerCase().includes(searchTerm.toLowerCase());
-    // Role filter is server-side via useUsersPaginated — this guards super_admin visibility only
-    const canViewSuperAdmin =
-      userSession.user.role === 'super_admin' || user.role !== 'super_admin';
-    return matchesSearch && canViewSuperAdmin;
-  });
+  // Keep super_admin visibility guard client-side.
+  const filteredUsersData = pagedUsers.filter(
+    (user) => userSession.user.role === 'super_admin' || user.role !== 'super_admin',
+  );
 
   // Use sorting hook
   const {
@@ -393,14 +389,13 @@ export function UserManagement({
   });
 
   const stats = calculateUserStats(users);
-
-  // Configuration for AdminSearchFilterHeader
   const searchFilterConfig: AdminSearchFilterConfig = {
     filters: [
       {
         key: 'roleFilter',
         label: 'Role',
         type: 'select',
+        allOptionLabel: 'All roles',
         options: [
           { label: 'Admin', value: 'admin' },
           { label: 'Manager', value: 'manager' },
@@ -411,12 +406,9 @@ export function UserManagement({
     ],
   };
 
-  const filterValues = {
-    roleFilter,
-  };
-
-  const handleFilterChange = (key: string, value: string) => {
-    if (key === 'roleFilter') {
+  const filterValues = { roleFilter };
+  const handleFilterChange = (key: string, value: unknown) => {
+    if (key === 'roleFilter' && typeof value === 'string') {
       setRoleFilter(value);
     }
   };
@@ -457,7 +449,7 @@ export function UserManagement({
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8">
           {/* Stat Cards Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+          <AdminStatsGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
             {/* Total Users Card */}
             <Card className="border-0 shadow-sm bg-white">
               <CardContent className="p-6">
@@ -517,37 +509,189 @@ export function UserManagement({
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </AdminStatsGrid>
 
-          {/* Unified Header Component */}
-          <AdminSearchFilterHeader
+          <AdminDataSection
+            title="Users"
+            description="Manage platform users and permissions"
             config={searchFilterConfig}
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
-          />
+            filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
+            summaryText={`Showing ${filteredUsers.length} of ${pagedUsers.length} users`}
+            cardClassName="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
+          >
+            {loading ? (
+              <div className="flex justify-center p-12">
+                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+              </div>
+            ) : error ? (
+              <div className="text-center text-red-600 p-12">
+                <AlertCircle className="mx-auto h-8 w-8 mb-2" />
+                <p>{error}</p>
+              </div>
+            ) : (
+              <>
+                <div className="md:hidden px-6 py-6 space-y-4">
+                  {filteredUsers.length > 0 ? (
+                    filteredUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10">
+                              <AvatarFallback
+                                className={`${getAvatarColor(user.username).bg} ${getAvatarColor(user.username).text} font-semibold text-sm`}
+                              >
+                                {getInitials(user.username)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="text-sm font-semibold text-gray-900">
+                                {user.username}
+                              </div>
+                              <div className="text-xs text-gray-500">{user.email}</div>
+                            </div>
+                          </div>
+                          {(hasPermission('edit_user') ||
+                            (hasPermission('delete_user') && user.id !== userSession.user.id)) && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-gray-500 hover:bg-gray-100"
+                                  aria-label="User actions"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {hasPermission('edit_user') && (
+                                  <DropdownMenuItem
+                                    onSelect={() => setEditingUser(user)}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                )}
+                                {hasPermission('delete_user') &&
+                                  user.id !== userSession.user.id && (
+                                    <DropdownMenuItem
+                                      onSelect={() => handleDeleteUser(user)}
+                                      className="flex items-center gap-2 text-red-600 focus:text-red-600"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
 
-          {/* Modern Table Container */}
-          <Card className="overflow-hidden">
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="flex justify-center p-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 capitalize ${getRoleColors(user.role)}`}
+                          >
+                            {user.role.replace('_', ' ')}
+                          </span>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#064e3b]/10 text-[#064e3b] ring-1 ring-[#064e3b]/20">
+                            Active
+                          </span>
+                        </div>
+
+                        <div className="mt-4 border-t border-gray-100 pt-4 text-sm">
+                          <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                            Permissions
+                          </div>
+                          <div className="mt-1 text-sm text-gray-600">
+                            {user.permissions?.length
+                              ? `${user.permissions.length} permissions`
+                              : 'None'}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <AdminEmptyState
+                      icon={Ghost}
+                      title="No Users Found"
+                      description="No users match your filters."
+                    />
+                  )}
                 </div>
-              ) : error ? (
-                <div className="text-center text-red-600 p-12">
-                  <AlertCircle className="mx-auto h-8 w-8 mb-2" />
-                  <p>{error}</p>
-                </div>
-              ) : (
-                <>
-                  <div className="md:hidden px-6 py-6 space-y-4">
-                    {filteredUsers.length > 0 ? (
-                      filteredUsers.map((user) => (
-                        <div
-                          key={user.id}
-                          className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
+                <div className="hidden md:block overflow-hidden">
+                  <Table className="w-full">
+                    <colgroup>
+                      <col style={{ width: '28%' }} />
+                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '20%' }} />
+                      <col style={{ width: '16%' }} />
+                    </colgroup>
+                    <TableHeader>
+                      <TableRow>
+                        <SortableTableHeader
+                          sortKey="username"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3 text-left"
                         >
-                          <div className="flex items-start justify-between gap-3">
+                          User Details
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortKey="role"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3 text-left"
+                        >
+                          Role
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortKey="status"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3 text-left"
+                        >
+                          Status
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="permissions"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3 text-left"
+                        >
+                          Permissions
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="actions"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="p-3 text-left"
+                        >
+                          Actions
+                        </SortableTableHeader>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredUsers.map((user) => (
+                        <TableRow
+                          key={user.id}
+                          className="hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 cursor-pointer"
+                          onClick={() => handleUserClick(user)}
+                        >
+                          <TableCell className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <Avatar className="h-10 w-10">
                                 <AvatarFallback
@@ -557,253 +701,99 @@ export function UserManagement({
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <div className="text-sm font-semibold text-gray-900">
+                                <div className="text-sm font-medium text-gray-900">
                                   {user.username}
                                 </div>
-                                <div className="text-xs text-gray-500">{user.email}</div>
+                                <div className="text-sm text-gray-500">{user.email}</div>
                               </div>
                             </div>
-                            {(hasPermission('edit_user') ||
-                              (hasPermission('delete_user') &&
-                                user.id !== userSession.user.id)) && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-gray-500 hover:bg-gray-100"
-                                    aria-label="User actions"
-                                  >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {hasPermission('edit_user') && (
-                                    <DropdownMenuItem
-                                      onSelect={() => setEditingUser(user)}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <Pencil className="h-4 w-4" />
-                                      Edit
-                                    </DropdownMenuItem>
-                                  )}
-                                  {hasPermission('delete_user') &&
-                                    user.id !== userSession.user.id && (
-                                      <DropdownMenuItem
-                                        onSelect={() => handleDeleteUser(user)}
-                                        className="flex items-center gap-2 text-red-600 focus:text-red-600"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                        Delete
-                                      </DropdownMenuItem>
-                                    )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap items-center gap-2">
+                          </TableCell>
+                          <TableCell className="px-6 py-4">
                             <span
                               className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 capitalize ${getRoleColors(user.role)}`}
                             >
                               {user.role.replace('_', ' ')}
                             </span>
+                          </TableCell>
+                          <TableCell className="px-6 py-4">
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#064e3b]/10 text-[#064e3b] ring-1 ring-[#064e3b]/20">
                               Active
                             </span>
-                          </div>
-
-                          <div className="mt-4 border-t border-gray-100 pt-4 text-sm">
-                            <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                              Permissions
-                            </div>
-                            <div className="mt-1 text-sm text-gray-600">
+                          </TableCell>
+                          <TableCell className="px-6 py-4">
+                            <div className="text-sm text-gray-500">
                               {user.permissions?.length
                                 ? `${user.permissions.length} permissions`
                                 : 'None'}
                             </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        <Ghost className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                        <p className="text-lg font-medium mb-2">No Users Found</p>
-                        <p className="text-sm mb-4">No users match your filters.</p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="hidden md:block overflow-hidden">
-                    <Table className="w-full">
-                      <colgroup>
-                        <col style={{ width: '28%' }} />
-                        <col style={{ width: '18%' }} />
-                        <col style={{ width: '18%' }} />
-                        <col style={{ width: '20%' }} />
-                        <col style={{ width: '16%' }} />
-                      </colgroup>
-                      <TableHeader>
-                        <TableRow className="bg-gray-100 border-b-2 border-gray-300 text-gray-700">
-                          <SortableTableHeader
-                            sortKey="username"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide text-center"
-                          >
-                            User Details
-                          </SortableTableHeader>
-                          <SortableTableHeader
-                            sortKey="role"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide text-center"
-                          >
-                            Role
-                          </SortableTableHeader>
-                          <SortableTableHeader
-                            sortKey="status"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide text-left"
-                          >
-                            Status
-                          </SortableTableHeader>
-                          <SortableTableHeader
-                            sortable={false}
-                            sortKey="permissions"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide text-left"
-                          >
-                            Permissions
-                          </SortableTableHeader>
-                          <SortableTableHeader
-                            sortable={false}
-                            sortKey="actions"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide text-center"
-                          >
-                            Actions
-                          </SortableTableHeader>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredUsers.map((user) => (
-                          <TableRow
-                            key={user.id}
-                            className="hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 cursor-pointer"
-                            onClick={() => handleUserClick(user)}
-                          >
-                            <TableCell className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-10 w-10">
-                                  <AvatarFallback
-                                    className={`${getAvatarColor(user.username).bg} ${getAvatarColor(user.username).text} font-semibold text-sm`}
-                                  >
-                                    {getInitials(user.username)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {user.username}
-                                  </div>
-                                  <div className="text-sm text-gray-500">{user.email}</div>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 capitalize ${getRoleColors(user.role)}`}
+                          </TableCell>
+                          <TableCell className="px-6 py-4 text-center">
+                            {(hasPermission('edit_user') ||
+                              (hasPermission('delete_user') &&
+                                user.id !== userSession.user.id)) && (
+                              <div
+                                className="flex items-center justify-center"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                {user.role.replace('_', ' ')}
-                              </span>
-                            </TableCell>
-                            <TableCell className="px-6 py-4">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#064e3b]/10 text-[#064e3b] ring-1 ring-[#064e3b]/20">
-                                Active
-                              </span>
-                            </TableCell>
-                            <TableCell className="px-6 py-4">
-                              <div className="text-sm text-gray-500">
-                                {user.permissions?.length
-                                  ? `${user.permissions.length} permissions`
-                                  : 'None'}
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4 text-center">
-                              {(hasPermission('edit_user') ||
-                                (hasPermission('delete_user') &&
-                                  user.id !== userSession.user.id)) && (
-                                <div
-                                  className="flex items-center justify-center"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-gray-500 hover:bg-gray-100"
-                                        aria-label="User actions"
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-gray-500 hover:bg-gray-100"
+                                      aria-label="User actions"
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    {hasPermission('edit_user') && (
+                                      <DropdownMenuItem
+                                        onSelect={() => setEditingUser(user)}
+                                        className="flex items-center gap-2"
                                       >
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      {hasPermission('edit_user') && (
+                                        <Pencil className="h-4 w-4" />
+                                        Edit
+                                      </DropdownMenuItem>
+                                    )}
+                                    {hasPermission('delete_user') &&
+                                      user.id !== userSession.user.id && (
                                         <DropdownMenuItem
-                                          onSelect={() => setEditingUser(user)}
-                                          className="flex items-center gap-2"
+                                          onSelect={() => handleDeleteUser(user)}
+                                          className="flex items-center gap-2 text-red-600 focus:text-red-600"
                                         >
-                                          <Pencil className="h-4 w-4" />
-                                          Edit
+                                          <Trash2 className="h-4 w-4" />
+                                          Delete
                                         </DropdownMenuItem>
                                       )}
-                                      {hasPermission('delete_user') &&
-                                        user.id !== userSession.user.id && (
-                                          <DropdownMenuItem
-                                            onSelect={() => handleDeleteUser(user)}
-                                            className="flex items-center gap-2 text-red-600 focus:text-red-600"
-                                          >
-                                            <Trash2 className="h-4 w-4" />
-                                            Delete
-                                          </DropdownMenuItem>
-                                        )}
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </>
-              )}
-              {/* Pagination */}
-              {(filteredUsers.length > 0 || canGoPrev) && (
-                <div className="border-t border-gray-100 px-4">
-                  <PaginationControls
-                    pageNumber={pageNumber}
-                    pageSize={pageSize}
-                    totalOnPage={filteredUsers.length}
-                    canGoNext={canGoNext}
-                    canGoPrev={canGoPrev}
-                    onNext={goNext}
-                    onPrev={goPrev}
-                    loading={fetching}
-                  />
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </>
+            )}
+            {/* Pagination */}
+            {(filteredUsers.length > 0 || canGoPrev) && (
+              <div className="border-t border-gray-100 px-4">
+                <PaginationControls
+                  pageNumber={pageNumber}
+                  pageSize={pageSize}
+                  totalOnPage={filteredUsers.length}
+                  canGoNext={canGoNext}
+                  canGoPrev={canGoPrev}
+                  onNext={goNext}
+                  onPrev={goPrev}
+                  loading={fetching}
+                />
+              </div>
+            )}
+          </AdminDataSection>
         </main>
 
         <CreateUserDialog

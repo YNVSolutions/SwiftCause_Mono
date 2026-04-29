@@ -1,6 +1,6 @@
-﻿'use client';
+'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../../shared/lib/firebase';
 import { useKiosks } from '../../shared/lib/hooks/useKiosks';
 import { useLocations } from '../../shared/lib/hooks/useLocations';
@@ -56,10 +56,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../../shared/ui/dropdown-menu';
-import {
-  AdminSearchFilterHeader,
-  AdminSearchFilterConfig,
-} from './components/AdminSearchFilterHeader';
+import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
+import { AdminDataSection } from './components/AdminDataSection';
+import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 
@@ -91,7 +91,10 @@ export function KioskManagement({
     goPrev,
     pageSize,
     refresh: refreshKiosks,
-  } = useKiosks(userSession.user.organizationId, { status: statusFilter });
+  } = useKiosks(userSession.user.organizationId, {
+    status: statusFilter,
+    searchTerm: searchTerm.trim() || undefined,
+  });
 
   const {
     locations,
@@ -124,12 +127,7 @@ export function KioskManagement({
     return map;
   }, [locations]);
 
-  const filteredKiosksData = kiosks.filter(
-    (kiosk) =>
-      kiosk.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      kiosk.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      kiosk.id.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filteredKiosksData = kiosks;
 
   const {
     sortedData: filteredKiosks,
@@ -175,13 +173,13 @@ export function KioskManagement({
 
   const normalizeAssignedCampaigns = (campaignIds?: string[]) =>
     Array.from(new Set((campaignIds || []).filter(Boolean)));
-
   const searchFilterConfig: AdminSearchFilterConfig = {
     filters: [
       {
         key: 'statusFilter',
         label: 'Status',
         type: 'select',
+        allOptionLabel: 'All statuses',
         options: [
           { label: 'Online', value: 'online' },
           { label: 'Offline', value: 'offline' },
@@ -192,12 +190,11 @@ export function KioskManagement({
   };
 
   const filterValues = { statusFilter };
-
-  const handleFilterChange = useCallback((key: string, value: string) => {
-    if (key === 'statusFilter') {
+  const handleFilterChange = (key: string, value: unknown) => {
+    if (key === 'statusFilter' && typeof value === 'string') {
       setStatusFilter(value as typeof statusFilter);
     }
-  }, []);
+  };
 
   useEffect(() => {
     refreshCampaigns();
@@ -583,7 +580,7 @@ export function KioskManagement({
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8">
           {/* Stat Cards Section */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-12">
+          <AdminStatsGrid className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-12">
             <Card>
               <CardContent className="p-3 sm:p-4 lg:p-6">
                 <div className="flex items-center justify-between">
@@ -640,403 +637,401 @@ export function KioskManagement({
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </AdminStatsGrid>
 
-          {/* Unified Header Component */}
-          <AdminSearchFilterHeader
+          <AdminDataSection
+            title="Kiosks"
+            description="Configure and monitor donation kiosks"
             config={searchFilterConfig}
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
-          />
+            filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
+            summaryText={`Showing ${filteredKiosks.length} of ${kiosks.length} kiosks`}
+            cardClassName="overflow-hidden rounded-3xl border border-gray-100 shadow-sm"
+          >
+            {filteredKiosks.length > 0 ? (
+              <>
+                <div className="md:hidden px-6 py-6 space-y-4">
+                  {filteredKiosks.map((kiosk) => {
+                    const assignedIds = Array.from(new Set(kiosk.assignedCampaigns || [])).filter(
+                      Boolean,
+                    );
+                    const assignedCount = campaigns.filter((c) =>
+                      assignedIds.includes(c.id),
+                    ).length;
 
-          {/* Modern Table Container */}
-          <Card className="overflow-hidden">
-            <CardContent className="p-0">
-              {filteredKiosks.length > 0 ? (
-                <>
-                  <div className="md:hidden px-6 py-6 space-y-4">
-                    {filteredKiosks.map((kiosk) => {
-                      const assignedIds = Array.from(new Set(kiosk.assignedCampaigns || [])).filter(
-                        Boolean,
-                      );
-                      const assignedCount = campaigns.filter((c) =>
-                        assignedIds.includes(c.id),
-                      ).length;
-
-                      return (
-                        <div
-                          key={kiosk.id}
-                          className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-semibold text-gray-900">
-                                {kiosk.name}
-                              </div>
-                              <div className="flex items-center gap-1 text-xs text-gray-500">
-                                <MapPin className="h-3 w-3" />
-                                {kiosk.location}
-                              </div>
+                    return (
+                      <div
+                        key={kiosk.id}
+                        className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">{kiosk.name}</div>
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <MapPin className="h-3 w-3" />
+                              {kiosk.location}
                             </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-gray-500 hover:bg-gray-100"
-                                  aria-label="Kiosk actions"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {hasPermission('edit_kiosk') ? (
-                                  <DropdownMenuItem
-                                    onSelect={() => handleEditKiosk(kiosk)}
-                                    className="flex items-center gap-2"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    Edit
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem
-                                    disabled
-                                    className="flex items-center gap-2 text-gray-400 cursor-not-allowed"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    Edit (No permission)
-                                  </DropdownMenuItem>
-                                )}
-                                {hasPermission('delete_kiosk') ? (
-                                  <DropdownMenuItem
-                                    onSelect={() => handleDeleteKiosk(kiosk)}
-                                    className="flex items-center gap-2 text-red-600 focus:text-red-600"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem
-                                    disabled
-                                    className="flex items-center gap-2 text-gray-400 cursor-not-allowed"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    Delete (No permission)
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
                           </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-gray-500 hover:bg-gray-100"
+                                aria-label="Kiosk actions"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {hasPermission('edit_kiosk') ? (
+                                <DropdownMenuItem
+                                  onSelect={() => handleEditKiosk(kiosk)}
+                                  className="flex items-center gap-2"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                  Edit
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  disabled
+                                  className="flex items-center gap-2 text-gray-400 cursor-not-allowed"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                  Edit (No permission)
+                                </DropdownMenuItem>
+                              )}
+                              {hasPermission('delete_kiosk') ? (
+                                <DropdownMenuItem
+                                  onSelect={() => handleDeleteKiosk(kiosk)}
+                                  className="flex items-center gap-2 text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Delete
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  disabled
+                                  className="flex items-center gap-2 text-gray-400 cursor-not-allowed"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Delete (No permission)
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
 
-                          <div className="mt-4 space-y-3">
-                            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                                Kiosk ID
+                        <div className="mt-4 space-y-3">
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                              Kiosk ID
+                            </p>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-mono text-sm text-gray-900 break-all">
+                                {kiosk.id}
                               </p>
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="font-mono text-sm text-gray-900 break-all">
-                                  {kiosk.id}
-                                </p>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => copyKioskId(kiosk.id)}
-                                  className="h-8 w-8 text-blue-600 hover:text-blue-800"
-                                  title="Copy ID"
-                                >
-                                  {copiedIds[kiosk.id] ? (
-                                    <Check className="h-4 w-4" />
-                                  ) : (
-                                    <Copy className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => copyKioskId(kiosk.id)}
+                                className="h-8 w-8 text-blue-600 hover:text-blue-800"
+                                title="Copy ID"
+                              >
+                                {copiedIds[kiosk.id] ? (
+                                  <Check className="h-4 w-4" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
+                              </Button>
                             </div>
-                            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                                Access Code
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                              Access Code
+                            </p>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-mono text-sm text-gray-900">
+                                {showAccessCodes[kiosk.id]
+                                  ? kiosk.accessCode || 'Not set'
+                                  : '******'}
                               </p>
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="font-mono text-sm text-gray-900">
-                                  {showAccessCodes[kiosk.id]
-                                    ? kiosk.accessCode || 'Not set'
-                                    : '******'}
-                                </p>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => toggleAccessCode(kiosk.id)}
-                                  className="h-8 w-8 text-blue-600 hover:text-blue-800"
-                                  title={
-                                    showAccessCodes[kiosk.id]
-                                      ? 'Hide Access Code'
-                                      : 'Show Access Code'
-                                  }
-                                >
-                                  {showAccessCodes[kiosk.id] ? (
-                                    <EyeOff className="h-4 w-4" />
-                                  ) : (
-                                    <Eye className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => toggleAccessCode(kiosk.id)}
+                                className="h-8 w-8 text-blue-600 hover:text-blue-800"
+                                title={
+                                  showAccessCodes[kiosk.id]
+                                    ? 'Hide Access Code'
+                                    : 'Show Access Code'
+                                }
+                              >
+                                {showAccessCodes[kiosk.id] ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </Button>
                             </div>
-                          </div>
-
-                          <div className="mt-4">{getStatusBadge(kiosk.status)}</div>
-
-                          <div className="mt-4 border-t border-gray-100 pt-4 text-sm text-gray-600">
-                            <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                              Performance
-                            </div>
-                            <div className="mt-1 font-semibold text-gray-900">
-                              {formatCurrency(performanceData[kiosk.id]?.totalRaised || 0)}
-                            </div>
-                          </div>
-
-                          <div className="mt-4 border-t border-gray-100 pt-4 text-sm text-gray-600">
-                            <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                              Campaign Assignment
-                            </div>
-                            <div className="mt-2">{assignedCount} assigned</div>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                  <div className="hidden md:block overflow-hidden">
-                    <Table className="w-full table-fixed">
-                      <TableHeader>
-                        <TableRow className="bg-gray-100 border-b-2 border-gray-300 text-gray-700">
-                          <SortableTableHeader
-                            sortKey="name"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="w-[30%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
-                          >
-                            Kiosk Details
-                          </SortableTableHeader>
-                          <SortableTableHeader
-                            sortKey="status"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="w-[12%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
-                          >
-                            Status
-                          </SortableTableHeader>
-                          <SortableTableHeader
-                            sortKey="totalRaised"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="w-[15%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide text-right"
-                          >
+
+                        <div className="mt-4">{getStatusBadge(kiosk.status)}</div>
+
+                        <div className="mt-4 border-t border-gray-100 pt-4 text-sm text-gray-600">
+                          <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                             Performance
-                          </SortableTableHeader>
-                          <SortableTableHeader
-                            sortKey="assignedCampaigns"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="w-[18%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
-                          >
+                          </div>
+                          <div className="mt-1 font-semibold text-gray-900">
+                            {formatCurrency(performanceData[kiosk.id]?.totalRaised || 0)}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 border-t border-gray-100 pt-4 text-sm text-gray-600">
+                          <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                             Campaign Assignment
-                          </SortableTableHeader>
-                          <SortableTableHeader
-                            sortable={false}
-                            sortKey="actions"
-                            currentSortKey={sortKey}
-                            currentSortDirection={sortDirection}
-                            onSort={handleSort}
-                            className="w-[25%] px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide"
-                          >
-                            Actions
-                          </SortableTableHeader>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody className="bg-white divide-y divide-gray-200">
-                        {filteredKiosks.map((kiosk) => (
-                          <TableRow key={kiosk.id} className="hover:bg-gray-50">
-                            <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                              <div className="space-y-3">
+                          </div>
+                          <div className="mt-2">{assignedCount} assigned</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="hidden md:block overflow-hidden">
+                  <Table className="w-full table-fixed">
+                    <TableHeader>
+                      <TableRow>
+                        <SortableTableHeader
+                          sortKey="name"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="w-[30%] p-3 text-left"
+                        >
+                          Kiosk Details
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortKey="status"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="w-[12%] p-3 text-left"
+                        >
+                          Status
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortKey="totalRaised"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="w-[15%] p-3 text-left"
+                        >
+                          Performance
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortKey="assignedCampaigns"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="w-[18%] p-3 text-left"
+                        >
+                          Campaign Assignment
+                        </SortableTableHeader>
+                        <SortableTableHeader
+                          sortable={false}
+                          sortKey="actions"
+                          currentSortKey={sortKey}
+                          currentSortDirection={sortDirection}
+                          onSort={handleSort}
+                          className="w-[25%] p-3 text-left"
+                        >
+                          Actions
+                        </SortableTableHeader>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody className="bg-white divide-y divide-gray-200">
+                      {filteredKiosks.map((kiosk) => (
+                        <TableRow key={kiosk.id} className="hover:bg-gray-50">
+                          <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            <div className="space-y-3">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-sm font-medium text-gray-900">
+                                    {kiosk.name}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 text-gray-400" />
+                                  <span className="text-sm text-gray-500">{kiosk.location}</span>
+                                </div>
+                              </div>
+                              <div className="bg-gray-50 rounded p-3 text-xs space-y-2">
                                 <div>
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-sm font-medium text-gray-900">
-                                      {kiosk.name}
+                                  <div className="text-gray-500 uppercase font-medium mb-1">
+                                    Kiosk ID
+                                  </div>
+                                  <div className="font-mono text-gray-900 flex items-center justify-between">
+                                    <span className="truncate">{kiosk.id}</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => copyKioskId(kiosk.id)}
+                                      className="h-auto p-1 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                      title="Copy ID"
+                                    >
+                                      {copiedIds[kiosk.id] ? (
+                                        <>
+                                          <Check className="w-3 h-3" />
+                                          Copied
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="w-3 h-3" />
+                                          Copy ID
+                                        </>
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 uppercase font-medium mb-1">
+                                    Access Code
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-blue-600 font-medium font-mono">
+                                      {showAccessCodes[kiosk.id]
+                                        ? kiosk.accessCode || 'Not set'
+                                        : '******'}
                                     </span>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <MapPin className="w-3 h-3 text-gray-400" />
-                                    <span className="text-sm text-gray-500">{kiosk.location}</span>
-                                  </div>
-                                </div>
-                                <div className="bg-gray-50 rounded p-3 text-xs space-y-2">
-                                  <div>
-                                    <div className="text-gray-500 uppercase font-medium mb-1">
-                                      Kiosk ID
-                                    </div>
-                                    <div className="font-mono text-gray-900 flex items-center justify-between">
-                                      <span className="truncate">{kiosk.id}</span>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => copyKioskId(kiosk.id)}
-                                        className="h-auto p-1 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                        title="Copy ID"
-                                      >
-                                        {copiedIds[kiosk.id] ? (
-                                          <>
-                                            <Check className="w-3 h-3" />
-                                            Copied
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Copy className="w-3 h-3" />
-                                            Copy ID
-                                          </>
-                                        )}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className="text-gray-500 uppercase font-medium mb-1">
-                                      Access Code
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-blue-600 font-medium font-mono">
-                                        {showAccessCodes[kiosk.id]
-                                          ? kiosk.accessCode || 'Not set'
-                                          : '******'}
-                                      </span>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => toggleAccessCode(kiosk.id)}
-                                        className="h-auto p-1 text-xs text-blue-600 hover:text-gray-800 flex items-center gap-1"
-                                        title={
-                                          showAccessCodes[kiosk.id]
-                                            ? 'Hide Access Code'
-                                            : 'Show Access Code'
-                                        }
-                                      >
-                                        {showAccessCodes[kiosk.id] ? (
-                                          <>
-                                            <EyeOff className="w-3 h-3" />
-                                            Hide
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Eye className="w-3 h-3" />
-                                            Show
-                                          </>
-                                        )}
-                                      </Button>
-                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => toggleAccessCode(kiosk.id)}
+                                      className="h-auto p-1 text-xs text-blue-600 hover:text-gray-800 flex items-center gap-1"
+                                      title={
+                                        showAccessCodes[kiosk.id]
+                                          ? 'Hide Access Code'
+                                          : 'Show Access Code'
+                                      }
+                                    >
+                                      {showAccessCodes[kiosk.id] ? (
+                                        <>
+                                          <EyeOff className="w-3 h-3" />
+                                          Hide
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Eye className="w-3 h-3" />
+                                          Show
+                                        </>
+                                      )}
+                                    </Button>
                                   </div>
                                 </div>
                               </div>
-                            </TableCell>
-                            <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                              {getStatusBadge(kiosk.status)}
-                            </TableCell>
-                            <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900">
-                                {formatCurrency(performanceData[kiosk.id]?.totalRaised || 0)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                              {(() => {
-                                const assignedIds = Array.from(
-                                  new Set(kiosk.assignedCampaigns || []),
-                                ).filter(Boolean);
-                                const assignedCount = campaigns.filter((c) =>
-                                  assignedIds.includes(c.id),
-                                ).length;
-                                return (
-                                  <div className="text-sm text-gray-500">
-                                    {assignedCount} assigned
-                                  </div>
-                                );
-                              })()}
-                            </TableCell>
-                            <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                {hasPermission('edit_kiosk') ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleEditKiosk(kiosk)}
-                                    className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
-                                    title="Edit Kiosk"
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled
-                                    className="h-8 w-8 p-0 text-gray-300 cursor-not-allowed"
-                                    title="No permission to edit kiosks"
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </Button>
-                                )}
-                                {hasPermission('delete_kiosk') ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleDeleteKiosk(kiosk)}
-                                    className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
-                                    title="Delete Kiosk"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled
-                                    className="h-8 w-8 p-0 text-gray-300 cursor-not-allowed"
-                                    title="No permission to delete kiosks"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-8 text-gray-500 p-6">
-                  <Ghost className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                  <p className="text-lg font-medium mb-2">No Kiosks Found</p>
-                  <p className="text-sm mb-4">No kiosks found matching your search criteria.</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            {getStatusBadge(kiosk.status)}
+                          </TableCell>
+                          <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {formatCurrency(performanceData[kiosk.id]?.totalRaised || 0)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            {(() => {
+                              const assignedIds = Array.from(
+                                new Set(kiosk.assignedCampaigns || []),
+                              ).filter(Boolean);
+                              const assignedCount = campaigns.filter((c) =>
+                                assignedIds.includes(c.id),
+                              ).length;
+                              return (
+                                <div className="text-sm text-gray-500">
+                                  {assignedCount} assigned
+                                </div>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              {hasPermission('edit_kiosk') ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditKiosk(kiosk)}
+                                  className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
+                                  title="Edit Kiosk"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled
+                                  className="h-8 w-8 p-0 text-gray-300 cursor-not-allowed"
+                                  title="No permission to edit kiosks"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {hasPermission('delete_kiosk') ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteKiosk(kiosk)}
+                                  className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
+                                  title="Delete Kiosk"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled
+                                  className="h-8 w-8 p-0 text-gray-300 cursor-not-allowed"
+                                  title="No permission to delete kiosks"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              )}
-              {/* Pagination — shown whenever there's data or more pages */}
-              {(filteredKiosks.length > 0 || canGoPrev) && (
-                <div className="border-t border-gray-100 px-4">
-                  <PaginationControls
-                    pageNumber={pageNumber}
-                    pageSize={pageSize}
-                    totalOnPage={filteredKiosks.length}
-                    canGoNext={canGoNext}
-                    canGoPrev={canGoPrev}
-                    onNext={goNext}
-                    onPrev={goPrev}
-                    loading={fetching}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </>
+            ) : (
+              <AdminEmptyState
+                icon={Ghost}
+                title="No Kiosks Found"
+                description="No kiosks found matching your search criteria."
+                className="text-center py-8 text-gray-500 p-6"
+              />
+            )}
+            {/* Pagination — shown whenever there's data or more pages */}
+            {(filteredKiosks.length > 0 || canGoPrev) && (
+              <div className="border-t border-gray-100 px-4">
+                <PaginationControls
+                  pageNumber={pageNumber}
+                  pageSize={pageSize}
+                  totalOnPage={filteredKiosks.length}
+                  canGoNext={canGoNext}
+                  canGoPrev={canGoPrev}
+                  onNext={goNext}
+                  onPrev={goPrev}
+                  loading={fetching}
+                />
+              </div>
+            )}
+          </AdminDataSection>
         </main>
       </div>
 

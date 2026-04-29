@@ -1,6 +1,9 @@
 import { useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchGiftAidPaginated, GiftAidFilters } from '../../../entities/giftAid/api/giftAidPaginatedApi';
+import {
+  fetchGiftAidPaginated,
+  GiftAidFilters,
+} from '../../../entities/giftAid/api/giftAidPaginatedApi';
 import { usePagination, PAGE_SIZE } from './usePagination';
 
 export function useGiftAid(organizationId?: string, filters: GiftAidFilters = {}) {
@@ -8,18 +11,24 @@ export function useGiftAid(organizationId?: string, filters: GiftAidFilters = {}
   const queryClient = useQueryClient();
 
   const statusKey = filters.status ?? 'all';
+  const campaignKey = filters.campaignId ?? 'all';
+  const donationDateKey = filters.donationDate ?? 'all';
+  const searchKey = (filters.searchTerm ?? '').trim().toLowerCase() || 'all';
 
   // Reset to page 1 whenever filters or org change
   useEffect(() => {
     pagination.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusKey, organizationId]);
+  }, [statusKey, campaignKey, donationDateKey, searchKey, organizationId]);
 
   const queryKey = [
     'gift-aid',
     organizationId,
     pagination.currentCursor?.id ?? 'page-1',
     statusKey,
+    campaignKey,
+    donationDateKey,
+    searchKey,
   ] as const;
 
   const { data, isLoading, isFetching, error } = useQuery({

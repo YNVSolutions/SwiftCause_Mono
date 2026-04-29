@@ -1,6 +1,9 @@
 import { useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchCampaignsPaginated, CampaignFilters } from '../../../entities/campaign/api/campaignApi';
+import {
+  fetchCampaignsPaginated,
+  CampaignFilters,
+} from '../../../entities/campaign/api/campaignApi';
 import { usePagination, PAGE_SIZE } from './usePagination';
 
 export function useCampaignsPaginated(organizationId?: string, filters: CampaignFilters = {}) {
@@ -8,17 +11,23 @@ export function useCampaignsPaginated(organizationId?: string, filters: Campaign
   const queryClient = useQueryClient();
 
   const statusKey = filters.status ?? 'all';
+  const categoryKey = filters.category ?? 'all';
+  const dateRangeKey = filters.dateRange ?? 'all';
+  const searchKey = (filters.searchTerm ?? '').trim().toLowerCase() || 'all';
 
   useEffect(() => {
     pagination.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusKey, organizationId]);
+  }, [statusKey, categoryKey, dateRangeKey, searchKey, organizationId]);
 
   const queryKey = [
     'campaigns-paginated',
     organizationId,
     pagination.currentCursor?.id ?? 'page-1',
     statusKey,
+    categoryKey,
+    dateRangeKey,
+    searchKey,
   ] as const;
 
   const { data, isLoading, isFetching, error } = useQuery({

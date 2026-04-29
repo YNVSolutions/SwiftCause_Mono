@@ -8,14 +8,18 @@ export function useDonations(organizationId?: string, filters: DonationFilters =
   const pagination = usePagination();
   const queryClient = useQueryClient();
 
-  // Stable primitive keys — no objects in query key
+  // Stable primitive keys â€” no objects in query key
   const statusKey = filters.status ?? 'all';
   const campaignKey = filters.campaignId ?? 'all';
+  const recurringKey =
+    filters.isRecurring === undefined ? 'all' : filters.isRecurring ? 'recurring' : 'one_time';
+  const dateKey = filters.donationDate ?? 'all';
+  const searchKey = (filters.searchTerm ?? '').trim().toLowerCase() || 'all';
 
   useEffect(() => {
     pagination.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusKey, campaignKey, organizationId]);
+  }, [statusKey, campaignKey, recurringKey, dateKey, searchKey, organizationId]);
 
   const queryKey = [
     'donations',
@@ -23,6 +27,9 @@ export function useDonations(organizationId?: string, filters: DonationFilters =
     pagination.currentCursor?.id ?? 'page-1',
     statusKey,
     campaignKey,
+    recurringKey,
+    dateKey,
+    searchKey,
   ] as const;
 
   const { data, isLoading, isFetching, error } = useQuery({
