@@ -126,6 +126,44 @@ describe('handlePaymentCompletedStripeWebhook', () => {
     });
   });
 
+  it('resolves kiosk location from kiosk doc when payment metadata omits location_id', async () => {
+    await seedDoc('kiosks', 'kiosk_rollout_001', {
+      location_id: 'loc_rollout_001',
+    });
+    await seedDoc('locations', 'loc_rollout_001', {
+      name: 'Central Hall',
+      postcode: 'SW1A 1AA',
+      city: 'London',
+    });
+
+    const event = makePaymentEvent({
+      eventId: 'evt_kiosk_missing_location_id',
+      paymentIntentId: 'pi_kiosk_missing_location_id',
+      metadata: {
+        kioskId: 'kiosk_rollout_001',
+        platform: 'kiosk',
+      },
+    });
+    verifyWebhookSignatureWithAnySecret.mockReturnValue(event);
+
+    const res = createResponse();
+    await handlePaymentCompletedStripeWebhook(makeRequest(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(createDonationDoc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transactionId: 'pi_kiosk_missing_location_id',
+        kioskId: 'kiosk_rollout_001',
+        location_id: 'loc_rollout_001',
+        location_snapshot: {
+          name: 'Central Hall',
+          postcode: 'SW1A 1AA',
+          city: 'London',
+        },
+      }),
+    );
+  });
+
   // ─── Declaration-first linkage tests ────────────────────────────────────────
 
   describe('declaration-first linkage (pre-created declaration)', () => {

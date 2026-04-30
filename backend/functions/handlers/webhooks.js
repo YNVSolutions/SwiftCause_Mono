@@ -9,7 +9,7 @@ const { createDonationDoc } = require('../entities/donation');
 const { generateMagicLinkToken, determinePurpose } = require('../entities/magicLink');
 const { updateSubscriptionStatus, getSubscriptionByStripeId } = require('../entities/subscription');
 const { claimWebhookEvent, markEventProcessed, markEventFailed } = require('../shared/firestore');
-const { resolveLocationForDonation } = require('../shared/location');
+const { resolveLocationForDonation, resolveLocationIdFromKiosk } = require('../shared/location');
 const {
   GIFT_AID_DECLARATION_TEXT_VERSION,
   GIFT_AID_DECLARATION_STATUS,
@@ -479,13 +479,21 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
         }
       }
 
-      // Resolve location — strict for kiosk donations, null for web/recurring
-      const { location_id: resolvedLocationId, location_snapshot: resolvedLocationSnapshot } =
-        await resolveLocationForDonation(
-          toStringOrNull(metadata.location_id),
-          toStringOrNull(metadata.kioskId),
-          paymentIntent.id,
+      // Resolve location — strict for kiosk donations, null for web/recurring.
+      // Backwards-compatible fallback: if kioskId is present but location_id is missing
+      // from metadata (older payment intent or producer gap), resolve from the kiosk doc
+      // before strict validation fires. Without this, already-created intents that omitted
+      // location_id would 500 and retry indefinitely.
+      const webhookKioskId = toStringOrNull(metadata.kioskId);
+      let webhookLocationId = toStringOrNull(metadata.location_id);
+      if (webhookKioskId && !webhookLocationId) {
+        console.log(
+          `[Webhook] location_id missing from metadata, resolving from kiosk doc: ${webhookKioskId} (context: ${paymentIntent.id})`,
         );
+        webhookLocationId = await resolveLocationIdFromKiosk(webhookKioskId, paymentIntent.id);
+      }
+      const { location_id: resolvedLocationId, location_snapshot: resolvedLocationSnapshot } =
+        await resolveLocationForDonation(webhookLocationId, webhookKioskId, paymentIntent.id);
 
       // Use entity to create donation with recurring support
       await createDonationDoc({
@@ -824,14 +832,14 @@ const handleInvoicePaid = async (invoice) => {
         : 'monthly';
 
   // Create donation record for this recurring payment
-  // Resolve location — strict for kiosk recurring donations, null for web
+  // Resolve location — strict for kiosk recurring donations, null for web.
+  // Uses resolveLocationIdFromKiosk (same helper as payment intent path) for consistency.
   const recurringKioskId =
     toStringOrNull(subscriptionData.metadata?.kioskId) || toStringOrNull(subscriptionData.kioskId);
   let recurringLocationId = null;
   let recurringLocationSnapshot = null;
   if (recurringKioskId) {
-    const kioskSnap = await admin.firestore().collection('kiosks').doc(recurringKioskId).get();
-    const kioskLocationId = kioskSnap.exists ? toStringOrNull(kioskSnap.data().location_id) : null;
+    const kioskLocationId = await resolveLocationIdFromKiosk(recurringKioskId, invoice.id);
     const resolved = await resolveLocationForDonation(
       kioskLocationId,
       recurringKioskId,
