@@ -77,8 +77,8 @@ export function AdminPageHeader({
         }
       `}</style>
       <div className="flex w-full flex-col gap-4">
-        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 items-start gap-3 sm:gap-4 lg:flex-1 lg:items-center">
+        <div className="flex w-full items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4 lg:items-center">
             {showSidebarTrigger && (
               <SidebarTrigger className="h-9 w-9 shrink-0 rounded-2xl border border-[#F3F1EA]/60 bg-[#F7F6F2] text-slate-600 hover:bg-emerald-50 hover:text-[#064e3b] hover:border-emerald-200 hover:shadow-lg hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 shadow-sm sm:h-10 sm:w-10" />
             )}
@@ -99,13 +99,11 @@ export function AdminPageHeader({
             )}
           </div>
 
-          <div className="flex w-full items-center justify-between gap-2 sm:gap-3 lg:ml-auto lg:w-auto lg:shrink-0 lg:justify-end">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3 lg:ml-auto lg:justify-end">
             {inlineActions && (
               <div className="hidden lg:flex items-center gap-2">{inlineActions}</div>
             )}
-            {topRightActions && (
-              <div className="min-w-0 flex-1 lg:flex-none">{topRightActions}</div>
-            )}
+            {topRightActions && <div className="min-w-0">{topRightActions}</div>}
             {onStartTour && (
               <Button
                 variant="outline"

@@ -21,6 +21,8 @@ export interface DonationFilters {
   status?: string;
   campaignId?: string;
   isRecurring?: boolean;
+  donationDate?: string; // YYYY-MM-DD
+  searchTerm?: string;
 }
 
 export interface DonationPage {
@@ -50,6 +52,61 @@ export async function fetchDonationsPaginated(
   cursor: DocumentSnapshot | null,
   filters: DonationFilters = {},
 ): Promise<DonationPage> {
+  const normalizedSearch = (filters.searchTerm || '').trim().toLowerCase();
+  const hasSearch = normalizedSearch.length > 0;
+  const hasDateFilter = Boolean(filters.donationDate);
+  const hasInMemoryFilters = hasSearch || hasDateFilter;
+
+  const toMillis = (value: unknown): number => {
+    if (!value) return 0;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? 0 : value.getTime();
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+    }
+    if (typeof value === 'object' && value !== null) {
+      if (typeof (value as { toDate?: unknown }).toDate === 'function') {
+        const dateValue = (value as { toDate: () => Date }).toDate();
+        return Number.isNaN(dateValue.getTime()) ? 0 : dateValue.getTime();
+      }
+      if ('seconds' in value && typeof (value as { seconds?: unknown }).seconds === 'number') {
+        return ((value as { seconds: number }).seconds || 0) * 1000;
+      }
+    }
+    return 0;
+  };
+
+  const toDateKey = (value: unknown): string => {
+    const millis = toMillis(value);
+    if (!millis) return '';
+    const date = new Date(millis);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const matchesSearch = (docData: DocumentData): boolean => {
+    if (!hasSearch) return true;
+    const donorName = String(docData.donorName || '').toLowerCase();
+    const paymentIntent = String(docData.stripePaymentIntentId || '').toLowerCase();
+    const transactionId = String(docData.transactionId || '').toLowerCase();
+    const campaignTitle = String(
+      docData.campaignTitleSnapshot || docData.campaignTitle || '',
+    ).toLowerCase();
+    return (
+      donorName.includes(normalizedSearch) ||
+      paymentIntent.includes(normalizedSearch) ||
+      transactionId.includes(normalizedSearch) ||
+      campaignTitle.includes(normalizedSearch)
+    );
+  };
+
+  const matchesDate = (docData: DocumentData): boolean => {
+    if (!filters.donationDate) return true;
+    return toDateKey(docData.timestamp) === filters.donationDate;
+  };
+
   const constraints: Parameters<typeof query>[1][] = [
     where('organizationId', '==', organizationId),
   ];
@@ -64,9 +121,13 @@ export async function fetchDonationsPaginated(
     constraints.push(where('isRecurring', '==', filters.isRecurring));
   }
 
-  constraints.push(orderBy('timestamp', 'desc'), orderBy('__name__', 'desc'), limit(PAGE_SIZE + 1));
+  constraints.push(orderBy('timestamp', 'desc'), orderBy('__name__', 'desc'));
 
-  if (cursor) {
+  if (!hasInMemoryFilters) {
+    constraints.push(limit(PAGE_SIZE + 1));
+  }
+
+  if (cursor && !hasInMemoryFilters) {
     constraints.push(startAfter(cursor));
   }
 
@@ -80,24 +141,49 @@ export async function fetchDonationsPaginated(
     if (code !== 'failed-precondition') throw err;
     // Index still building — fall back to unfiltered query.
     // Only safe when no filters are active; with filters, return empty to avoid showing wrong data.
-    const hasActiveFilters =
+    const hasIndexedFilters =
       (filters.status && filters.status !== 'all') ||
       (filters.campaignId && filters.campaignId !== 'all') ||
       filters.isRecurring !== undefined;
-    if (hasActiveFilters) {
+    if (hasIndexedFilters) {
       console.warn('fetchDonationsPaginated: index not ready for filtered query, returning empty');
       return { docs: [], data: [], lastDoc: null, hasNextPage: false };
     }
     const fallbackQ = query(
       collection(db, 'donations'),
       where('organizationId', '==', organizationId),
-      limit(PAGE_SIZE + 1),
     );
-    snapshot = await getDocs(fallbackQ);
+    snapshot = hasInMemoryFilters
+      ? await getDocs(fallbackQ)
+      : await getDocs(query(fallbackQ, limit(PAGE_SIZE + 1)));
   }
 
   if (snapshot.empty) {
     return { docs: [], data: [], lastDoc: null, hasNextPage: false };
+  }
+
+  if (hasInMemoryFilters) {
+    const sortedDocs = [...snapshot.docs].sort((a, b) => {
+      const aMillis = toMillis((a.data() as { timestamp?: unknown }).timestamp);
+      const bMillis = toMillis((b.data() as { timestamp?: unknown }).timestamp);
+      if (aMillis !== bMillis) return bMillis - aMillis;
+      return b.id.localeCompare(a.id);
+    });
+    const matchingDocs = sortedDocs.filter((docSnap) => {
+      const docData = docSnap.data();
+      return matchesSearch(docData) && matchesDate(docData);
+    });
+    const startIndex = cursor
+      ? matchingDocs.findIndex((docSnap) => docSnap.id === cursor.id) + 1
+      : 0;
+    const docs = matchingDocs.slice(startIndex, startIndex + PAGE_SIZE);
+    const hasNextPage = startIndex + PAGE_SIZE < matchingDocs.length;
+    return {
+      docs,
+      data: docs.map((d) => ({ ...d.data(), id: d.id })),
+      lastDoc: docs[docs.length - 1] ?? null,
+      hasNextPage,
+    };
   }
 
   const hasNextPage = snapshot.docs.length > PAGE_SIZE;

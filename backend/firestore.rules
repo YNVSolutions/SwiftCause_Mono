@@ -84,6 +84,17 @@ service cloud.firestore {
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
+
+    // Helper function to check if document belongs to caller organization
+    function isSameOrganization(orgId) {
+      return hasCallerProfile() && callerUserDoc().data.organizationId == orgId;
+    }
+
+    // Helper function to validate location ownership by organization
+    function locationBelongsToOrganization(locationId, orgId) {
+      return exists(/databases/$(database)/documents/locations/$(locationId)) &&
+             get(/databases/$(database)/documents/locations/$(locationId)).data.orgId == orgId;
+    }
     
     // ============================================
     // USERS COLLECTION
@@ -185,15 +196,80 @@ service cloud.firestore {
     }
     
     // ============================================
+    // LOCATIONS COLLECTION
+    // ============================================
+    
+    match /locations/{locationId} {
+      // Admins can read locations in their own organization.
+      // Privileged admins may access any organization.
+      allow read: if isPrivilegedAdmin() ||
+                  (isAdmin() && isSameOrganization(resource.data.orgId));
+      
+      // Only admins can create locations
+      // Locations follow an immutability pattern:
+      // - Editing creates a new document instead of mutating
+      // - Old locations are never deleted
+      // - This preserves audit trails and historical donation references
+      allow create: if isPrivilegedAdmin() ||
+                    (isAdmin() && isSameOrganization(request.resource.data.orgId));
+
+      // Allow only kioskCount maintenance updates (denormalized UI field).
+      allow update: if
+        (isPrivilegedAdmin() || (isAdmin() && isSameOrganization(resource.data.orgId))) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kioskCount']);
+
+      // Never allow deletion to preserve historical references/auditability.
+      allow delete: if false;
+    }
+    
+    // ============================================
     // KIOSKS COLLECTION
     // ============================================
     
     match /kiosks/{kioskId} {
-      // Admins can read all kiosks
-      allow read: if isAdmin();
+      // Admins can read kiosks in their own organization.
+      // Privileged admins may access any organization.
+      allow read: if isPrivilegedAdmin() ||
+                  (isAdmin() && isSameOrganization(resource.data.organizationId));
       
-      // Only admins can write kiosks
-      allow write: if isAdmin();
+      // Only admins can write kiosks in their own organization.
+      // Privileged admins may write any organization.
+      allow create: if
+        (
+          isPrivilegedAdmin() ||
+          (isAdmin() && isSameOrganization(request.resource.data.organizationId))
+        ) &&
+        (
+          request.resource.data.location_id == null ||
+          (
+            request.resource.data.location_id is string &&
+            locationBelongsToOrganization(
+              request.resource.data.location_id,
+              request.resource.data.organizationId
+            )
+          )
+        );
+
+      allow update: if
+        (
+          isPrivilegedAdmin() ||
+          (isAdmin() && isSameOrganization(resource.data.organizationId))
+        ) &&
+        // Prevent cross-org reassignment of kiosk records.
+        request.resource.data.organizationId == resource.data.organizationId &&
+        (
+          request.resource.data.location_id == null ||
+          (
+            request.resource.data.location_id is string &&
+            locationBelongsToOrganization(
+              request.resource.data.location_id,
+              request.resource.data.organizationId
+            )
+          )
+        );
+
+      allow delete: if isPrivilegedAdmin() ||
+                    (isAdmin() && isSameOrganization(resource.data.organizationId));
     }
     
     // ============================================
