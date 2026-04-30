@@ -756,12 +756,6 @@ private fun LocationPermissionRequiredScreen(
                     textAlign = TextAlign.Center
                 )
 
-                Text(
-                    text = stringResource(R.string.location_permission_why_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center
-                )
 
                 Text(
                     text = if (showRationale) {
@@ -800,7 +794,11 @@ private fun LocationPermissionRequiredScreen(
                     onClick = onContinueWithoutLocation,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(text = stringResource(R.string.continue_without_location))
+                    Text(
+                        text = stringResource(R.string.continue_without_location),
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }
