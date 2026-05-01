@@ -113,7 +113,6 @@ private fun AppEntryPoint(
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     var kioskSession by remember { mutableStateOf<KioskSession?>(null) }
-    var continueWithoutLocation by remember { mutableStateOf(false) }
     var hasRequestedLocationPermission by remember { mutableStateOf(false) }
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -131,8 +130,8 @@ private fun AppEntryPoint(
         hasLocationPermission = isGranted
     }
 
-    LaunchedEffect(hasLocationPermission, hasRequestedLocationPermission, continueWithoutLocation) {
-        if (!hasLocationPermission && !hasRequestedLocationPermission && !continueWithoutLocation) {
+    LaunchedEffect(hasLocationPermission, hasRequestedLocationPermission) {
+        if (!hasLocationPermission && !hasRequestedLocationPermission) {
             hasRequestedLocationPermission = true
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
@@ -148,7 +147,7 @@ private fun AppEntryPoint(
             )
     }
 
-    if (!hasLocationPermission && !continueWithoutLocation) {
+    if (!hasLocationPermission) {
         LocationPermissionRequiredScreen(
             showRationale = shouldShowLocationRationale || !hasRequestedLocationPermission,
             onRequestPermission = {
@@ -160,9 +159,6 @@ private fun AppEntryPoint(
                     Uri.fromParts("package", context.packageName, null)
                 )
                 context.startActivity(intent)
-            },
-            onContinueWithoutLocation = {
-                continueWithoutLocation = true
             }
         )
         return
@@ -719,8 +715,7 @@ fun KioskMainContent(
 private fun LocationPermissionRequiredScreen(
     showRationale: Boolean,
     onRequestPermission: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onContinueWithoutLocation: () -> Unit
+    onOpenSettings: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -769,7 +764,7 @@ private fun LocationPermissionRequiredScreen(
                 )
 
                 Text(
-                    text = stringResource(R.string.location_permission_continue_without_note),
+                    text = stringResource(R.string.location_permission_cannot_continue),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center
@@ -791,14 +786,10 @@ private fun LocationPermissionRequiredScreen(
                 }
 
                 OutlinedButton(
-                    onClick = onContinueWithoutLocation,
+                    onClick = onRequestPermission,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = stringResource(R.string.continue_without_location),
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
+                    Text(text = stringResource(R.string.retry))
                 }
             }
         }

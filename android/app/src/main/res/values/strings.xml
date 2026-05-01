@@ -50,7 +50,7 @@
     <string name="location_permission_why_title">Why location is needed</string>
     <string name="location_permission_message_rationale">Location permission is needed for Tap to Pay so this kiosk can accept contactless card payments.</string>
     <string name="location_permission_message_denied">Location permission is currently denied. Tap to Pay needs location to accept contactless card payments, so enable it in Settings to use Tap to Pay.</string>
-    <string name="location_permission_cannot_continue">Tap to Pay requires this permission.</string>
+    <string name="location_permission_cannot_continue">You cannot proceed without granting location permission.</string>
     <string name="location_permission_continue_without_note">You can continue without location, but Tap to Pay will be unavailable.</string>
     <string name="grant_location_permission">Grant location permission</string>
     <string name="open_settings">Open Settings</string>
