@@ -53,7 +53,7 @@ export function useCampaignsPaginated(organizationId?: string, filters: Campaign
   }
 
   const refresh = useCallback(() => {
-    queryClient.invalidateQueries({
+    return queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[0] === 'campaigns-paginated' && q.queryKey[1] === organizationId,
     });
   }, [queryClient, organizationId]);

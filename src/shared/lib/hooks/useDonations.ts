@@ -55,7 +55,7 @@ export function useDonations(organizationId?: string, filters: DonationFilters =
   }
 
   const refresh = useCallback(() => {
-    queryClient.invalidateQueries({
+    return queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[0] === 'donations' && q.queryKey[1] === organizationId,
     });
   }, [queryClient, organizationId]);

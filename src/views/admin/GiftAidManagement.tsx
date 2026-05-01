@@ -4,9 +4,7 @@ import { GiftAidDeclaration } from '../../entities/giftAid/model/types';
 import {
   downloadGiftAidExportFile,
   exportGiftAidDeclarations,
-  fetchGiftAidExportBatches,
   giftAidApi,
-  type GiftAidExportBatch,
   type GiftAidExportFile,
 } from '../../entities/giftAid/api';
 import { AdminLayout } from './AdminLayout';
@@ -31,23 +29,18 @@ import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
 import { AdminDataSection } from './components/AdminDataSection';
+import { AdminDataSectionLoading } from './components/AdminDataSectionLoading';
 import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminRefreshButton } from './components/AdminRefreshButton';
 import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { formatCurrency } from '../../shared/lib/currencyFormatter';
 import { useGiftAid } from '../../shared/lib/hooks/useGiftAid';
+import { useGiftAidExportBatches } from '../../shared/lib/hooks/useGiftAidExportBatches';
 import { PaginationControls } from '../../shared/ui/PaginationControls';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '../../shared/ui/pagination';
 import { useToast } from '../../shared/ui/ToastProvider';
 import { getAllCampaigns } from '../../shared/api';
 
-const EXPORT_HISTORY_PAGE_SIZE = 8;
+const EXPORT_HISTORY_PAGE_SIZE = 2;
 
 interface GiftAidManagementProps {
   onNavigate: (screen: Screen) => void;
@@ -81,9 +74,6 @@ export function GiftAidManagement({
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isUpdatingPaid, setIsUpdatingPaid] = useState(false);
-  const [exportBatches, setExportBatches] = useState<GiftAidExportBatch[]>([]);
-  const [exportHistoryLoading, setExportHistoryLoading] = useState(true);
-  const [exportHistoryPage, setExportHistoryPage] = useState(1);
   const [activeDownloadKey, setActiveDownloadKey] = useState<string | null>(null);
   const [charitySubmittedReference, setCharitySubmittedReference] = useState('');
   const [unresolvedReconciliationCount, setUnresolvedReconciliationCount] = useState(0);
@@ -123,34 +113,23 @@ export function GiftAidManagement({
   }));
   const canExportGiftAid = hasPermission('export_giftaid');
   const canDownloadGiftAidBatchHistory = hasPermission('download_giftaid_exports');
-
-  const loadExportBatches = useCallback(
-    async (organizationId: string) => {
-      setExportHistoryLoading(true);
-      try {
-        const batches = await fetchGiftAidExportBatches(organizationId);
-        setExportBatches(batches);
-      } catch (batchError) {
-        console.error('Failed to load Gift Aid export batches:', batchError);
-        showToast('Failed to load Gift Aid export history.', 'warning');
-      } finally {
-        setExportHistoryLoading(false);
-      }
-    },
-    [showToast],
+  const {
+    exportBatches,
+    loading: exportHistoryLoading,
+    fetching: exportHistoryFetching,
+    error: exportHistoryError,
+    pageNumber: exportHistoryPage,
+    canGoNext: canGoExportHistoryNext,
+    canGoPrev: canGoExportHistoryPrev,
+    goFirst: goToFirstExportHistoryPage,
+    goNext: goToNextExportHistoryPage,
+    goPrev: goToPrevExportHistoryPage,
+    pageSize: exportHistoryPageSize,
+    refresh: refreshExportHistory,
+  } = useGiftAidExportBatches(
+    canDownloadGiftAidBatchHistory ? userSession.user.organizationId : undefined,
+    EXPORT_HISTORY_PAGE_SIZE,
   );
-
-  const syncExportHistory = useCallback(() => {
-    const organizationId = userSession.user.organizationId;
-    if (!organizationId || !canDownloadGiftAidBatchHistory) {
-      setExportBatches([]);
-      setExportHistoryPage(1);
-      setExportHistoryLoading(false);
-      return;
-    }
-
-    void loadExportBatches(organizationId);
-  }, [canDownloadGiftAidBatchHistory, loadExportBatches, userSession.user.organizationId]);
 
   const getUnresolvedReconciliationCount = useCallback(async (organizationId: string) => {
     const issuesRef = collection(db, 'giftAidReconciliationIssues');
@@ -206,13 +185,17 @@ export function GiftAidManagement({
   }, [userSession.user.organizationId]);
 
   useEffect(() => {
-    syncExportHistory();
-  }, [syncExportHistory]);
+    if (!exportHistoryError) return;
+    showToast(exportHistoryError, 'warning');
+  }, [exportHistoryError, showToast]);
 
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(exportBatches.length / EXPORT_HISTORY_PAGE_SIZE));
-    setExportHistoryPage((currentPage) => Math.min(currentPage, totalPages));
-  }, [exportBatches]);
+  const refreshGiftAidSection = useCallback(async () => {
+    await Promise.all([refresh(), refreshExportHistory()]);
+  }, [refresh, refreshExportHistory]);
+  const refreshExportHistorySection = useCallback(async () => {
+    await refreshExportHistory();
+  }, [refreshExportHistory]);
+  const isExportHistoryRefreshing = exportHistoryLoading || exportHistoryFetching;
 
   const filteredDonationsData = giftAidDonations.map((donation) => ({
     ...donation,
@@ -230,24 +213,6 @@ export function GiftAidManagement({
     defaultSortKey: 'donationDateTs',
     defaultSortDirection: 'desc',
   });
-
-  const paginatedExportBatches = exportBatches.slice(
-    (exportHistoryPage - 1) * EXPORT_HISTORY_PAGE_SIZE,
-    exportHistoryPage * EXPORT_HISTORY_PAGE_SIZE,
-  );
-  const canGoExportHistoryNext =
-    exportHistoryPage * EXPORT_HISTORY_PAGE_SIZE < exportBatches.length;
-  const canGoExportHistoryPrev = exportHistoryPage > 1;
-
-  const goToNextExportHistoryPage = () => {
-    if (!canGoExportHistoryNext) return;
-    setExportHistoryPage((currentPage) => currentPage + 1);
-  };
-
-  const goToPrevExportHistoryPage = () => {
-    if (!canGoExportHistoryPrev) return;
-    setExportHistoryPage((currentPage) => Math.max(1, currentPage - 1));
-  };
 
   const getStatusBadge = (status: string, paidConfirmed?: boolean) => {
     if (paidConfirmed) {
@@ -371,9 +336,8 @@ export function GiftAidManagement({
       }
 
       setLocalOverrides({});
-      refresh();
-      setExportHistoryPage(1);
-      await loadExportBatches(userSession.user.organizationId);
+      goToFirstExportHistoryPage();
+      await Promise.all([refresh(), refreshExportHistory()]);
       if (exportResult.skippedCount && exportResult.skippedCount > 0) {
         showToast(
           exportResult.message ||
@@ -579,7 +543,7 @@ export function GiftAidManagement({
         )}
 
         {/* Stats Cards */}
-        <AdminStatsGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6">
+        <AdminStatsGrid className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6">
           <Card>
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
@@ -660,144 +624,294 @@ export function GiftAidManagement({
                       Re-download previous HMRC and internal Gift Aid export batches.
                     </p>
                   </div>
+                  <AdminRefreshButton
+                    onRefresh={refreshExportHistorySection}
+                    refreshing={isExportHistoryRefreshing}
+                    ariaLabel="Refresh export history"
+                  />
                 </div>
 
-                <div className="hidden md:block">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <SortableTableHeader
-                          sortable={false}
-                          sortKey="batch"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3"
-                        >
-                          Batch
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortable={false}
-                          sortKey="created"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3"
-                        >
-                          Created
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortable={false}
-                          sortKey="rows"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3"
-                        >
-                          Rows
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortable={false}
-                          sortKey="actor"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3"
-                        >
-                          Exported By
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortable={false}
-                          sortKey="status"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3"
-                        >
-                          Status
-                        </SortableTableHeader>
-                        <SortableTableHeader
-                          sortable={false}
-                          sortKey="downloads"
-                          currentSortKey={sortKey}
-                          currentSortDirection={sortDirection}
-                          onSort={handleSort}
-                          className="p-3"
-                        >
-                          Downloads
-                        </SortableTableHeader>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {exportHistoryLoading ? (
-                        Array.from({ length: 3 }).map((_, index) => (
-                          <TableRow key={`export-history-skeleton-${index}`}>
-                            <TableCell className="p-3">
-                              <Skeleton className="h-5 w-32" />
-                            </TableCell>
-                            <TableCell className="p-3">
-                              <Skeleton className="h-5 w-36" />
-                            </TableCell>
-                            <TableCell className="p-3">
-                              <Skeleton className="h-5 w-12" />
-                            </TableCell>
-                            <TableCell className="p-3">
-                              <Skeleton className="h-5 w-32" />
-                            </TableCell>
-                            <TableCell className="p-3">
-                              <Skeleton className="h-5 w-20" />
-                            </TableCell>
-                            <TableCell className="p-3">
-                              <Skeleton className="h-9 w-40" />
-                            </TableCell>
+                <div className="relative">
+                  {isExportHistoryRefreshing ? (
+                    <div className="pointer-events-none absolute inset-0 z-10 rounded-xl bg-white/45 backdrop-blur-[1px]">
+                      <div className="absolute left-4 top-3 flex items-center gap-2 rounded-md border border-gray-200 bg-white/90 px-2.5 py-1.5 text-[11px] font-medium text-gray-600 shadow-sm">
+                        <span className="h-3.5 w-3.5 rounded-full border-2 border-gray-300 border-t-emerald-600 motion-safe:animate-spin" />
+                        <span>Refreshing data...</span>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div
+                    className={
+                      isExportHistoryRefreshing
+                        ? 'transition-opacity duration-200 opacity-70'
+                        : 'transition-opacity duration-200 opacity-100'
+                    }
+                  >
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <SortableTableHeader
+                              sortable={false}
+                              sortKey="batch"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Batch
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortable={false}
+                              sortKey="created"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Created
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortable={false}
+                              sortKey="rows"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Rows
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortable={false}
+                              sortKey="actor"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Exported By
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortable={false}
+                              sortKey="status"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Status
+                            </SortableTableHeader>
+                            <SortableTableHeader
+                              sortable={false}
+                              sortKey="downloads"
+                              currentSortKey={sortKey}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              className="p-3"
+                            >
+                              Downloads
+                            </SortableTableHeader>
                           </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {exportHistoryLoading ? (
+                            Array.from({ length: 3 }).map((_, index) => (
+                              <TableRow key={`export-history-skeleton-${index}`}>
+                                <TableCell className="p-3">
+                                  <Skeleton className="h-5 w-32" />
+                                </TableCell>
+                                <TableCell className="p-3">
+                                  <Skeleton className="h-5 w-36" />
+                                </TableCell>
+                                <TableCell className="p-3">
+                                  <Skeleton className="h-5 w-12" />
+                                </TableCell>
+                                <TableCell className="p-3">
+                                  <Skeleton className="h-5 w-32" />
+                                </TableCell>
+                                <TableCell className="p-3">
+                                  <Skeleton className="h-5 w-20" />
+                                </TableCell>
+                                <TableCell className="p-3">
+                                  <Skeleton className="h-9 w-40" />
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : exportBatches.length > 0 ? (
+                            exportBatches.map((batch) => (
+                              <TableRow key={batch.id}>
+                                <TableCell className="p-3">
+                                  <div className="font-medium text-slate-900">
+                                    {batch.batchId || batch.id}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="p-3 text-sm text-gray-700">
+                                  {formatBatchTimestamp(batch.completedAt || batch.createdAt)}
+                                </TableCell>
+                                <TableCell className="p-3 text-sm text-gray-700">
+                                  {batch.rowCount ?? 0}
+                                </TableCell>
+                                <TableCell className="p-3 text-sm text-gray-700">
+                                  {batch.createdByName || batch.createdByEmail || 'Unknown'}
+                                </TableCell>
+                                <TableCell className="p-3">
+                                  {batch.status === 'completed' ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20"
+                                    >
+                                      <CheckCircle className="mr-1 h-3 w-3" />
+                                      Completed
+                                    </Badge>
+                                  ) : batch.status === 'failed' ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-red-50 text-red-700 border-red-200"
+                                    >
+                                      <AlertCircle className="mr-1 h-3 w-3" />
+                                      Failed
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-yellow-50 text-yellow-700 border-yellow-200"
+                                    >
+                                      <Clock className="mr-1 h-3 w-3" />
+                                      {batch.status || 'Pending'}
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="p-3">
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={
+                                        !canDownloadGiftAidBatchHistory ||
+                                        !batch.hmrcFile ||
+                                        activeDownloadKey === `${batch.id}:hmrc`
+                                      }
+                                      onClick={() =>
+                                        void handleDownloadBatchFile(
+                                          batch.id,
+                                          'hmrc',
+                                          batch.hmrcFile,
+                                        )
+                                      }
+                                    >
+                                      <Download className="mr-2 h-4 w-4" />
+                                      {activeDownloadKey === `${batch.id}:hmrc`
+                                        ? 'Downloading...'
+                                        : 'HMRC CSV'}
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={
+                                        !canDownloadGiftAidBatchHistory ||
+                                        !batch.internalFile ||
+                                        activeDownloadKey === `${batch.id}:internal`
+                                      }
+                                      onClick={() =>
+                                        void handleDownloadBatchFile(
+                                          batch.id,
+                                          'internal',
+                                          batch.internalFile,
+                                        )
+                                      }
+                                    >
+                                      <Download className="mr-2 h-4 w-4" />
+                                      {activeDownloadKey === `${batch.id}:internal`
+                                        ? 'Downloading...'
+                                        : 'Internal CSV'}
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={6}
+                                className="p-6 text-center text-sm text-gray-500"
+                              >
+                                No Gift Aid export batches yet.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="space-y-3 p-4 md:hidden">
+                      {exportHistoryLoading ? (
+                        Array.from({ length: 2 }).map((_, index) => (
+                          <Card
+                            key={`export-history-mobile-skeleton-${index}`}
+                            className="border border-gray-100 shadow-sm"
+                          >
+                            <CardContent className="space-y-3 p-4">
+                              <Skeleton className="h-5 w-28" />
+                              <Skeleton className="h-4 w-40" />
+                              <Skeleton className="h-9 w-full" />
+                            </CardContent>
+                          </Card>
                         ))
                       ) : exportBatches.length > 0 ? (
-                        paginatedExportBatches.map((batch) => (
-                          <TableRow key={batch.id}>
-                            <TableCell className="p-3">
-                              <div className="font-medium text-slate-900">
-                                {batch.batchId || batch.id}
+                        exportBatches.map((batch) => (
+                          <Card key={batch.id} className="border border-gray-100 shadow-sm">
+                            <CardContent className="space-y-3 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold text-slate-900">
+                                    {batch.batchId || batch.id}
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    {formatBatchTimestamp(batch.completedAt || batch.createdAt)}
+                                  </div>
+                                </div>
+                                <div>
+                                  {batch.status === 'completed' ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20"
+                                    >
+                                      Completed
+                                    </Badge>
+                                  ) : batch.status === 'failed' ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-red-50 text-red-700 border-red-200"
+                                    >
+                                      Failed
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-yellow-50 text-yellow-700 border-yellow-200"
+                                    >
+                                      {batch.status || 'Pending'}
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
-                            </TableCell>
-                            <TableCell className="p-3 text-sm text-gray-700">
-                              {formatBatchTimestamp(batch.completedAt || batch.createdAt)}
-                            </TableCell>
-                            <TableCell className="p-3 text-sm text-gray-700">
-                              {batch.rowCount ?? 0}
-                            </TableCell>
-                            <TableCell className="p-3 text-sm text-gray-700">
-                              {batch.createdByName || batch.createdByEmail || 'Unknown'}
-                            </TableCell>
-                            <TableCell className="p-3">
-                              {batch.status === 'completed' ? (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20"
-                                >
-                                  <CheckCircle className="mr-1 h-3 w-3" />
-                                  Completed
-                                </Badge>
-                              ) : batch.status === 'failed' ? (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-red-50 text-red-700 border-red-200"
-                                >
-                                  <AlertCircle className="mr-1 h-3 w-3" />
-                                  Failed
-                                </Badge>
-                              ) : (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-yellow-50 text-yellow-700 border-yellow-200"
-                                >
-                                  <Clock className="mr-1 h-3 w-3" />
-                                  {batch.status || 'Pending'}
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="p-3">
-                              <div className="flex flex-wrap gap-2">
+
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500">Rows</p>
+                                  <p className="font-medium text-slate-900">
+                                    {batch.rowCount ?? 0}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500">Exported By</p>
+                                  <p className="font-medium text-slate-900">
+                                    {batch.createdByName || batch.createdByEmail || 'Unknown'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -837,180 +951,34 @@ export function GiftAidManagement({
                                     : 'Internal CSV'}
                                 </Button>
                               </div>
-                            </TableCell>
-                          </TableRow>
+
+                              {batch.status === 'failed' && batch.failureMessage ? (
+                                <p className="text-sm text-red-600">{batch.failureMessage}</p>
+                              ) : null}
+                            </CardContent>
+                          </Card>
                         ))
                       ) : (
-                        <TableRow>
-                          <TableCell colSpan={6} className="p-6 text-center text-sm text-gray-500">
-                            No Gift Aid export batches yet.
-                          </TableCell>
-                        </TableRow>
+                        <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                          No Gift Aid export batches yet.
+                        </div>
                       )}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                <div className="space-y-3 p-4 md:hidden">
-                  {exportHistoryLoading ? (
-                    Array.from({ length: 2 }).map((_, index) => (
-                      <Card
-                        key={`export-history-mobile-skeleton-${index}`}
-                        className="border border-gray-100 shadow-sm"
-                      >
-                        <CardContent className="space-y-3 p-4">
-                          <Skeleton className="h-5 w-28" />
-                          <Skeleton className="h-4 w-40" />
-                          <Skeleton className="h-9 w-full" />
-                        </CardContent>
-                      </Card>
-                    ))
-                  ) : exportBatches.length > 0 ? (
-                    paginatedExportBatches.map((batch) => (
-                      <Card key={batch.id} className="border border-gray-100 shadow-sm">
-                        <CardContent className="space-y-3 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-semibold text-slate-900">
-                                {batch.batchId || batch.id}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {formatBatchTimestamp(batch.completedAt || batch.createdAt)}
-                              </div>
-                            </div>
-                            <div>
-                              {batch.status === 'completed' ? (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-[#064e3b]/10 text-[#064e3b] border-[#064e3b]/20"
-                                >
-                                  Completed
-                                </Badge>
-                              ) : batch.status === 'failed' ? (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-red-50 text-red-700 border-red-200"
-                                >
-                                  Failed
-                                </Badge>
-                              ) : (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-yellow-50 text-yellow-700 border-yellow-200"
-                                >
-                                  {batch.status || 'Pending'}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <p className="text-gray-500">Rows</p>
-                              <p className="font-medium text-slate-900">{batch.rowCount ?? 0}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Exported By</p>
-                              <p className="font-medium text-slate-900">
-                                {batch.createdByName || batch.createdByEmail || 'Unknown'}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={
-                                !canDownloadGiftAidBatchHistory ||
-                                !batch.hmrcFile ||
-                                activeDownloadKey === `${batch.id}:hmrc`
-                              }
-                              onClick={() =>
-                                void handleDownloadBatchFile(batch.id, 'hmrc', batch.hmrcFile)
-                              }
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              {activeDownloadKey === `${batch.id}:hmrc`
-                                ? 'Downloading...'
-                                : 'HMRC CSV'}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={
-                                !canDownloadGiftAidBatchHistory ||
-                                !batch.internalFile ||
-                                activeDownloadKey === `${batch.id}:internal`
-                              }
-                              onClick={() =>
-                                void handleDownloadBatchFile(
-                                  batch.id,
-                                  'internal',
-                                  batch.internalFile,
-                                )
-                              }
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              {activeDownloadKey === `${batch.id}:internal`
-                                ? 'Downloading...'
-                                : 'Internal CSV'}
-                            </Button>
-                          </div>
-
-                          {batch.status === 'failed' && batch.failureMessage ? (
-                            <p className="text-sm text-red-600">{batch.failureMessage}</p>
-                          ) : null}
-                        </CardContent>
-                      </Card>
-                    ))
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
-                      No Gift Aid export batches yet.
                     </div>
-                  )}
+                  </div>
                 </div>
 
-                {!exportHistoryLoading && exportBatches.length > EXPORT_HISTORY_PAGE_SIZE ? (
-                  <div className="border-t border-gray-100 px-4 py-4 sm:px-6">
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            href="#"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              goToPrevExportHistoryPage();
-                            }}
-                            className={
-                              !canGoExportHistoryPrev ? 'pointer-events-none opacity-50' : ''
-                            }
-                          />
-                        </PaginationItem>
-                        <PaginationItem>
-                          <PaginationLink
-                            href="#"
-                            isActive
-                            size="default"
-                            onClick={(event) => event.preventDefault()}
-                          >
-                            Page {exportHistoryPage}
-                          </PaginationLink>
-                        </PaginationItem>
-                        <PaginationItem>
-                          <PaginationNext
-                            href="#"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              goToNextExportHistoryPage();
-                            }}
-                            className={
-                              !canGoExportHistoryNext ? 'pointer-events-none opacity-50' : ''
-                            }
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
+                {!exportHistoryLoading && (canGoExportHistoryPrev || canGoExportHistoryNext) ? (
+                  <div className="border-t border-gray-100 px-4 py-2 sm:px-6">
+                    <PaginationControls
+                      pageNumber={exportHistoryPage}
+                      pageSize={exportHistoryPageSize}
+                      totalOnPage={exportBatches.length}
+                      canGoNext={canGoExportHistoryNext}
+                      canGoPrev={canGoExportHistoryPrev}
+                      onNext={goToNextExportHistoryPage}
+                      onPrev={goToPrevExportHistoryPage}
+                      loading={isExportHistoryRefreshing}
+                    />
                   </div>
                 ) : null}
               </CardContent>
@@ -1024,49 +992,18 @@ export function GiftAidManagement({
           config={searchFilterConfig}
           filterValues={filterValues}
           onFilterChange={handleFilterChange}
+          onRefresh={refreshGiftAidSection}
+          refreshing={fetching || exportHistoryLoading || exportHistoryFetching}
           filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
           summaryText={`Showing ${filteredDonations.length} of ${giftAidDonations.length} Gift Aid donations`}
         >
           {loading ? (
-            <>
-              <div className="hidden md:block">
-                <Table className="table-fixed">
-                  <TableBody>
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i} className="h-16">
-                        <TableCell className="py-4">
-                          <Skeleton className="h-5 w-32" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Skeleton className="h-5 w-24" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Skeleton className="h-5 w-16" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Skeleton className="h-5 w-16" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Skeleton className="h-5 w-20" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Skeleton className="h-8 w-8 rounded" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="space-y-4 md:hidden">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Card key={i} className="overflow-hidden">
-                    <CardContent className="p-4">
-                      <Skeleton className="h-20 w-full" />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </>
+            <AdminDataSectionLoading
+              desktopColumns={6}
+              desktopRows={5}
+              mobileRows={3}
+              cardClassName="overflow-hidden"
+            />
           ) : filteredDonations.length > 0 ? (
             <>
               <div className="hidden md:block">

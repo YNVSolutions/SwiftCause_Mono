@@ -1,33 +1,34 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchUsersPaginated, UserFilters } from '../../../entities/user/api/userApi';
-import { usePagination, PAGE_SIZE } from './usePagination';
+import { fetchGiftAidExportBatchesPaginated } from '../../../entities/giftAid/api';
+import { usePagination } from './usePagination';
 
-export function useUsersPaginated(organizationId?: string, filters: UserFilters = {}) {
+const DEFAULT_EXPORT_HISTORY_PAGE_SIZE = 2;
+
+export function useGiftAidExportBatches(
+  organizationId?: string,
+  pageSize = DEFAULT_EXPORT_HISTORY_PAGE_SIZE,
+) {
   const pagination = usePagination();
   const queryClient = useQueryClient();
-
-  const roleKey = filters.role ?? 'all';
-  const searchKey = (filters.searchTerm ?? '').trim().toLowerCase() || 'all';
 
   useEffect(() => {
     pagination.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roleKey, searchKey, organizationId]);
+  }, [organizationId]);
 
   const queryKey = [
-    'users-paginated',
+    'gift-aid-export-batches',
     organizationId,
     pagination.currentCursor?.id ?? 'page-1',
-    roleKey,
-    searchKey,
+    pageSize,
   ] as const;
 
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey,
     queryFn: () => {
       if (!organizationId) throw new Error('organizationId is required');
-      return fetchUsersPaginated(organizationId, pagination.currentCursor, filters);
+      return fetchGiftAidExportBatchesPaginated(organizationId, pagination.currentCursor, pageSize);
     },
     enabled: !!organizationId,
     placeholderData: (prev) => prev,
@@ -42,26 +43,32 @@ export function useUsersPaginated(organizationId?: string, filters: UserFilters 
   }, [data]);
 
   if (process.env.NODE_ENV !== 'production' && error) {
-    console.error('[useUsersPaginated]', error);
+    console.error('[useGiftAidExportBatches]', error);
   }
 
   const refresh = useCallback(() => {
     return queryClient.invalidateQueries({
-      predicate: (q) => q.queryKey[0] === 'users-paginated' && q.queryKey[1] === organizationId,
+      predicate: (q) =>
+        q.queryKey[0] === 'gift-aid-export-batches' && q.queryKey[1] === organizationId,
     });
   }, [queryClient, organizationId]);
 
+  const goFirst = useCallback(() => {
+    pagination.reset();
+  }, [pagination]);
+
   return {
-    users: data?.users ?? [],
+    exportBatches: data?.batches ?? [],
     loading: isLoading,
     fetching: isFetching,
-    error: error ? 'Failed to load users. Please try again.' : null,
+    error: error ? 'Failed to load Gift Aid export history. Please try again.' : null,
     pageNumber: pagination.pageNumber,
     canGoNext: pagination.canGoNext,
     canGoPrev: pagination.canGoPrev,
+    goFirst,
     goNext: pagination.goNext,
     goPrev: pagination.goPrev,
-    pageSize: PAGE_SIZE,
+    pageSize,
     refresh,
   };
 }

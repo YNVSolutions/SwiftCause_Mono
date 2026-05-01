@@ -25,6 +25,7 @@ import {
 import { useToast } from '../../shared/ui/ToastProvider';
 import { VALIDATION_LIMITS } from '../../shared/config/constants';
 import { OrganizationSwitcher } from './OrganizationSwitcher';
+import { AdminPageError, AdminPageLoader } from './components/AdminPageStatus';
 
 interface OrganizationSettingsProps {
   onNavigate: (screen: Screen) => void;
@@ -443,9 +444,7 @@ export function OrganizationSettings({
         hasPermission={hasPermission}
         activeScreen="admin-organization-settings"
       >
-        <div className="flex h-full items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-        </div>
+        <AdminPageLoader message="Loading organization settings..." />
       </AdminLayout>
     );
   }
@@ -459,16 +458,10 @@ export function OrganizationSettings({
         hasPermission={hasPermission}
         activeScreen="admin-organization-settings"
       >
-        <div className="flex h-full items-center justify-center">
-          <Card className="w-full max-w-lg border-red-200 bg-red-50">
-            <CardHeader>
-              <CardTitle className="text-red-700">Unable To Load Settings</CardTitle>
-              <CardDescription className="text-red-600">
-                {error || 'Organization record is not available.'}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </div>
+        <AdminPageError
+          title="Unable To Load Settings"
+          message={error || 'Organization record is not available.'}
+        />
       </AdminLayout>
     );
   }

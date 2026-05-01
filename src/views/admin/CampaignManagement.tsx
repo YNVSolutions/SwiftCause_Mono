@@ -56,6 +56,7 @@ import {
 import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
 import { AdminDataSection } from './components/AdminDataSection';
 import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminDataSectionLoading } from './components/AdminDataSectionLoading';
 import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
@@ -1330,9 +1331,8 @@ const CampaignManagement = ({
   });
 
   // Invalidates both the management hook cache and the paginated query cache
-  const refreshAll = useCallback(() => {
-    refresh();
-    refreshPaged();
+  const refreshAll = useCallback(async () => {
+    await Promise.all([refresh(), refreshPaged()]);
   }, [refresh, refreshPaged]);
 
   const { organization, loading: orgLoading } = useOrganization(
@@ -2374,7 +2374,7 @@ const CampaignManagement = ({
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-10 pb-10">
           <div className="space-y-6">
-            <AdminStatsGrid className="grid gap-4 md:grid-cols-3">
+            <AdminStatsGrid className="grid grid-cols-2 gap-4 md:grid-cols-3">
               <Card className="rounded-3xl border border-gray-100 shadow-sm">
                 <CardContent className="p-5 flex items-center gap-4">
                   <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -2447,6 +2447,8 @@ const CampaignManagement = ({
               config={searchFilterConfig}
               filterValues={filterValues}
               onFilterChange={handleFilterChange}
+              onRefresh={refreshAll}
+              refreshing={fetching || loading}
               filterGridClassName="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3"
               summaryText={`Showing ${filteredAndSortedCampaigns.length} of ${campaigns.length} campaigns`}
               showMobileActions={false}
@@ -2475,16 +2477,8 @@ const CampaignManagement = ({
               }
             >
               {loading ? (
-                <div className="space-y-4 p-6">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="grid grid-cols-6 gap-4 py-4 border-b border-gray-200">
-                      <Skeleton className="h-10 w-full col-span-2" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                      <Skeleton className="h-10 w-full col-span-1" />
-                    </div>
-                  ))}
+                <div className="p-6">
+                  <AdminDataSectionLoading desktopColumns={6} desktopRows={5} mobileRows={3} />
                 </div>
               ) : filteredAndSortedCampaigns.length > 0 ? (
                 <>

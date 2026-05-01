@@ -1,5 +1,15 @@
 import { getAuth } from 'firebase/auth';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import {
+  collection,
+  DocumentSnapshot,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  QueryDocumentSnapshot,
+  startAfter,
+  where,
+} from 'firebase/firestore';
 import { FUNCTION_URLS } from '@/shared/config/functions';
 import { db } from '@/shared/lib/firebase';
 
@@ -46,7 +56,80 @@ export interface GiftAidExportBatch {
   internalFile?: GiftAidExportFile | null;
 }
 
+export interface GiftAidExportBatchPage {
+  batches: GiftAidExportBatch[];
+  lastDoc: DocumentSnapshot | null;
+  hasNextPage: boolean;
+}
+
 export type GiftAidExportFileKind = 'hmrc' | 'internal';
+
+interface GiftAidBatchTimestampFields {
+  createdAt?: unknown;
+  completedAt?: unknown;
+  failedAt?: unknown;
+}
+
+function normalizeTimestampToMillis(value: unknown): number {
+  if (!value) return 0;
+
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === 'object') {
+    const maybeTimestamp = value as {
+      toDate?: () => Date;
+      seconds?: number | string;
+      nanoseconds?: number | string;
+    };
+
+    if (typeof maybeTimestamp.toDate === 'function') {
+      const dateValue = maybeTimestamp.toDate();
+      if (dateValue instanceof Date) {
+        const time = dateValue.getTime();
+        if (Number.isFinite(time)) return time;
+      }
+    }
+
+    const secondsRaw = maybeTimestamp.seconds;
+    const seconds =
+      typeof secondsRaw === 'number'
+        ? secondsRaw
+        : typeof secondsRaw === 'string'
+          ? Number(secondsRaw)
+          : NaN;
+
+    if (Number.isFinite(seconds)) {
+      const nanosRaw = maybeTimestamp.nanoseconds;
+      const nanos =
+        typeof nanosRaw === 'number'
+          ? nanosRaw
+          : typeof nanosRaw === 'string'
+            ? Number(nanosRaw)
+            : 0;
+
+      const nanosMillis = Number.isFinite(nanos) ? nanos / 1_000_000 : 0;
+      return seconds * 1000 + nanosMillis;
+    }
+  }
+
+  return 0;
+}
+
+function getBatchSortMillis(batch: GiftAidBatchTimestampFields): number {
+  return normalizeTimestampToMillis(batch.createdAt ?? batch.completedAt ?? batch.failedAt);
+}
 
 const getGiftAidExportFunctionUrl = () => {
   return (
@@ -163,12 +246,88 @@ export async function fetchGiftAidExportBatches(
         }) as GiftAidExportBatch,
     )
     .sort((left, right) => {
-      const leftTime = Date.parse(left.createdAt || left.completedAt || left.failedAt || '');
-      const rightTime = Date.parse(right.createdAt || right.completedAt || right.failedAt || '');
-      return (
-        (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0)
-      );
+      const leftTime = getBatchSortMillis(left);
+      const rightTime = getBatchSortMillis(right);
+      return rightTime - leftTime;
     });
+}
+
+export async function fetchGiftAidExportBatchesPaginated(
+  organizationId: string,
+  cursor: DocumentSnapshot | null,
+  pageSize: number,
+): Promise<GiftAidExportBatchPage> {
+  const constraints: Parameters<typeof query>[1][] = [
+    where('organizationId', '==', organizationId),
+    orderBy('createdAt', 'desc'),
+    orderBy('__name__', 'desc'),
+    limit(pageSize + 1),
+  ];
+
+  if (cursor) {
+    constraints.push(startAfter(cursor));
+  }
+
+  const batchesQuery = query(collection(db, 'giftAidExportBatches'), ...constraints);
+
+  let snapshot;
+  try {
+    snapshot = await getDocs(batchesQuery);
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    if (code !== 'failed-precondition') throw err;
+
+    // Fallback when composite index is not created yet.
+    // We fetch by organization and apply ordering/pagination in memory.
+    const fallbackQuery = query(
+      collection(db, 'giftAidExportBatches'),
+      where('organizationId', '==', organizationId),
+    );
+    const fallbackSnapshot = await getDocs(fallbackQuery);
+    const sortedDocs = [...fallbackSnapshot.docs].sort((a, b) => {
+      const aTime = getBatchSortMillis(a.data() as GiftAidBatchTimestampFields);
+      const bTime = getBatchSortMillis(b.data() as GiftAidBatchTimestampFields);
+      if (aTime !== bTime) return bTime - aTime;
+      return b.id.localeCompare(a.id);
+    });
+
+    const startIndex = cursor ? sortedDocs.findIndex((docSnap) => docSnap.id === cursor.id) + 1 : 0;
+    const docs = sortedDocs.slice(startIndex, startIndex + pageSize);
+    const hasNextPage = startIndex + pageSize < sortedDocs.length;
+
+    return {
+      batches: docs.map(
+        (docSnapshot) =>
+          ({
+            id: docSnapshot.id,
+            ...docSnapshot.data(),
+          }) as GiftAidExportBatch,
+      ),
+      lastDoc: docs[docs.length - 1] ?? null,
+      hasNextPage,
+    };
+  }
+
+  if (snapshot.empty) {
+    return { batches: [], lastDoc: null, hasNextPage: false };
+  }
+
+  const hasNextPage = snapshot.docs.length > pageSize;
+  const docs: QueryDocumentSnapshot[] = hasNextPage
+    ? snapshot.docs.slice(0, pageSize)
+    : snapshot.docs;
+
+  return {
+    batches: docs.map(
+      (docSnapshot) =>
+        ({
+          id: docSnapshot.id,
+          ...docSnapshot.data(),
+        }) as GiftAidExportBatch,
+    ),
+    lastDoc: docs[docs.length - 1] ?? null,
+    hasNextPage,
+  };
 }
 
 function triggerBlobDownload(blob: Blob, fileName: string) {

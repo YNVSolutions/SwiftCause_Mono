@@ -25,7 +25,6 @@ import {
   Building2,
   Gift,
 } from 'lucide-react';
-import { Skeleton } from '../../shared/ui/skeleton'; // Import Skeleton
 import { Ghost } from 'lucide-react'; // Import Ghost
 import { Screen, AdminSession, Permission, Donation } from '../../shared/types';
 import {
@@ -39,6 +38,7 @@ import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
 import { AdminDataSection } from './components/AdminDataSection';
 import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminDataSectionLoading } from './components/AdminDataSectionLoading';
 import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { formatCurrency } from '../../shared/lib/currencyFormatter';
 import { useToast } from '../../shared/ui/ToastProvider';
@@ -141,6 +141,7 @@ export function DonationManagement({
     goNext,
     goPrev,
     pageSize,
+    refresh,
   } = useDonations(userSession.user.organizationId, {
     status: statusFilter !== 'all' ? statusFilter : undefined,
     campaignId: campaignFilter !== 'all' ? campaignFilter : undefined,
@@ -549,7 +550,7 @@ export function DonationManagement({
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8">
           {/* Stat Cards Section */}
-          <AdminStatsGrid className="grid gap-4 md:grid-cols-4 mb-6">
+          <AdminStatsGrid className="grid grid-cols-2 gap-4 md:grid-cols-4 mb-6">
             <Card className="rounded-3xl border border-gray-100 shadow-sm">
               <CardContent className="p-5 flex items-center gap-4">
                 <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -623,33 +624,13 @@ export function DonationManagement({
             config={searchFilterConfig}
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
+            onRefresh={refresh}
+            refreshing={fetching}
             filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-4"
             summaryText={`Showing ${filteredDonations.length} of ${pagedDonations.length} donations`}
           >
             {loading ? (
-              <>
-                <div className="hidden space-y-4 md:block">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="grid grid-cols-6 gap-4 border-b border-gray-100 py-4">
-                      <Skeleton className="col-span-1 h-10 w-full" />
-                      <Skeleton className="col-span-1 h-10 w-full" />
-                      <Skeleton className="col-span-1 h-10 w-full" />
-                      <Skeleton className="col-span-1 h-10 w-full" />
-                      <Skeleton className="col-span-1 h-10 w-full" />
-                      <Skeleton className="col-span-1 h-10 w-full" />
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-4 md:hidden">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <Card key={i} className="overflow-hidden rounded-3xl">
-                      <CardContent className="p-4">
-                        <Skeleton className="h-20 w-full" />
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </>
+              <AdminDataSectionLoading desktopColumns={6} desktopRows={5} mobileRows={3} />
             ) : error ? (
               <div className="flex flex-col items-center justify-center p-12 text-center text-red-600">
                 <AlertCircle className="mb-3 h-10 w-10 text-red-500" />

@@ -1,6 +1,7 @@
 # SwiftCause - Project Workflow Documentation
 
 ## 📋 Table of Contents
+
 1. [Project Overview](#project-overview)
 2. [Architecture](#architecture)
 3. [User Flows](#user-flows)
@@ -15,6 +16,7 @@
 ## 🎯 Project Overview
 
 **SwiftCause** is a donation management platform that enables organizations to:
+
 - Create and manage fundraising campaigns
 - Deploy donation kiosks (physical or virtual)
 - Process payments securely via Stripe
@@ -22,6 +24,7 @@
 - Manage users with role-based permissions
 
 ### Core Concept
+
 Organizations create campaigns → Assign campaigns to kiosks → Donors use kiosks to donate → Admins track everything via dashboard
 
 ---
@@ -29,6 +32,7 @@ Organizations create campaigns → Assign campaigns to kiosks → Donors use kio
 ## 🏗️ Architecture
 
 ### Frontend Architecture
+
 ```
 Next.js 14 (App Router)
 ├── /app                    # Next.js pages
@@ -48,6 +52,7 @@ Next.js 14 (App Router)
 ```
 
 ### Backend Architecture
+
 ```
 Firebase
 ├── Firestore              # NoSQL Database
@@ -62,6 +67,7 @@ Firebase
 ## 👥 User Flows
 
 ### 1. Organization Setup Flow
+
 ```
 1. Super Admin creates Organization
 2. Organization connects Stripe account
@@ -70,6 +76,7 @@ Firebase
 ```
 
 ### 2. Campaign Creation Flow
+
 ```
 Admin Dashboard
     ↓
@@ -88,6 +95,7 @@ Campaign goes Live
 ```
 
 ### 3. Kiosk Setup Flow
+
 ```
 Admin Dashboard
     ↓
@@ -105,6 +113,7 @@ Kiosk is Active
 ```
 
 ### 4. Donation Flow
+
 ```
 Donor visits Kiosk URL
     ↓
@@ -124,6 +133,7 @@ Dashboard updates in real-time
 ```
 
 ### 5. Admin Monitoring Flow
+
 ```
 Admin logs in
     ↓
@@ -146,15 +156,17 @@ Admin can:
 ## 🛠️ Technical Stack
 
 ### Frontend
+
 - **Framework:** Next.js 14 (React 18)
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **UI Components:** Shadcn/ui (Radix UI)
 - **Charts:** Recharts
 - **Forms:** React Hook Form
-- **State Management:** React Hooks + Context
+- **State Management:** React Hooks + Context + TanStack Query (admin data queries)
 
 ### Backend
+
 - **Database:** Firebase Firestore (NoSQL)
 - **Authentication:** Firebase Auth
 - **Storage:** Firebase Storage
@@ -162,6 +174,7 @@ Admin can:
 - **Payments:** Stripe API
 
 ### DevOps
+
 - **Hosting:** Firebase Hosting / Vercel
 - **Version Control:** Git
 - **Package Manager:** npm
@@ -171,6 +184,7 @@ Admin can:
 ## ✨ Key Features
 
 ### 1. Campaign Management
+
 - **CRUD Operations:** Create, Read, Update, Delete campaigns
 - **Rich Configuration:**
   - Custom donation amounts
@@ -182,6 +196,7 @@ Admin can:
 - **Progress Tracking:** Real-time goal completion percentage
 
 ### 2. Kiosk System
+
 - **Multi-Device Support:** iOS, Android, Windows, ChromeOS
 - **Access Control:** QR codes and secure access codes
 - **Campaign Assignment:** Multiple campaigns per kiosk
@@ -189,6 +204,7 @@ Admin can:
 - **Location-Based Analytics:** Track donations by location
 
 ### 3. Payment Processing
+
 - **Stripe Integration:**
   - Secure payment processing
   - PCI compliance
@@ -198,6 +214,7 @@ Admin can:
 - **Payout Management:** Automatic transfers to organization accounts
 
 ### 4. Analytics Dashboard
+
 - **Real-Time Metrics:**
   - Total raised across all campaigns
   - Total donation count
@@ -211,6 +228,7 @@ Admin can:
 - **Alerts:** System notifications (offline kiosks, etc.)
 
 ### 5. User Management
+
 - **Role-Based Access Control (RBAC):**
   - Super Admin (system-wide access)
   - Admin (organization-level access)
@@ -223,6 +241,7 @@ Admin can:
   - system_admin (super admin only)
 
 ### 6. Data Export
+
 - **CSV Export:** Campaign data, donations, analytics
 - **Filtering:** By status, category, date range
 - **Sorting:** By title, goal, end date, created date
@@ -232,6 +251,7 @@ Admin can:
 ## 🔄 Data Flow
 
 ### Campaign Creation Flow
+
 ```
 Admin UI (CampaignManagement.tsx)
     ↓
@@ -247,6 +267,7 @@ UI updates with new campaign
 ```
 
 ### Donation Processing Flow
+
 ```
 Donor submits payment
     ↓
@@ -263,6 +284,7 @@ Dashboard refreshes automatically
 ```
 
 ### Dashboard Data Loading Flow
+
 ```
 AdminDashboard mounts
     ↓
@@ -279,6 +301,24 @@ Data aggregation & calculations
 State updates → UI renders
 ```
 
+### Admin List Data Loading Flow (Standardized)
+
+```
+Admin list page mounts (campaigns/users/kiosks/donations/subscriptions/gift aid)
+    ↓
+Shared filter state updates
+    ↓
+usePagination cursor state (page number + current cursor)
+    ↓
+TanStack Query with stable primitive query key
+    ↓
+Backend/Firestore paginated query (PAGE_SIZE + 1)
+    ↓
+updatePage(lastDoc, hasNextPage)
+    ↓
+Unified Previous / Page N / Next controls
+```
+
 ---
 
 ## 🔒 Security & Performance
@@ -286,16 +326,19 @@ State updates → UI renders
 ### Security Measures
 
 #### 1. Authentication
+
 - Firebase Authentication with email/password
 - Session management with secure tokens
 - Protected routes (admin-only pages)
 
 #### 2. Authorization
+
 - Role-based access control (RBAC)
 - Permission checks before every action
 - Organization-level data isolation
 
 #### 3. Firestore Security Rules
+
 ```javascript
 rules_version = '2';
 service cloud.firestore {
@@ -304,10 +347,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth.uid == userId;
     }
-    
+
     // Organization members can access org data
     match /campaigns/{campaignId} {
-      allow read: if request.auth != null && 
+      allow read: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid))
         .data.organizationId == resource.data.organizationId;
     }
@@ -316,38 +359,45 @@ service cloud.firestore {
 ```
 
 #### 4. Data Validation
+
 - Input sanitization on client-side
 - Server-side validation in Cloud Functions
 - Type safety with TypeScript
 
 #### 5. PII Protection
+
 ⚠️ **Current Issue:** Donation data with PII (email, phone, name) is exposed to client
 **Recommendation:** Use Cloud Functions to sanitize sensitive data
 
 ### Performance Optimizations
 
 #### 1. Efficient Queries
+
 - **Before:** Fetching all donations (10,000+ reads)
 - **After:** Using `getCountFromServer()` (6 reads)
 - Parallel queries with `Promise.all()`
 - Indexed queries for fast lookups
 
 #### 2. Code Splitting
+
 - Next.js automatic code splitting
 - Lazy loading of components
 - Dynamic imports for heavy libraries
 
 #### 3. Caching Strategy
+
 - Browser caching for static assets
 - Firebase SDK caching
-- **Recommended:** Add React Query for data caching
+- TanStack Query cache + targeted query invalidation for admin sections
 
 #### 4. Image Optimization
+
 - Next.js Image component
 - Lazy loading images
 - Responsive images with srcset
 
 #### 5. Bundle Optimization
+
 - Tree shaking unused code
 - Minification in production
 - Compression (gzip/brotli)
@@ -359,6 +409,7 @@ service cloud.firestore {
 ### Collections Structure
 
 #### 1. **organizations**
+
 ```typescript
 {
   id: string;
@@ -367,12 +418,13 @@ service cloud.firestore {
     accountId: string;
     chargesEnabled: boolean;
     payoutsEnabled: boolean;
-  };
+  }
   createdAt: Timestamp;
 }
 ```
 
 #### 2. **users**
+
 ```typescript
 {
   id: string;
@@ -386,6 +438,7 @@ service cloud.firestore {
 ```
 
 #### 3. **campaigns**
+
 ```typescript
 {
   id: string;
@@ -405,7 +458,7 @@ service cloud.firestore {
   endDate: Timestamp;
   isGlobal: boolean;
   assignedKiosks: string[];
-  
+
   configuration: {
     predefinedAmounts: number[];
     allowCustomAmount: boolean;
@@ -421,14 +474,14 @@ service cloud.firestore {
     optionalFields: string[];
     enableAnonymousDonations: boolean;
   };
-  
+
   organizationInfo?: {
     name: string;
     description: string;
     website: string;
     logo: string;
   };
-  
+
   impactMetrics?: {
     peopleHelped: number;
     itemsProvided: number;
@@ -438,13 +491,14 @@ service cloud.firestore {
       unit: string;
     };
   };
-  
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 ```
 
 #### 4. **kiosks**
+
 ```typescript
 {
   id: string;
@@ -457,19 +511,20 @@ service cloud.firestore {
   defaultCampaignId?: string;
   assignedCampaigns: string[];
   totalRaised: number;
-  
+
   deviceInfo: {
     os: string;
     browser: string;
     userAgent: string;
   };
-  
+
   createdAt: Timestamp;
   lastActive: Timestamp;
 }
 ```
 
 #### 5. **donations**
+
 ```typescript
 {
   id: string;
@@ -477,25 +532,25 @@ service cloud.firestore {
   campaignId: string;
   kioskId?: string;
   amount: number;
-  
+
   // Donor information (PII)
   donorName?: string;
   donorEmail?: string;
   donorPhone?: string;
   donorMessage?: string;
   isAnonymous: boolean;
-  
+
   // Payment details
   transactionId: string;
   paymentMethod: string;
-  
+
   // Recurring
   isRecurring: boolean;
   recurringInterval?: 'monthly' | 'quarterly' | 'yearly';
-  
+
   // Tax
   isGiftAid: boolean;
-  
+
   // Metadata
   platform?: string;
   timestamp: Timestamp;
@@ -520,11 +575,15 @@ For optimal query performance, create these composite indexes in Firestore:
 3. **kiosks**
    - `organizationId` (ASC) + `status` (ASC)
 
+4. **giftAidExportBatches**
+   - `organizationId` (ASC) + `createdAt` (DESC) + `__name__` (DESC)
+
 ---
 
 ## 🚀 Deployment Workflow
 
 ### Development
+
 ```bash
 npm install
 npm run dev
@@ -532,12 +591,14 @@ npm run dev
 ```
 
 ### Production Build
+
 ```bash
 npm run build
 npm start
 ```
 
 ### Firebase Deployment
+
 ```bash
 # Deploy functions
 cd backend/functions
@@ -552,6 +613,7 @@ firebase deploy --only hosting
 ## 📊 Key Metrics & KPIs
 
 ### Business Metrics
+
 - Total funds raised
 - Number of active campaigns
 - Average donation amount
@@ -559,6 +621,7 @@ firebase deploy --only hosting
 - Campaign completion rate
 
 ### Technical Metrics
+
 - Page load time (< 3s)
 - API response time (< 500ms)
 - Error rate (< 1%)
@@ -570,6 +633,7 @@ firebase deploy --only hosting
 ## 🔮 Future Enhancements
 
 ### Planned Features
+
 1. **Mobile App:** Native iOS/Android apps
 2. **Email Campaigns:** Automated donor communications
 3. **Advanced Analytics:** Predictive analytics, donor insights
@@ -579,13 +643,15 @@ firebase deploy --only hosting
 7. **White-Label:** Custom branding for organizations
 
 ### Performance Improvements
-1. Implement React Query for caching
+
+1. Expand TanStack Query usage and cache tuning for non-admin flows
 2. Add service workers for offline support
 3. Optimize images with WebP format
 4. Implement virtual scrolling for large lists
 5. Add database connection pooling
 
 ### Security Enhancements
+
 1. Two-factor authentication (2FA)
 2. Audit logging for all actions
 3. Data encryption at rest
@@ -597,17 +663,20 @@ firebase deploy --only hosting
 ## 📞 Support & Maintenance
 
 ### Monitoring
+
 - Firebase Console for real-time metrics
 - Error tracking with Sentry (recommended)
 - Performance monitoring with Lighthouse
 - User analytics with Google Analytics
 
 ### Backup Strategy
+
 - Firestore automatic backups (daily)
 - Manual exports for critical data
 - Version control for code (Git)
 
 ### Update Process
+
 1. Test in development environment
 2. Deploy to staging
 3. Run automated tests
@@ -619,27 +688,35 @@ firebase deploy --only hosting
 ## 📝 Common Questions & Answers
 
 ### Q: How do organizations get paid?
+
 **A:** Organizations connect their Stripe account during onboarding. Donations are processed through Stripe and automatically transferred to the organization's bank account according to their Stripe payout schedule.
 
 ### Q: Can one kiosk show multiple campaigns?
+
 **A:** Yes! Kiosks can be assigned multiple campaigns. Donors can browse and select which campaign to support.
 
 ### Q: How are permissions managed?
+
 **A:** The system uses role-based access control (RBAC). Each user has a role (super_admin, admin, manager, viewer) with specific permissions. Admins can create users and assign roles.
 
 ### Q: Is donor information secure?
+
 **A:** Yes, all payment processing is handled by Stripe (PCI compliant). Donor information is stored in Firestore with security rules. However, we recommend implementing additional PII sanitization for production.
 
 ### Q: Can campaigns be scheduled?
+
 **A:** Yes, campaigns have start and end dates. They can be set to activate/deactivate automatically.
 
 ### Q: How is the donation distribution calculated?
+
 **A:** The system uses Firestore's `getCountFromServer()` to efficiently count donations in different amount ranges without downloading all documents. This is much more efficient than fetching all donations.
 
 ### Q: What happens if a kiosk goes offline?
+
 **A:** The dashboard shows an alert for offline kiosks. Admins are notified and can investigate. Donations cannot be processed while offline.
 
 ### Q: Can donors get receipts?
+
 **A:** Yes, Stripe automatically sends payment receipts. Organizations can also implement custom thank-you emails via Cloud Functions.
 
 ---
@@ -647,6 +724,7 @@ firebase deploy --only hosting
 ## 🎓 Learning Resources
 
 ### For Developers
+
 - [Next.js Documentation](https://nextjs.org/docs)
 - [Firebase Documentation](https://firebase.google.com/docs)
 - [Stripe API Reference](https://stripe.com/docs/api)
@@ -654,12 +732,13 @@ firebase deploy --only hosting
 - [Tailwind CSS](https://tailwindcss.com/docs)
 
 ### For Admins
+
 - User guide (to be created)
 - Video tutorials (to be created)
 - FAQ section (to be created)
 
 ---
 
-**Last Updated:** December 2024
-**Version:** 1.0.0
+**Last Updated:** April 29, 2026
+**Version:** 1.1.0
 **Maintained by:** SwiftCause Development Team

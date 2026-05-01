@@ -11,7 +11,6 @@ import {
   TableHeader,
   TableRow,
 } from '../../shared/ui/table';
-import { Alert, AlertDescription } from '../../shared/ui/alert';
 import {
   Dialog,
   DialogContent,
@@ -48,8 +47,11 @@ import { getSubscriptionDisplayInterval } from '../../entities/subscription/mode
 import { SortableTableHeader } from './components/SortableTableHeader';
 import { AdminSearchFilterConfig } from './components/AdminSearchFilterHeader';
 import { AdminDataSection } from './components/AdminDataSection';
+import { AdminDataSectionLoading } from './components/AdminDataSectionLoading';
 import { AdminEmptyState } from './components/AdminEmptyState';
+import { AdminPageError } from './components/AdminPageStatus';
 import { AdminStatsGrid } from './components/AdminStatsGrid';
+import { AdminStatsGridLoading } from './components/AdminStatsGridLoading';
 import { useTableSort } from '../../shared/lib/hooks/useTableSort';
 import { AdminLayout } from './AdminLayout';
 import { Screen, AdminSession, Permission } from '../../shared/types';
@@ -242,6 +244,8 @@ export function SubscriptionManagement({
     defaultSortKey: 'createdAtTs',
     defaultSortDirection: 'desc',
   });
+  const hasSubscriptionData = subscriptions.length > 0 || stats !== null;
+  const isInitialLoading = loading && !hasSubscriptionData;
 
   const intervalOptions = useMemo(() => {
     const unique = Array.from(new Set(tableData.map((s) => s.intervalLabel)));
@@ -510,18 +514,12 @@ export function SubscriptionManagement({
     >
       <div className="space-y-6 sm:space-y-8">
         <main className="px-6 lg:px-8 pt-12 pb-8 space-y-6">
-          {loading ? (
-            <div className="flex items-center justify-center p-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
-            </div>
-          ) : error ? (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+          {error && !hasSubscriptionData ? (
+            <AdminPageError title="Unable To Load Subscriptions" message={error} />
           ) : (
             <>
-              {stats && (
-                <AdminStatsGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 lg:gap-6">
+              {stats ? (
+                <AdminStatsGrid className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 lg:gap-6">
                   <Card className="rounded-3xl border border-gray-100 shadow-sm">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -634,7 +632,12 @@ export function SubscriptionManagement({
                     </CardContent>
                   </Card>
                 </AdminStatsGrid>
-              )}
+              ) : isInitialLoading ? (
+                <AdminStatsGridLoading
+                  count={6}
+                  className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 lg:gap-6"
+                />
+              ) : null}
 
               <AdminDataSection
                 title="Recurring Subscriptions"
@@ -642,10 +645,14 @@ export function SubscriptionManagement({
                 config={searchFilterConfig}
                 filterValues={filterValues}
                 onFilterChange={handleFilterChange}
+                onRefresh={loadSubscriptions}
+                refreshing={loading}
                 filterGridClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
                 summaryText={`Showing ${sortedData.length} of ${totalSubscriptionsCount} subscriptions`}
               >
-                {sortedData.length === 0 ? (
+                {isInitialLoading ? (
+                  <AdminDataSectionLoading desktopColumns={8} desktopRows={5} mobileRows={3} />
+                ) : sortedData.length === 0 ? (
                   <AdminEmptyState
                     icon={RefreshCw}
                     title="No subscriptions match your current filters"
@@ -835,7 +842,9 @@ export function SubscriptionManagement({
                   <CardDescription>Monthly MRR and recurring cash trend</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {trends.length === 0 ? (
+                  {isInitialLoading ? (
+                    <AdminDataSectionLoading desktopColumns={5} desktopRows={4} mobileRows={2} />
+                  ) : trends.length === 0 ? (
                     <p className="text-sm text-gray-500">
                       No trend data available for this window.
                     </p>

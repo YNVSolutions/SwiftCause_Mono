@@ -30,6 +30,7 @@ interface AdminPageHeaderProps {
   filterValues: Record<string, unknown>;
   onFilterChange: (key: string, value: unknown) => void;
   actions?: React.ReactNode;
+  mobileActions?: React.ReactNode;
   showFiltersLabel?: boolean;
   wrapperClassName?: string;
   filterGridClassName?: string;
@@ -46,6 +47,7 @@ export function AdminPageHeader({
   filterValues,
   onFilterChange,
   actions,
+  mobileActions,
   showFiltersLabel = false,
   wrapperClassName,
   filterGridClassName = 'grid grid-cols-1 gap-3 md:grid-cols-3',
@@ -53,6 +55,8 @@ export function AdminPageHeader({
   dateLocale = 'en-GB',
   showMobileActions = true,
 }: AdminPageHeaderProps) {
+  const resolvedMobileActions = mobileActions === undefined ? actions : mobileActions;
+
   const renderFilter = (filter: FilterConfig) => {
     const value = filterValues[filter.key];
 
@@ -146,8 +150,8 @@ export function AdminPageHeader({
         </div>
       )}
       {summaryText ? <div className="text-sm text-gray-600">{summaryText}</div> : null}
-      {actions && showMobileActions ? (
-        <div className="mt-3 flex items-center gap-2 sm:hidden">{actions}</div>
+      {resolvedMobileActions && showMobileActions ? (
+        <div className="mt-3 flex items-center gap-2 sm:hidden">{resolvedMobileActions}</div>
       ) : null}
     </div>
   );

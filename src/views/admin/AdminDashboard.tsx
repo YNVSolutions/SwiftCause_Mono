@@ -79,6 +79,7 @@ import { DonationDistributionDialog } from '../../widgets/donation-distribution'
 import { KioskForm, KioskFormData } from './components/KioskForm';
 import { CampaignForm, CampaignFormData } from './components/CampaignForm';
 import { KpiCard } from './components/KpiCard';
+import { AdminRefreshButton } from './components/AdminRefreshButton';
 
 // Dynamic imports for chart components to avoid SSR issues
 const RevenueGrowthChart = dynamic(
@@ -1118,17 +1119,15 @@ export function AdminDashboard({
               </Button>
             </div>
           )}
-          <Button
+          <AdminRefreshButton
+            onRefresh={handleRefresh}
+            refreshing={loading}
+            label="Refresh"
+            ariaLabel="Refresh Dashboard"
+            hideLabelOnMobile
             variant="outline"
             size="sm"
-            onClick={handleRefresh}
-            disabled={loading}
-            className="rounded-2xl border-[#064e3b] bg-transparent text-[#064e3b] hover:bg-emerald-50 hover:border-emerald-600 hover:shadow-md hover:shadow-emerald-900/10 hover:scale-105 transition-all duration-300 px-6 py-3 font-semibold disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-transparent disabled:hover:border-[#064e3b]"
-            aria-label="Refresh Dashboard"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline ml-2">Refresh</span>
-          </Button>
+          />
         </div>
       }
       hideSidebarTrigger={false}

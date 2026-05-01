@@ -64,7 +64,7 @@ export function useKiosks(organizationId?: string, filters: KioskFilters = {}) {
   // Predicate-based invalidation â€” only invalidates kiosk queries for this org,
   // leaving all other cached queries (campaigns, users, donations) untouched
   const refresh = useCallback(() => {
-    queryClient.invalidateQueries({
+    return queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[0] === 'kiosks' && q.queryKey[1] === organizationId,
     });
   }, [queryClient, organizationId]);

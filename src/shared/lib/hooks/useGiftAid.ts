@@ -54,7 +54,7 @@ export function useGiftAid(organizationId?: string, filters: GiftAidFilters = {}
   }
 
   const refresh = useCallback(() => {
-    queryClient.invalidateQueries({
+    return queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[0] === 'gift-aid' && q.queryKey[1] === organizationId,
     });
   }, [queryClient, organizationId]);
