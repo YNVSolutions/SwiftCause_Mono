@@ -1,7 +1,9 @@
 package com.example.swiftcause.presentation.viewmodels
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.swiftcause.R
 import com.example.swiftcause.data.repository.CampaignRepository
 import com.example.swiftcause.domain.models.Campaign
 import com.example.swiftcause.domain.models.KioskSession
@@ -18,12 +20,18 @@ data class CampaignListUiState(
     val campaigns: List<Campaign> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
-    val selectedCampaign: Campaign? = null
+    val selectedCampaign: Campaign? = null,
+    val organizationDisplayName: String? = null,
+    val organizationLogoUrl: String? = null,
+    val organizationThankYouMessage: String? = null,
+    val organizationAccentColorHex: String? = null,
+    val organizationIdleImageUrl: String? = null
 )
 
 class CampaignListViewModel(
+    application: Application,
     private val repository: CampaignRepository = CampaignRepository()
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(CampaignListUiState())
     val uiState: StateFlow<CampaignListUiState> = _uiState.asStateFlow()
@@ -44,6 +52,9 @@ class CampaignListViewModel(
             val orgCurrency = kioskSession.organizationId?.let {
                 repository.getOrganizationCurrency(it)
             }
+            val organizationBranding = kioskSession.organizationId?.let {
+                repository.getOrganizationBranding(it)
+            }
 
             val result = repository.getCampaignsForKiosk(
                 assignedCampaignIds = kioskSession.assignedCampaigns,
@@ -61,13 +72,24 @@ class CampaignListViewModel(
                     }
                     _uiState.value = _uiState.value.copy(
                         campaigns = displayCampaigns,
-                        isLoading = false
+                        isLoading = false,
+                        organizationDisplayName = organizationBranding?.displayName,
+                        organizationLogoUrl = organizationBranding?.logoUrl,
+                        organizationThankYouMessage = organizationBranding?.thankYouMessage,
+                        organizationAccentColorHex = organizationBranding?.accentColorHex,
+                        organizationIdleImageUrl = organizationBranding?.idleImageUrl
                     )
                 },
                 onFailure = { exception ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = exception.message ?: "Failed to load campaigns"
+                        error = exception.message
+                            ?: getApplication<Application>().getString(R.string.campaign_list_error),
+                        organizationDisplayName = organizationBranding?.displayName,
+                        organizationLogoUrl = organizationBranding?.logoUrl,
+                        organizationThankYouMessage = organizationBranding?.thankYouMessage,
+                        organizationAccentColorHex = organizationBranding?.accentColorHex,
+                        organizationIdleImageUrl = organizationBranding?.idleImageUrl
                     )
                 }
             )
@@ -76,7 +98,8 @@ class CampaignListViewModel(
         } catch (exception: Exception) {
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
-                error = exception.message ?: "Failed to load campaigns"
+                error = exception.message
+                    ?: getApplication<Application>().getString(R.string.campaign_list_error)
             )
         }
     }

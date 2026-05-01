@@ -20,8 +20,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -29,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
@@ -42,6 +46,9 @@ import com.example.swiftcause.ui.theme.TextPrimary
 fun CampaignListScreen(
     campaigns: List<Campaign>,
     isLoading: Boolean = false,
+    organizationDisplayName: String? = null,
+    organizationLogoUrl: String? = null,
+    accentColorHex: String? = null,
     onCampaignClick: (Campaign) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -87,6 +94,9 @@ fun CampaignListScreen(
             label = "logo-alpha"
         ).value
     } else 1f
+    val accentColor = remember(accentColorHex) {
+        parseAccentColorOrNull(accentColorHex)
+    } ?: MaterialTheme.colorScheme.primary
 
     // Prefetch cover images into shared Coil memory/disk cache once campaigns are loaded.
     LaunchedEffect(uniqueCoverUrls, coverPrefetchSizePx) {
@@ -120,20 +130,40 @@ fun CampaignListScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_swiftcause_logo),
-                        contentDescription = "SwiftCause Logo",
-                        modifier = Modifier
-                            .size(24.dp)
-                            .scale(logoPulseScale)
-                            .alpha(logoPulseAlpha),
-                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
-                    )
+                    val normalizedLogoUrl = organizationLogoUrl?.trim().orEmpty()
+                    if (normalizedLogoUrl.isNotEmpty()) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(normalizedLogoUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = stringResource(R.string.organization_logo_content_description),
+                            contentScale = ContentScale.Crop,
+                            error = painterResource(id = R.drawable.ic_swiftcause_logo),
+                            placeholder = painterResource(id = R.drawable.ic_swiftcause_logo),
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(MaterialTheme.shapes.small)
+                                .scale(logoPulseScale)
+                                .alpha(logoPulseAlpha)
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_swiftcause_logo),
+                            contentDescription = stringResource(R.string.organization_logo_content_description),
+                            modifier = Modifier
+                                .size(24.dp)
+                                .scale(logoPulseScale)
+                                .alpha(logoPulseAlpha),
+                            colorFilter = ColorFilter.tint(accentColor)
+                        )
+                    }
                     Text(
-                        text = "SwiftCause",
+                        text = organizationDisplayName?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.app_name),
                         style = MaterialTheme.typography.headlineSmall.copy(
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = accentColor
                         )
                     )
                 }
@@ -153,7 +183,7 @@ fun CampaignListScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary
+                            color = accentColor
                         )
                     }
                 }
@@ -183,6 +213,7 @@ fun CampaignListScreen(
                         items(campaigns) { campaign ->
                             CampaignRow(
                                 campaign = campaign,
+                                accentColor = accentColor,
                                 onCampaignClick = { onCampaignClick(campaign) }
                             )
                         }
@@ -190,5 +221,14 @@ fun CampaignListScreen(
                 }
             }
         }
+    }
+}
+
+private fun parseAccentColorOrNull(hex: String?): Color? {
+    val value = hex?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return try {
+        Color(android.graphics.Color.parseColor(value))
+    } catch (_: IllegalArgumentException) {
+        null
     }
 }

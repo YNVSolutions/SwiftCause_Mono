@@ -29,6 +29,7 @@ import com.example.swiftcause.ui.components.SkeletonBox
 @Composable
 fun CampaignRow(
     campaign: Campaign,
+    accentColor: Color,
     onCampaignClick: (Campaign) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -108,8 +109,8 @@ fun CampaignRow(
                             .weight(1f)
                             .height(8.dp)
                             .clip(RoundedCornerShape(4.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        color = accentColor,
+                        trackColor = accentColor.copy(alpha = 0.2f)
                     )
 
                     Spacer(modifier = Modifier.width(8.dp))
@@ -120,7 +121,7 @@ fun CampaignRow(
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         ),
-                        color = MaterialTheme.colorScheme.primary
+                        color = accentColor
                     )
                 }
             }

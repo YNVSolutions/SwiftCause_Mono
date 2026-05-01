@@ -1,9 +1,13 @@
 package com.example.swiftcause
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.nfc.NfcAdapter
 import android.os.Bundle
+import android.os.SystemClock
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,23 +21,34 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Contactless
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.swiftcause.domain.models.Campaign
@@ -49,10 +64,14 @@ import com.example.swiftcause.presentation.viewmodels.TapToPayState
 import com.example.swiftcause.presentation.viewmodels.TapToPayViewModel
 import com.example.swiftcause.ui.theme.SwiftCauseTheme
 import com.example.swiftcause.utils.StripeConfig
+import coil.compose.AsyncImage
 import com.stripe.android.PaymentConfiguration
 import com.stripe.android.paymentsheet.PaymentSheet
 import com.stripe.android.paymentsheet.PaymentSheetResult
 import com.stripe.android.paymentsheet.rememberPaymentSheet
+import kotlinx.coroutines.delay
+
+private const val IDLE_SCREENSAVER_TIMEOUT_MS = 60_000L
 
 data class PendingDonation(
     val campaign: Campaign,
@@ -80,23 +99,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SwiftCauseTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    var kioskSession by remember { mutableStateOf<KioskSession?>(null) }
-
-                    when {
-                        kioskSession == null -> {
-                            KioskLoginScreen(
-                                onLoginSuccess = { session ->
-                                    kioskSession = session
-                                }
-                            )
-                        }
-                        else -> {
-                            KioskMainContent(
-                                kioskSession = kioskSession!!,
-                                modifier = Modifier.padding(innerPadding)
-                            )
-                        }
-                    }
+                    AppEntryPoint(modifier = Modifier.padding(innerPadding))
                 }
             }
         }
@@ -104,8 +107,85 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+private fun AppEntryPoint(
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    var kioskSession by remember { mutableStateOf<KioskSession?>(null) }
+    var hasRequestedLocationPermission by remember { mutableStateOf(false) }
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasRequestedLocationPermission = true
+        hasLocationPermission = isGranted
+    }
+
+    LaunchedEffect(hasLocationPermission, hasRequestedLocationPermission) {
+        if (!hasLocationPermission && !hasRequestedLocationPermission) {
+            hasRequestedLocationPermission = true
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    val shouldShowLocationRationale = remember(hasLocationPermission, hasRequestedLocationPermission, activity) {
+        !hasLocationPermission &&
+            hasRequestedLocationPermission &&
+            activity != null &&
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+    }
+
+    if (!hasLocationPermission) {
+        LocationPermissionRequiredScreen(
+            showRationale = shouldShowLocationRationale || !hasRequestedLocationPermission,
+            onRequestPermission = {
+                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            },
+            onOpenSettings = {
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null)
+                )
+                context.startActivity(intent)
+            }
+        )
+        return
+    }
+
+    when {
+        kioskSession == null -> {
+            KioskLoginScreen(
+                onLoginSuccess = { session ->
+                    kioskSession = session
+                }
+            )
+        }
+        else -> {
+            KioskMainContent(
+                kioskSession = kioskSession!!,
+                hasLocationPermission = hasLocationPermission,
+                modifier = modifier
+            )
+        }
+    }
+}
+
+@Composable
 fun KioskMainContent(
     kioskSession: KioskSession,
+    hasLocationPermission: Boolean,
     modifier: Modifier = Modifier,
     viewModel: CampaignListViewModel = viewModel(),
     paymentViewModel: PaymentViewModel = viewModel(),
@@ -117,52 +197,39 @@ fun KioskMainContent(
     val tapToPayState by tapToPayViewModel.state.collectAsState()
     val isTapToPaySimulated by tapToPayViewModel.isSimulatedMode.collectAsState()
     val context = LocalContext.current
+    val appName = stringResource(R.string.app_name)
     val hasNfcCapability = remember(context) { NfcAdapter.getDefaultAdapter(context) != null }
+    val accentColor = remember(uiState.organizationAccentColorHex) {
+        parseAccentColorOrNull(uiState.organizationAccentColorHex)
+    } ?: MaterialTheme.colorScheme.primary
+    val idleImageUrl = uiState.organizationIdleImageUrl?.trim().orEmpty()
 
     // Track selected payment method (null = show selection, "card" or "tap")
     var selectedPaymentMethod by remember { mutableStateOf<String?>(null) }
     var pendingDonation by remember { mutableStateOf<PendingDonation?>(null) }
     var showThankYouScreen by remember { mutableStateOf(false) }
     var thankYouData by remember { mutableStateOf<ThankYouData?>(null) }
+    var lastInteractionAtMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    var showIdleScreensaver by remember { mutableStateOf(false) }
 
-    // Track location permission state
-    var hasLocationPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
+    val canShowIdleScreensaver = idleImageUrl.isNotEmpty() &&
+        !showThankYouScreen &&
+        paymentState !is PaymentState.Loading &&
+        paymentState !is PaymentState.Ready &&
+        tapToPayState !is TapToPayState.WaitingForCard &&
+        tapToPayState !is TapToPayState.ProcessingPayment
 
-    // Permission launcher
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasLocationPermission = isGranted
-        if (isGranted) {
-            // Initialize Tap to Pay after permission granted
-            val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-            tapToPayViewModel.initializeTapToPay(isSimulated = isDebuggable)
-        } else {
-            Toast.makeText(
-                context,
-                "Location permission is required for Tap to Pay",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
-    // Initialize Tap to Pay on app start (request permission first)
-    LaunchedEffect(Unit) {
+    // Initialize campaigns immediately, independent of Tap to Pay permissions.
+    LaunchedEffect(kioskSession) {
         viewModel.loadCampaigns(kioskSession)
         viewModel.startPolling(kioskSession)
+    }
+
+    // Initialize Tap to Pay only when location permission is available.
+    LaunchedEffect(hasLocationPermission) {
         if (hasLocationPermission) {
             val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
             tapToPayViewModel.initializeTapToPay(isSimulated = isDebuggable)
-        } else {
-            // Request location permission
-            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
     }
 
@@ -185,7 +252,7 @@ fun KioskMainContent(
                             paymentSheet.presentWithPaymentIntent(
                                 paymentIntentClientSecret = secret,
                                 configuration = PaymentSheet.Configuration(
-                                    merchantDisplayName = "SwiftCause",
+                                    merchantDisplayName = appName,
                                     allowsDelayedPaymentMethods = false,
                                     billingDetailsCollectionConfiguration = PaymentSheet.BillingDetailsCollectionConfiguration(
                                         name = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
@@ -206,13 +273,13 @@ fun KioskMainContent(
                                 selectedPaymentMethod = "card"
                                 Toast.makeText(
                                     context,
-                                    "Tap to Pay unavailable. Switching to card entry.",
+                                    context.getString(R.string.tap_to_pay_unavailable_switching_card),
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 paymentSheet.presentWithPaymentIntent(
                                     paymentIntentClientSecret = secret,
                                     configuration = PaymentSheet.Configuration(
-                                        merchantDisplayName = "SwiftCause",
+                                        merchantDisplayName = appName,
                                         allowsDelayedPaymentMethods = false,
                                         billingDetailsCollectionConfiguration = PaymentSheet.BillingDetailsCollectionConfiguration(
                                             name = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
@@ -300,7 +367,7 @@ fun KioskMainContent(
                 val error = tapToPayState as TapToPayState.Error
                 Toast.makeText(
                     context,
-                    "Tap to Pay failed: ${error.message}",
+                    context.getString(R.string.tap_to_pay_failed, error.message),
                     Toast.LENGTH_LONG
                 ).show()
                 tapToPayViewModel.reset()
@@ -311,12 +378,43 @@ fun KioskMainContent(
         }
     }
 
-    LaunchedEffect(kioskSession) {
-        viewModel.loadCampaigns(kioskSession)
+    LaunchedEffect(canShowIdleScreensaver) {
+        if (!canShowIdleScreensaver) {
+            showIdleScreensaver = false
+        }
+    }
+
+    LaunchedEffect(lastInteractionAtMs, canShowIdleScreensaver, showIdleScreensaver) {
+        if (!canShowIdleScreensaver || showIdleScreensaver) return@LaunchedEffect
+        delay(IDLE_SCREENSAVER_TIMEOUT_MS)
+        val idleForMs = SystemClock.elapsedRealtime() - lastInteractionAtMs
+        if (canShowIdleScreensaver && idleForMs >= IDLE_SCREENSAVER_TIMEOUT_MS) {
+            showIdleScreensaver = true
+        }
     }
 
     // Show loading overlay when payment intent is being created
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(canShowIdleScreensaver, showIdleScreensaver) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val interacted = event.changes.any { it.pressed || it.positionChanged() }
+                        if (!interacted) continue
+
+                        val now = SystemClock.elapsedRealtime()
+                        if (showIdleScreensaver || now - lastInteractionAtMs > 350L) {
+                            lastInteractionAtMs = now
+                            if (showIdleScreensaver) {
+                                showIdleScreensaver = false
+                            }
+                        }
+                    }
+                }
+            }
+    ) {
         val hasSingleCampaign = uiState.campaigns.size == 1
         val activeCampaign = uiState.selectedCampaign ?: if (hasSingleCampaign) uiState.campaigns.first() else null
 
@@ -325,6 +423,7 @@ fun KioskMainContent(
                 val campaign = activeCampaign
                 CampaignDetailsScreen(
                     campaign = campaign,
+                    accentColorHex = uiState.organizationAccentColorHex,
                     onBackClick = {
                         if (!hasSingleCampaign) {
                             viewModel.clearSelectedCampaign()
@@ -341,7 +440,7 @@ fun KioskMainContent(
                             email = email
                         )
 
-                        val canUseTapToPay = hasNfcCapability && tapToPayViewModel.isReaderReady()
+                        val canUseTapToPay = hasNfcCapability && hasLocationPermission && tapToPayViewModel.isReaderReady()
                         selectedPaymentMethod = if (canUseTapToPay) "tap" else "card"
                         handleDonation(
                             campaign = campaign,
@@ -368,13 +467,16 @@ fun KioskMainContent(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = uiState.error ?: "Error loading campaigns")
+                    Text(text = uiState.error ?: stringResource(R.string.campaign_list_error))
                 }
             }
             else -> {
                 CampaignListScreen(
                     campaigns = uiState.campaigns,
                     isLoading = uiState.isLoading,
+                    organizationDisplayName = uiState.organizationDisplayName,
+                    organizationLogoUrl = uiState.organizationLogoUrl,
+                    accentColorHex = uiState.organizationAccentColorHex,
                     onCampaignClick = { campaign ->
                         viewModel.selectCampaign(campaign)
                     }
@@ -407,14 +509,14 @@ fun KioskMainContent(
                     ) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(48.dp),
-                            color = MaterialTheme.colorScheme.primary,
+                            color = accentColor,
                             strokeWidth = 4.dp
                         )
 
                         Spacer(modifier = Modifier.height(24.dp))
 
                         Text(
-                            text = "Preparing Payment",
+                            text = stringResource(R.string.preparing_payment),
                             fontSize = 18.sp,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -423,7 +525,7 @@ fun KioskMainContent(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "Please wait...",
+                            text = stringResource(R.string.please_wait),
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
@@ -457,14 +559,14 @@ fun KioskMainContent(
                             ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(48.dp),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = accentColor,
                                     strokeWidth = 4.dp
                                 )
 
                                 Spacer(modifier = Modifier.height(24.dp))
 
                                 Text(
-                                    text = "Processing Payment",
+                                    text = stringResource(R.string.processing_payment_title),
                                     fontSize = 18.sp,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -473,7 +575,7 @@ fun KioskMainContent(
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 Text(
-                                    text = "Please wait...",
+                                    text = stringResource(R.string.please_wait),
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 )
@@ -502,15 +604,15 @@ fun KioskMainContent(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Contactless,
-                                    contentDescription = "Tap to Pay",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    contentDescription = stringResource(R.string.tap_to_pay_content_description),
+                                    tint = accentColor,
                                     modifier = Modifier
                                         .size(72.dp)
                                         .padding(bottom = 24.dp)
                                 )
 
                                 Text(
-                                    text = "Tap Card on Phone",
+                                    text = stringResource(R.string.tap_card_on_phone),
                                     fontSize = 22.sp,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -551,14 +653,14 @@ fun KioskMainContent(
                         ) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(48.dp),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = accentColor,
                                 strokeWidth = 4.dp
                             )
 
                             Spacer(modifier = Modifier.height(24.dp))
 
                             Text(
-                                text = "Processing Payment",
+                                text = stringResource(R.string.processing_payment_title),
                                 fontSize = 18.sp,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -567,7 +669,7 @@ fun KioskMainContent(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = "Please wait...",
+                                text = stringResource(R.string.please_wait),
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
@@ -585,6 +687,8 @@ fun KioskMainContent(
 
             ThankYouScreen(
                 thankYouData = currentThankYouData,
+                customThankYouMessage = uiState.organizationThankYouMessage,
+                accentColorHex = uiState.organizationAccentColorHex,
                 magicLinkToken = magicLinkToken,
                 onDismiss = {
                     showThankYouScreen = false
@@ -594,6 +698,130 @@ fun KioskMainContent(
                 }
             )
         }
+
+        if (showIdleScreensaver) {
+            IdleScreensaverOverlay(
+                imageUrl = idleImageUrl,
+                onDismiss = {
+                    showIdleScreensaver = false
+                    lastInteractionAtMs = SystemClock.elapsedRealtime()
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocationPermissionRequiredScreen(
+    showRationale: Boolean,
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .padding(24.dp)
+                .fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            shadowElevation = 8.dp,
+            tonalElevation = 2.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Contactless,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+
+                Text(
+                    text = stringResource(R.string.location_permission_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+
+
+                Text(
+                    text = if (showRationale) {
+                        stringResource(R.string.location_permission_message_rationale)
+                    } else {
+                        stringResource(R.string.location_permission_message_denied)
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = stringResource(R.string.location_permission_cannot_continue),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Button(
+                    onClick = if (showRationale) onRequestPermission else onOpenSettings,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (showRationale) {
+                            stringResource(R.string.grant_location_permission)
+                        } else {
+                            stringResource(R.string.open_settings)
+                        }
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onRequestPermission,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = stringResource(R.string.retry))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdleScreensaverOverlay(
+    imageUrl: String,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable { onDismiss() }
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = stringResource(R.string.idle_screensaver_image_content_description),
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        Text(
+            text = stringResource(R.string.tap_to_continue),
+            color = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp),
+            fontSize = 14.sp
+        )
     }
 }
 
@@ -648,4 +876,13 @@ private fun handleDonation(
         isGiftAid = campaign.isGiftAid,  // Pass Gift Aid flag for magic link generation
         kioskId = kioskSession?.kioskId
     )
+}
+
+private fun parseAccentColorOrNull(hex: String?): Color? {
+    val value = hex?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return try {
+        Color(android.graphics.Color.parseColor(value))
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 }

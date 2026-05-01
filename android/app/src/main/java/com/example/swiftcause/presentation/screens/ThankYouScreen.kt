@@ -44,7 +44,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,7 +58,6 @@ import com.example.swiftcause.ui.theme.PremiumCardSurface
 import com.example.swiftcause.ui.theme.PremiumHeadline
 import com.example.swiftcause.ui.theme.PremiumPageBackground
 import com.example.swiftcause.ui.theme.PremiumPrimary
-import com.example.swiftcause.utils.CurrencyFormatter
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -76,6 +74,8 @@ private enum class ThankYouPhase {
 @Composable
 fun ThankYouScreen(
     thankYouData: ThankYouData,
+    customThankYouMessage: String? = null,
+    accentColorHex: String? = null,
     magicLinkToken: String?,
     onDismiss: () -> Unit
 ) {
@@ -83,12 +83,12 @@ fun ThankYouScreen(
     val totalSeconds = (DISMISS_DELAY_WITH_QR / 1000).toInt()
     var secondsRemaining by remember { mutableIntStateOf(totalSeconds) }
     val hasQr = !magicLinkToken.isNullOrBlank()
-    val formattedAmount = remember(thankYouData.amount, thankYouData.currency) {
-        CurrencyFormatter.formatCurrency(thankYouData.amount, thankYouData.currency)
+    val resolvedThankYouMessage = remember(customThankYouMessage) {
+        customThankYouMessage?.trim()?.takeIf { it.isNotEmpty() }
     }
-    val shortPaymentReference = remember(thankYouData.paymentIntentId) {
-        thankYouData.paymentIntentId.takeLast(12)
-    }
+    val accentColor = remember(accentColorHex) {
+        parseAccentColorOrNull(accentColorHex)
+    } ?: PremiumPrimary
 
     val progress by animateFloatAsState(
         targetValue = if (hasQr) secondsRemaining.toFloat() / totalSeconds.toFloat() else 1f,
@@ -150,7 +150,7 @@ fun ThankYouScreen(
                     ) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(56.dp),
-                            color = PremiumPrimary,
+                            color = accentColor,
                             strokeWidth = 5.dp
                         )
 
@@ -183,7 +183,7 @@ fun ThankYouScreen(
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = PremiumPrimary,
+                            tint = accentColor,
                             modifier = Modifier.size(66.dp)
                         )
 
@@ -201,34 +201,15 @@ fun ThankYouScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = stringResource(R.string.thank_you_for_your_donation_plain),
+                            text = resolvedThankYouMessage
+                                ?: stringResource(R.string.thank_you_for_your_donation_plain),
                             color = PremiumBody,
                             fontSize = 17.sp,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = stringResource(
-                                R.string.donation_successful,
-                                formattedAmount,
-                                thankYouData.campaignTitle
-                            ),
-                            color = PremiumBody,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.widthIn(max = 520.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = stringResource(R.string.payment_reference, shortPaymentReference),
-                            color = PremiumBody.copy(alpha = 0.8f),
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
+                            lineHeight = 24.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 560.dp)
                         )
 
                         Spacer(modifier = Modifier.height(18.dp))
@@ -239,7 +220,7 @@ fun ThankYouScreen(
                                 .border(
                                     BorderStroke(
                                         width = if (hasQr) 2.dp else 3.dp,
-                                        color = if (hasQr) PremiumBorder else PremiumPrimary.copy(alpha = pulseAlpha)
+                                        color = if (hasQr) PremiumBorder else accentColor.copy(alpha = pulseAlpha)
                                     ),
                                     shape = RoundedCornerShape(16.dp)
                                 )
@@ -262,7 +243,7 @@ fun ThankYouScreen(
                                 ) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size((46 * pulseScale).dp),
-                                        color = PremiumPrimary,
+                                        color = accentColor,
                                         strokeWidth = 4.dp
                                     )
                                     Spacer(modifier = Modifier.height(14.dp))
@@ -304,7 +285,7 @@ fun ThankYouScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(8.dp),
-                            color = PremiumPrimary,
+                            color = accentColor,
                             trackColor = PremiumBorder
                         )
 
@@ -312,7 +293,7 @@ fun ThankYouScreen(
 
                         Button(
                             onClick = onDismiss,
-                            colors = ButtonDefaults.buttonColors(containerColor = PremiumPrimary),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .height(52.dp)
@@ -331,6 +312,15 @@ fun ThankYouScreen(
                 }
             }
         }
+    }
+}
+
+private fun parseAccentColorOrNull(hex: String?): Color? {
+    val value = hex?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return try {
+        Color(android.graphics.Color.parseColor(value))
+    } catch (_: IllegalArgumentException) {
+        null
     }
 }
 
