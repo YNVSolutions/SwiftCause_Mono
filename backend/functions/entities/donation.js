@@ -94,10 +94,39 @@ const createDonationDoc = async (donationData) => {
     invoiceId = null,
     kioskId = null,
     platform = 'web',
+    location_id = null,
+    location_snapshot = null,
     metadata = {},
   } = donationData;
 
   const donationRef = admin.firestore().collection('donations').doc(transactionId);
+
+  // Entity-boundary validation: kiosk donations must have location data.
+  // This is the last line of defence — callers should validate earlier (payment intent),
+  // but we enforce here so no path can bypass the requirement.
+  // Strings are trimmed before checking so whitespace-only values are rejected,
+  // matching the same normalisation used in shared/location.js.
+  if (kioskId) {
+    const trimOrNull = (v) => (typeof v === 'string' && v.trim().length > 0 ? v.trim() : null);
+    if (!trimOrNull(location_id)) {
+      throw new Error(
+        `[createDonationDoc] Kiosk donation missing location_id (kiosk: ${kioskId}, tx: ${transactionId})`,
+      );
+    }
+    if (
+      !location_snapshot ||
+      !trimOrNull(location_snapshot.name) ||
+      !trimOrNull(location_snapshot.postcode) ||
+      !trimOrNull(location_snapshot.city)
+    ) {
+      throw new Error(
+        `[createDonationDoc] Kiosk donation missing complete location_snapshot (kiosk: ${kioskId}, tx: ${transactionId})`,
+      );
+    }
+    console.log(
+      `[createDonationDoc] Location validated for kiosk donation: location_id=${location_id}, postcode=${location_snapshot.postcode}, tx=${transactionId}`,
+    );
+  }
 
   let writeResult = {
     created: false,
@@ -131,6 +160,11 @@ const createDonationDoc = async (donationData) => {
       setIfMissing('invoiceId', invoiceId);
       setIfMissing('recurringInterval', recurringInterval);
       setIfMissing('campaignTitleSnapshot', metadata.campaignTitleSnapshot);
+      // location_id: backfill only if missing (safe — it's a reference, not a snapshot)
+      setIfMissing('location_id', location_id);
+      // location_snapshot: NEVER backfill — snapshot must reflect state at time of donation.
+      // If it was not written at creation time, it stays absent rather than recording
+      // a later location state.
 
       if (isRecurring === true && existingData.isRecurring !== true) {
         patch.isRecurring = true;
@@ -199,6 +233,14 @@ const createDonationDoc = async (donationData) => {
       platform,
       transactionId,
       paymentStatus: 'success',
+      location_id: typeof location_id === 'string' ? location_id.trim() || null : null,
+      location_snapshot: location_snapshot
+        ? {
+            name: location_snapshot.name?.trim() || null,
+            postcode: location_snapshot.postcode?.trim() || null,
+            city: location_snapshot.city?.trim() || null,
+          }
+        : null,
       timestamp: ensureFirestoreTimestamp(),
       createdAt: ensureFirestoreTimestamp(),
       ...sanitizedMetadata,

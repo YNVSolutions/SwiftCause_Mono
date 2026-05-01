@@ -9,6 +9,7 @@ const { createDonationDoc } = require('../entities/donation');
 const { generateMagicLinkToken, determinePurpose } = require('../entities/magicLink');
 const { updateSubscriptionStatus, getSubscriptionByStripeId } = require('../entities/subscription');
 const { claimWebhookEvent, markEventProcessed, markEventFailed } = require('../shared/firestore');
+const { resolveLocationForDonation, resolveLocationIdFromKiosk } = require('../shared/location');
 const {
   GIFT_AID_DECLARATION_TEXT_VERSION,
   GIFT_AID_DECLARATION_STATUS,
@@ -25,6 +26,25 @@ const toStringOrNull = (value) => {
   if (typeof value !== 'string') return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+};
+
+const normalizeLocationSnapshot = (value) => {
+  const raw =
+    typeof value === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(value);
+          } catch {
+            return null;
+          }
+        })()
+      : value;
+
+  if (!raw || typeof raw !== 'object') return null;
+  const name = toStringOrNull(raw.name);
+  const postcode = toStringOrNull(raw.postcode);
+  const city = toStringOrNull(raw.city);
+  return name && postcode && city ? { name, postcode, city } : null;
 };
 
 const normalizeEmail = (value) => {
@@ -412,6 +432,9 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
       let resolvedDonorEmail = toStringOrNull(metadata.donorEmail);
       let resolvedDonorPhone = toStringOrNull(metadata.donorPhone);
       let resolvedPlatform = toStringOrNull(metadata.platform) || 'unknown';
+      let lockedSubscriptionLocationId = null;
+      let lockedSubscriptionLocationSnapshot = null;
+      let lockedSubscriptionKioskId = null;
 
       if (campaignId) {
         const campaignRef = admin.firestore().collection('campaigns').doc(campaignId);
@@ -467,6 +490,20 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
                 resolvedDonorPhone;
               resolvedPlatform =
                 toStringOrNull(subscriptionData.metadata?.platform) || resolvedPlatform;
+              lockedSubscriptionLocationId =
+                toStringOrNull(subscriptionData.location_id) ||
+                toStringOrNull(subscriptionData.metadata?.location_id) ||
+                lockedSubscriptionLocationId;
+              lockedSubscriptionLocationSnapshot =
+                normalizeLocationSnapshot(subscriptionData.location_snapshot) ||
+                normalizeLocationSnapshot(subscriptionData.metadata?.location_snapshot) ||
+                lockedSubscriptionLocationSnapshot;
+              // Also lock kioskId from subscription — recurring payment intents may not
+              // carry kioskId directly in their metadata.
+              lockedSubscriptionKioskId =
+                toStringOrNull(subscriptionData.metadata?.kioskId) ||
+                toStringOrNull(subscriptionData.kioskId) ||
+                lockedSubscriptionKioskId;
             }
           }
         } catch (invoiceLookupError) {
@@ -477,6 +514,29 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
           );
         }
       }
+
+      // Resolve location — strict for kiosk donations, null for web/recurring.
+      // Backwards-compatible fallback: if kioskId is present but location_id is missing
+      // from metadata (older payment intent or producer gap), resolve from the kiosk doc
+      // before strict validation fires. Without this, already-created intents that omitted
+      // location_id would 500 and retry indefinitely.
+      const webhookKioskId = toStringOrNull(metadata.kioskId) || lockedSubscriptionKioskId;
+      let webhookLocationId = toStringOrNull(metadata.location_id) || lockedSubscriptionLocationId;
+      let webhookLocationSnapshot = lockedSubscriptionLocationSnapshot;
+      if (webhookKioskId && webhookLocationId && webhookLocationSnapshot) {
+        console.log(
+          `[Webhook] Using locked subscription location snapshot: ${webhookLocationId} (context: ${paymentIntent.id})`,
+        );
+      } else if (webhookKioskId && !webhookLocationId) {
+        console.log(
+          `[Webhook] location_id missing from metadata, resolving from kiosk doc: ${webhookKioskId} (context: ${paymentIntent.id})`,
+        );
+        webhookLocationId = await resolveLocationIdFromKiosk(webhookKioskId, paymentIntent.id);
+      }
+      const { location_id: resolvedLocationId, location_snapshot: resolvedLocationSnapshot } =
+        webhookKioskId && webhookLocationId && webhookLocationSnapshot
+          ? { location_id: webhookLocationId, location_snapshot: webhookLocationSnapshot }
+          : await resolveLocationForDonation(webhookLocationId, webhookKioskId, paymentIntent.id);
 
       // Use entity to create donation with recurring support
       await createDonationDoc({
@@ -497,6 +557,8 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
         invoiceId: resolvedInvoiceId,
         kioskId: toStringOrNull(metadata.kioskId),
         platform: resolvedPlatform,
+        location_id: resolvedLocationId,
+        location_snapshot: resolvedLocationSnapshot,
         metadata: {
           campaignTitleSnapshot,
           source: 'stripe_webhook',
@@ -813,6 +875,60 @@ const handleInvoicePaid = async (invoice) => {
         : 'monthly';
 
   // Create donation record for this recurring payment
+  // Resolve location using the value locked at subscription creation time.
+  // This ensures GASDS audit stability — if a kiosk is reassigned after signup,
+  // later invoices still attribute to the original location, not the new one.
+  // Priority:
+  //   1. subscriptionData.location_id/location_snapshot — Firestore source of truth
+  //   2. subscriptionData.metadata.location_id/location_snapshot — Stripe/legacy fallback
+  //   3. Live kiosk doc lookup — fallback for legacy subscriptions created before this PR
+  const recurringKioskId =
+    toStringOrNull(subscriptionData.metadata?.kioskId) || toStringOrNull(subscriptionData.kioskId);
+  let recurringLocationId = null;
+  let recurringLocationSnapshot = null;
+  if (recurringKioskId) {
+    const lockedLocationId =
+      toStringOrNull(subscriptionData.location_id) ||
+      toStringOrNull(subscriptionData.metadata?.location_id);
+    const lockedLocationSnapshot =
+      normalizeLocationSnapshot(subscriptionData.location_snapshot) ||
+      normalizeLocationSnapshot(subscriptionData.metadata?.location_snapshot);
+
+    if (lockedLocationId && lockedLocationSnapshot) {
+      // Use the location locked at subscription creation — deterministic, audit-safe.
+      console.log(
+        `[Webhook/Invoice] Using locked location from subscription: ${lockedLocationId} (subscription: ${subscriptionId})`,
+      );
+      recurringLocationId = lockedLocationId;
+      recurringLocationSnapshot = lockedLocationSnapshot;
+    } else if (lockedLocationId) {
+      // Transitional fallback for subscriptions that have a locked id but no snapshot.
+      console.log(
+        `[Webhook/Invoice] Locked location_id has no snapshot, resolving snapshot: ${lockedLocationId} (subscription: ${subscriptionId})`,
+      );
+      const resolved = await resolveLocationForDonation(
+        lockedLocationId,
+        recurringKioskId,
+        invoice.id,
+      );
+      recurringLocationId = resolved.location_id;
+      recurringLocationSnapshot = resolved.location_snapshot;
+    } else {
+      // Legacy subscription — no location_id in metadata, fall back to live kiosk doc
+      console.log(
+        `[Webhook/Invoice] No locked location_id in subscription metadata, resolving from kiosk doc (legacy fallback): ${recurringKioskId} (subscription: ${subscriptionId})`,
+      );
+      const kioskLocationId = await resolveLocationIdFromKiosk(recurringKioskId, invoice.id);
+      const resolved = await resolveLocationForDonation(
+        kioskLocationId,
+        recurringKioskId,
+        invoice.id,
+      );
+      recurringLocationId = resolved.location_id;
+      recurringLocationSnapshot = resolved.location_snapshot;
+    }
+  }
+
   await createDonationDoc({
     transactionId: invoice.payment_intent || invoice.id,
     campaignId: subscriptionData.campaignId,
@@ -827,7 +943,10 @@ const handleInvoicePaid = async (invoice) => {
     recurringInterval: recurringInterval,
     subscriptionId: subscriptionId,
     invoiceId: invoice.id,
+    kioskId: recurringKioskId,
     platform: subscriptionData.metadata?.platform || 'web',
+    location_id: recurringLocationId,
+    location_snapshot: recurringLocationSnapshot,
     metadata: {
       campaignTitleSnapshot: subscriptionData.metadata?.campaignTitle || 'Recurring Donation',
       source: 'stripe_webhook_recurring',

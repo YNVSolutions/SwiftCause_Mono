@@ -1,4 +1,4 @@
-const admin = require("firebase-admin");
+const admin = require('firebase-admin');
 
 /**
  * Convert value to Firestore Timestamp
@@ -9,7 +9,7 @@ const toFirestoreTimestamp = (value) => {
   if (!value) {
     return admin.firestore.Timestamp.now();
   }
-  if (typeof value === "number") {
+  if (typeof value === 'number') {
     // Unix timestamp in seconds, convert to milliseconds
     return admin.firestore.Timestamp.fromMillis(value * 1000);
   }
@@ -52,7 +52,7 @@ const createSubscriptionDoc = async (subscriptionData) => {
     interval,
     intervalCount = 1,
     amount,
-    currency = "usd",
+    currency = 'usd',
     status,
     currentPeriodEnd,
     startedAt = null,
@@ -60,20 +60,19 @@ const createSubscriptionDoc = async (subscriptionData) => {
     nextPaymentAt = null,
     cancelReason = null,
     currentPeriodStart,
+    location_id = null,
+    location_snapshot = null,
     metadata = {},
   } = subscriptionData;
 
-  const subscriptionRef = admin
-      .firestore()
-      .collection("subscriptions")
-      .doc(stripeSubscriptionId);
+  const subscriptionRef = admin.firestore().collection('subscriptions').doc(stripeSubscriptionId);
 
   const now = admin.firestore.Timestamp.now();
   const periodEndTimestamp = toFirestoreTimestamp(currentPeriodEnd);
 
   const toTimestampOrNull = (value) => {
     if (!value) return null;
-    if (typeof value === "number") {
+    if (typeof value === 'number') {
       return admin.firestore.Timestamp.fromMillis(value * 1000);
     }
     if (value instanceof Date) {
@@ -82,10 +81,12 @@ const createSubscriptionDoc = async (subscriptionData) => {
     return null;
   };
 
-  const startedAtTimestamp = toTimestampOrNull(startedAt) ||
+  const startedAtTimestamp =
+    toTimestampOrNull(startedAt) ||
     (currentPeriodStart ? toFirestoreTimestamp(currentPeriodStart) : now);
   const lastPaymentAtTimestamp = toTimestampOrNull(lastPaymentAt);
-  const nextPaymentAtTimestamp = toTimestampOrNull(nextPaymentAt) ||
+  const nextPaymentAtTimestamp =
+    toTimestampOrNull(nextPaymentAt) ||
     calculateNextPaymentAt(currentPeriodEnd, interval, intervalCount);
 
   await subscriptionRef.set({
@@ -105,6 +106,14 @@ const createSubscriptionDoc = async (subscriptionData) => {
     lastPaymentAt: lastPaymentAtTimestamp,
     nextPaymentAt: nextPaymentAtTimestamp,
     cancelReason: cancelReason || null,
+    location_id: typeof location_id === 'string' ? location_id.trim() || null : null,
+    location_snapshot: location_snapshot
+      ? {
+          name: location_snapshot.name?.trim() || null,
+          postcode: location_snapshot.postcode?.trim() || null,
+          city: location_snapshot.city?.trim() || null,
+        }
+      : null,
     currentPeriodEnd: periodEndTimestamp,
     canceledAt: null,
     createdAt: now,
@@ -112,7 +121,7 @@ const createSubscriptionDoc = async (subscriptionData) => {
     metadata: metadata,
   });
 
-  console.log("Subscription document created:", stripeSubscriptionId);
+  console.log('Subscription document created:', stripeSubscriptionId);
   return subscriptionRef;
 };
 
@@ -123,43 +132,28 @@ const createSubscriptionDoc = async (subscriptionData) => {
  * @param {object} updates - Additional fields to update
  * @return {Promise<boolean>} True if subscription exists and was updated
  */
-const updateSubscriptionStatus = async (
-    stripeSubscriptionId,
-    status,
-    updates = {},
-) => {
-  const subscriptionRef = admin
-      .firestore()
-      .collection("subscriptions")
-      .doc(stripeSubscriptionId);
+const updateSubscriptionStatus = async (stripeSubscriptionId, status, updates = {}) => {
+  const subscriptionRef = admin.firestore().collection('subscriptions').doc(stripeSubscriptionId);
 
   const existing = await subscriptionRef.get();
   if (!existing.exists) {
-    console.warn("Subscription not found for status update:", stripeSubscriptionId);
+    console.warn('Subscription not found for status update:', stripeSubscriptionId);
     return false;
   }
 
   // Normalize timestamp fields in updates
-  const normalizedUpdates = {...updates};
+  const normalizedUpdates = { ...updates };
   if (normalizedUpdates.currentPeriodEnd) {
-    normalizedUpdates.currentPeriodEnd = toFirestoreTimestamp(
-        normalizedUpdates.currentPeriodEnd,
-    );
+    normalizedUpdates.currentPeriodEnd = toFirestoreTimestamp(normalizedUpdates.currentPeriodEnd);
   }
   if (normalizedUpdates.lastPaymentAt) {
-    normalizedUpdates.lastPaymentAt = toFirestoreTimestamp(
-        normalizedUpdates.lastPaymentAt,
-    );
+    normalizedUpdates.lastPaymentAt = toFirestoreTimestamp(normalizedUpdates.lastPaymentAt);
   }
   if (normalizedUpdates.nextPaymentAt) {
-    normalizedUpdates.nextPaymentAt = toFirestoreTimestamp(
-        normalizedUpdates.nextPaymentAt,
-    );
+    normalizedUpdates.nextPaymentAt = toFirestoreTimestamp(normalizedUpdates.nextPaymentAt);
   }
   if (normalizedUpdates.canceledAt) {
-    normalizedUpdates.canceledAt = toFirestoreTimestamp(
-        normalizedUpdates.canceledAt,
-    );
+    normalizedUpdates.canceledAt = toFirestoreTimestamp(normalizedUpdates.canceledAt);
   }
 
   const updateData = {
@@ -169,7 +163,7 @@ const updateSubscriptionStatus = async (
   };
 
   await subscriptionRef.update(updateData);
-  console.log("Subscription status updated:", stripeSubscriptionId, status);
+  console.log('Subscription status updated:', stripeSubscriptionId, status);
   return true;
 };
 
@@ -179,13 +173,9 @@ const updateSubscriptionStatus = async (
  * @return {Promise<object|null>} Subscription data or null
  */
 const getSubscriptionByStripeId = async (stripeSubscriptionId) => {
-  const doc = await admin
-      .firestore()
-      .collection("subscriptions")
-      .doc(stripeSubscriptionId)
-      .get();
+  const doc = await admin.firestore().collection('subscriptions').doc(stripeSubscriptionId).get();
 
-  return doc.exists ? {id: doc.id, ...doc.data()} : null;
+  return doc.exists ? { id: doc.id, ...doc.data() } : null;
 };
 
 module.exports = {

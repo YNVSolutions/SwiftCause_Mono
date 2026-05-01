@@ -3,6 +3,7 @@ const { ensureStripeInitialized } = require('../services/stripe');
 const cors = require('../middleware/cors');
 const { createSubscriptionDoc } = require('../entities/subscription');
 const { createDonationDoc } = require('../entities/donation');
+const { resolveLocationForDonation, resolveLocationIdFromKiosk } = require('../shared/location');
 const DEFAULT_GIFT_AID_DECLARATION_TEXT =
   'I want to Gift Aid my donation and any donations I make in the future or have made in the past four years to this charity. I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital Gains Tax than the amount of Gift Aid claimed on all my donations in that tax year it is my responsibility to pay any difference.';
 
@@ -307,8 +308,25 @@ const createRecurringSubscription = (req, res) => {
       const campaignData = campaignSnap.data();
       const orgId = campaignData.organizationId;
 
-      const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
+      // Resolve location — strict for kiosk subscriptions, null for web
+      const subscriptionKioskId = toStringOrNull(metadata.kioskId);
+      let subscriptionLocationId = null;
+      let subscriptionLocationSnapshot = null;
+      if (subscriptionKioskId) {
+        const kioskLocationId = await resolveLocationIdFromKiosk(
+          subscriptionKioskId,
+          `subscription:${campaignId}`,
+        );
+        const resolved = await resolveLocationForDonation(
+          kioskLocationId,
+          subscriptionKioskId,
+          `subscription:${campaignId}`,
+        );
+        subscriptionLocationId = resolved.location_id;
+        subscriptionLocationSnapshot = resolved.location_snapshot;
+      }
 
+      const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
       if (!orgSnap.exists) {
         return res.status(404).send({ error: 'Organization not found' });
       }
@@ -371,6 +389,14 @@ const createRecurringSubscription = (req, res) => {
         },
       });
 
+      const stripeLocationMetadata = subscriptionLocationId
+        ? {
+            location_id: subscriptionLocationId,
+            location_snapshot: JSON.stringify(subscriptionLocationSnapshot),
+            location_provenance: 'subscription_creation',
+          }
+        : {};
+
       // Create subscription
       const subscription = await stripeClient.subscriptions.create({
         customer: customer.id,
@@ -386,6 +412,7 @@ const createRecurringSubscription = (req, res) => {
           donorName: donor.name || 'Anonymous',
           platform: metadata.platform || 'web',
           ...metadata,
+          ...stripeLocationMetadata,
         },
       });
 
@@ -410,6 +437,8 @@ const createRecurringSubscription = (req, res) => {
         startedAt: subscription.start_date || subscription.current_period_start || null,
         nextPaymentAt: subscription.current_period_end || null,
         cancelReason: cancelReason || null,
+        location_id: subscriptionLocationId,
+        location_snapshot: subscriptionLocationSnapshot,
         metadata: {
           donorEmail: donor.email,
           donorName: donor.name || 'Anonymous',
@@ -417,6 +446,9 @@ const createRecurringSubscription = (req, res) => {
           campaignTitle: campaignData.title,
           platform: metadata.platform || 'web',
           ...metadata,
+          location_id: subscriptionLocationId,
+          location_snapshot: subscriptionLocationSnapshot,
+          location_provenance: subscriptionLocationId ? 'subscription_creation' : 'not_applicable',
         },
       });
 
@@ -451,7 +483,10 @@ const createRecurringSubscription = (req, res) => {
             recurringInterval,
             subscriptionId: subscription.id,
             invoiceId: latestInvoice.id || null,
+            kioskId: subscriptionKioskId,
             platform: metadata.platform || 'web',
+            location_id: subscriptionLocationId,
+            location_snapshot: subscriptionLocationSnapshot,
             metadata: {
               campaignTitleSnapshot: campaignData.title || 'Recurring Donation',
               source: 'create_recurring_subscription',
@@ -496,7 +531,10 @@ const createRecurringSubscription = (req, res) => {
           recurringInterval,
           subscriptionId: subscription.id,
           invoiceId: latestInvoice.id || null,
+          kioskId: subscriptionKioskId,
           platform: metadata.platform || 'web',
+          location_id: subscriptionLocationId,
+          location_snapshot: subscriptionLocationSnapshot,
           metadata: {
             campaignTitleSnapshot: campaignData.title || 'Recurring Donation',
             source: 'create_recurring_subscription',

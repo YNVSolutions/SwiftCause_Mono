@@ -26,7 +26,8 @@ jest.mock('../entities/subscription', () => ({
 const admin = require('firebase-admin');
 const { verifyWebhookSignatureWithAnySecret } = require('../services/stripe');
 const { createDonationDoc } = require('../entities/donation');
-const { handlePaymentCompletedStripeWebhook } = require('./webhooks');
+const { getSubscriptionByStripeId } = require('../entities/subscription');
+const { handlePaymentCompletedStripeWebhook, handleSubscriptionWebhook } = require('./webhooks');
 
 const createResponse = () => {
   const response = {
@@ -124,6 +125,44 @@ describe('handlePaymentCompletedStripeWebhook', () => {
       status: 'processed',
       paymentIntentId: 'pi_parallel_payment',
     });
+  });
+
+  it('resolves kiosk location from kiosk doc when payment metadata omits location_id', async () => {
+    await seedDoc('kiosks', 'kiosk_rollout_001', {
+      location_id: 'loc_rollout_001',
+    });
+    await seedDoc('locations', 'loc_rollout_001', {
+      name: 'Central Hall',
+      postcode: 'SW1A 1AA',
+      city: 'London',
+    });
+
+    const event = makePaymentEvent({
+      eventId: 'evt_kiosk_missing_location_id',
+      paymentIntentId: 'pi_kiosk_missing_location_id',
+      metadata: {
+        kioskId: 'kiosk_rollout_001',
+        platform: 'kiosk',
+      },
+    });
+    verifyWebhookSignatureWithAnySecret.mockReturnValue(event);
+
+    const res = createResponse();
+    await handlePaymentCompletedStripeWebhook(makeRequest(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(createDonationDoc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transactionId: 'pi_kiosk_missing_location_id',
+        kioskId: 'kiosk_rollout_001',
+        location_id: 'loc_rollout_001',
+        location_snapshot: {
+          name: 'Central Hall',
+          postcode: 'SW1A 1AA',
+          city: 'London',
+        },
+      }),
+    );
   });
 
   // ─── Declaration-first linkage tests ────────────────────────────────────────
@@ -308,5 +347,71 @@ describe('handlePaymentCompletedStripeWebhook', () => {
       // Should keep the real title, not 'Deleted Campaign'
       expect(declaration.campaignTitle).toBe('Real Campaign Title');
     });
+  });
+});
+
+describe('handleSubscriptionWebhook recurring location handling', () => {
+  beforeEach(() => {
+    admin.__reset();
+    jest.clearAllMocks();
+  });
+
+  it('uses the locked subscription location snapshot for invoice.paid', async () => {
+    await seedDoc('kiosks', 'kiosk_reassigned_001', {
+      location_id: 'loc_new_building',
+    });
+
+    getSubscriptionByStripeId.mockResolvedValue({
+      stripeSubscriptionId: 'sub_locked_location_001',
+      campaignId: 'camp_1',
+      organizationId: 'org_1',
+      interval: 'month',
+      intervalCount: 1,
+      donorEmail: 'donor@example.com',
+      donorName: 'Locked Donor',
+      location_id: 'loc_original_building',
+      location_snapshot: {
+        name: 'Original Hall',
+        postcode: 'SW1A 1AA',
+        city: 'London',
+      },
+      metadata: {
+        kioskId: 'kiosk_reassigned_001',
+        platform: 'kiosk',
+        campaignTitle: 'Recurring Campaign',
+      },
+    });
+
+    verifyWebhookSignatureWithAnySecret.mockReturnValue({
+      id: 'evt_invoice_locked_location',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          id: 'in_locked_location_001',
+          subscription: 'sub_locked_location_001',
+          payment_intent: 'pi_locked_location_001',
+          amount_paid: 2500,
+          currency: 'gbp',
+          created: 1777580000,
+        },
+      },
+    });
+
+    const res = createResponse();
+    await handleSubscriptionWebhook(makeRequest(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(createDonationDoc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transactionId: 'pi_locked_location_001',
+        kioskId: 'kiosk_reassigned_001',
+        location_id: 'loc_original_building',
+        location_snapshot: {
+          name: 'Original Hall',
+          postcode: 'SW1A 1AA',
+          city: 'London',
+        },
+      }),
+    );
   });
 });

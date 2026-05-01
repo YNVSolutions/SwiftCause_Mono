@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 const { stripe, ensureStripeInitialized } = require('../services/stripe');
 const { verifyAuth } = require('../middleware/auth');
 const cors = require('../middleware/cors');
+const { resolveLocationIdFromKiosk, resolveLocationForDonation } = require('../shared/location');
 
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:3000',
@@ -145,6 +146,22 @@ const createKioskPaymentIntent = (req, res) => {
       }
       const campaignData = campaignSnap.data();
       const orgId = campaignData.organizationId;
+
+      // Validate location before creating the Stripe payment intent.
+      // A kiosk donation without a valid location cannot be recorded after payment,
+      // so we fail here rather than producing a paid-but-unrecordable donation.
+      const kioskId = typeof metadata.kioskId === 'string' ? metadata.kioskId.trim() : null;
+      let kioskLocationId = null;
+      if (kioskId) {
+        console.log(
+          `[Payment] Validating location for kiosk: ${kioskId} (campaign: ${campaignId})`,
+        );
+        // Both helpers throw if kiosk/location is missing or fields are incomplete
+        kioskLocationId = await resolveLocationIdFromKiosk(kioskId, `payment:${campaignId}`);
+        await resolveLocationForDonation(kioskLocationId, kioskId, `payment:${campaignId}`);
+        console.log(`[Payment] Location validated: ${kioskLocationId} (kiosk: ${kioskId})`);
+      }
+
       const canonicalMetadata = {
         ...metadata,
         campaignId,
@@ -153,6 +170,8 @@ const createKioskPaymentIntent = (req, res) => {
         // Keep both keys to support mixed webhook consumers and old/new clients.
         isGiftAid: metadata.isGiftAid,
         giftAidEnabled: metadata.giftAidEnabled ?? metadata.isGiftAid,
+        // Location reference — read by webhook to build location_snapshot on donation
+        location_id: kioskLocationId,
       };
 
       const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
