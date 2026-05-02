@@ -51,6 +51,11 @@ class PaymentRepository(
             val requestJson = JSONObject().apply {
                 put("amount", request.amount)
                 put("currency", request.currency)
+                put("frequency", request.frequency ?: JSONObject.NULL)
+                put("intervalCount", request.intervalCount ?: JSONObject.NULL)
+                put("paymentMethodId", request.paymentMethodId ?: JSONObject.NULL)
+                put("setupIntentId", request.setupIntentId ?: JSONObject.NULL)
+                put("customerId", request.customerId ?: JSONObject.NULL)
                 put("metadata", JSONObject().apply {
                     put("campaignId", request.metadata.campaignId)
                     put("campaignTitle", request.metadata.campaignTitle)
@@ -63,6 +68,16 @@ class PaymentRepository(
                     put("isGiftAid", request.metadata.isGiftAid)
                     put("recurringInterest", request.metadata.recurringInterest)
                 })
+                put(
+                    "donor",
+                    request.donor?.let {
+                        JSONObject().apply {
+                            put("email", it.email)
+                            put("name", it.name)
+                            put("phone", it.phone ?: JSONObject.NULL)
+                        }
+                    } ?: JSONObject.NULL
+                )
             }
 
             Log.d(TAG, "Calling Cloud Function: $FUNCTION_URL")
@@ -94,20 +109,39 @@ class PaymentRepository(
 
             // Parse response
             val responseJson = JSONObject(responseBody)
-            val clientSecret = responseJson.optString("clientSecret")
+            val readNullableString = { key: String ->
+                if (!responseJson.has(key) || responseJson.isNull(key)) null else responseJson.optString(key).ifEmpty { null }
+            }
+            val clientSecret = readNullableString("clientSecret")
+            val setupIntentClientSecret = readNullableString("setupIntentClientSecret")
+            val customerId = readNullableString("customerId")
+            val success = responseJson.optBoolean("success", false)
+            val message = readNullableString("message")
+            val subscriptionId = readNullableString("subscriptionId")
+            val invoiceId = readNullableString("invoiceId")
+            val amountPaid = if (responseJson.has("amountPaid") && !responseJson.isNull("amountPaid")) {
+                responseJson.optLong("amountPaid")
+            } else {
+                null
+            }
 
-            if (clientSecret.isEmpty()) {
-                throw Exception("Missing clientSecret in response")
+            if (clientSecret == null && setupIntentClientSecret == null && !success) {
+                throw Exception(message ?: "Missing payment confirmation data in response")
             }
 
             Log.d(TAG, "✓ Payment Intent Created Successfully")
-            Log.d(TAG, "Client Secret: ${clientSecret.take(20)}...")
+            Log.d(TAG, "Client Secret: ${clientSecret?.take(20)}...")
 
             Result.success(
                 CreatePaymentIntentResponse(
                     clientSecret = clientSecret,
-                    success = true,
-                    message = "Payment intent created"
+                    setupIntentClientSecret = setupIntentClientSecret,
+                    customerId = customerId,
+                    success = success,
+                    message = message ?: if (clientSecret != null) "Payment intent created" else null,
+                    subscriptionId = subscriptionId,
+                    invoiceId = invoiceId,
+                    amountPaid = amountPaid
                 )
             )
 

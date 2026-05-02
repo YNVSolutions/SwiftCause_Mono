@@ -38,10 +38,16 @@ class PaymentViewModel(
     private val _magicLinkToken = MutableStateFlow<String?>(null)
     val magicLinkToken: StateFlow<String?> = _magicLinkToken.asStateFlow()
 
+    // Whether current PaymentSheet presentation should use SetupIntent flow
+    private val _isSetupIntentFlow = MutableStateFlow(false)
+    val isSetupIntentFlow: StateFlow<Boolean> = _isSetupIntentFlow.asStateFlow()
+
     private var amount: Long = 0
     private var currency: String = ""
     private var paymentIntentId: String = ""
     private var magicLinkPollingJob: Job? = null
+    private var pendingRequest: CreatePaymentIntentRequest? = null
+    private var paymentSheetFlowMode: PaymentSheetFlowMode = PaymentSheetFlowMode.PAYMENT_INTENT
 
     private val firestore = FirebaseFirestore.getInstance()
 
@@ -58,6 +64,7 @@ class PaymentViewModel(
         donorEmail: String? = null,
         isAnonymous: Boolean = false,
         frequency: String? = null,  // null = one-time, "month", "year" = recurring
+        intervalCount: Int? = null,
         isGiftAid: Boolean = false,  // Campaign has Gift Aid enabled
         kioskId: String? = null
     ) {
@@ -73,6 +80,7 @@ class PaymentViewModel(
                 Log.d(TAG, "Organization ID: $organizationId")
                 Log.d(TAG, "Is Recurring: ${frequency != null}")
                 Log.d(TAG, "Frequency: $frequency")
+                Log.d(TAG, "Interval Count: $intervalCount")
                 Log.d(TAG, "Is Anonymous: $isAnonymous")
                 Log.d(TAG, "Is Gift Aid: $isGiftAid")
 
@@ -93,13 +101,16 @@ class PaymentViewModel(
                         recurringInterest = frequency != null
                     ),
                     frequency = frequency,
-                    donor = if (!donorEmail.isNullOrBlank() && !donorName.isNullOrBlank()) {
+                    intervalCount = intervalCount,
+                    donor = if (!donorEmail.isNullOrBlank()) {
                         DonorInfo(
                             email = donorEmail,
-                            name = donorName
+                            name = donorName ?: "Anonymous"
                         )
                     } else null
                 )
+
+                pendingRequest = request
 
                 Log.d(TAG, "Calling PaymentRepository.createPaymentIntent()")
 
@@ -109,9 +120,18 @@ class PaymentViewModel(
                 result.fold(
                     onSuccess = { response ->
                         Log.d(TAG, "Repository returned success")
-                        if (response.clientSecret != null) {
+                        if (response.setupIntentClientSecret != null) {
+                            _clientSecret.value = response.setupIntentClientSecret
+                            pendingRequest = pendingRequest?.copy(customerId = response.customerId)
+                            paymentSheetFlowMode = PaymentSheetFlowMode.SETUP_INTENT
+                            _isSetupIntentFlow.value = true
+                            _paymentState.value = PaymentState.Ready
+                            Log.d(TAG, "Recurring setup prepared - State: Ready")
+                        } else if (response.clientSecret != null) {
                             _clientSecret.value = response.clientSecret
                             paymentIntentId = response.clientSecret.substringBeforeLast("_secret_")
+                            paymentSheetFlowMode = PaymentSheetFlowMode.PAYMENT_INTENT
+                            _isSetupIntentFlow.value = false
                             _paymentState.value = PaymentState.Ready
                             Log.d(TAG, "Payment prepared - State: Ready")
                             Log.d(TAG, "Client secret length: ${response.clientSecret.length}")
@@ -154,13 +174,18 @@ class PaymentViewModel(
         viewModelScope.launch {
             when (result) {
                 is PaymentSheetResult.Completed -> {
-                    Log.d(TAG, "Payment completed")
-                    _paymentState.value = PaymentState.Success(
-                        transactionId = paymentIntentId,
-                        amount = amount,
-                        currency = currency
-                    )
-                    onPaymentSuccess()
+                    if (paymentSheetFlowMode == PaymentSheetFlowMode.SETUP_INTENT) {
+                        Log.d(TAG, "SetupIntent completed; finalizing recurring subscription")
+                        finalizeRecurringSubscription(onPaymentSuccess)
+                    } else {
+                        Log.d(TAG, "Payment completed")
+                        _paymentState.value = PaymentState.Success(
+                            transactionId = paymentIntentId,
+                            amount = amount,
+                            currency = currency
+                        )
+                        onPaymentSuccess()
+                    }
                 }
                 is PaymentSheetResult.Canceled -> {
                     Log.d(TAG, "Payment canceled")
@@ -183,9 +208,67 @@ class PaymentViewModel(
         _paymentState.value = PaymentState.Idle
         _clientSecret.value = null
         _magicLinkToken.value = null
+        _isSetupIntentFlow.value = false
         this.amount = 0
         this.currency = ""
         this.paymentIntentId = ""
+        this.pendingRequest = null
+        this.paymentSheetFlowMode = PaymentSheetFlowMode.PAYMENT_INTENT
+    }
+
+    private suspend fun finalizeRecurringSubscription(onPaymentSuccess: () -> Unit) {
+        try {
+            val setupIntentClientSecret = _clientSecret.value
+            val setupIntentId = setupIntentClientSecret?.substringBeforeLast("_secret_")
+            val baseRequest = pendingRequest
+
+            if (setupIntentId.isNullOrBlank() || baseRequest == null) {
+                _paymentState.value = PaymentState.Error(
+                    message = "Missing setup confirmation data for recurring donation"
+                )
+                return
+            }
+
+            _paymentState.value = PaymentState.Loading
+
+            val finalizeRequest = baseRequest.copy(
+                setupIntentId = setupIntentId,
+                customerId = baseRequest.customerId
+            )
+
+            val result = paymentRepository.createPaymentIntent(finalizeRequest)
+            result.fold(
+                onSuccess = { response ->
+                    if (response.clientSecret != null) {
+                        _clientSecret.value = response.clientSecret
+                        paymentIntentId = response.clientSecret.substringBeforeLast("_secret_")
+                        paymentSheetFlowMode = PaymentSheetFlowMode.PAYMENT_INTENT
+                        _isSetupIntentFlow.value = false
+                        _paymentState.value = PaymentState.Ready
+                    } else if (response.success == true) {
+                        _paymentState.value = PaymentState.Success(
+                            transactionId = response.subscriptionId ?: setupIntentId,
+                            amount = amount,
+                            currency = currency
+                        )
+                        onPaymentSuccess()
+                    } else {
+                        _paymentState.value = PaymentState.Error(
+                            message = response.message ?: "Failed to finalize recurring subscription"
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _paymentState.value = PaymentState.Error(
+                        message = error.message ?: "Failed to finalize recurring subscription"
+                    )
+                }
+            )
+        } catch (e: Exception) {
+            _paymentState.value = PaymentState.Error(
+                message = e.message ?: "Failed to finalize recurring subscription"
+            )
+        }
     }
 
     /**
@@ -236,6 +319,11 @@ class PaymentViewModel(
             }
         }
     }
+}
+
+private enum class PaymentSheetFlowMode {
+    PAYMENT_INTENT,
+    SETUP_INTENT,
 }
 
 /**
