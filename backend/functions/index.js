@@ -29,7 +29,11 @@ const {
   createPaymentIntent,
   createExpressDashboardLink,
 } = require('./handlers/payments');
-const { exportGiftAidDeclarations, downloadGiftAidExportBatchFile } = require('./handlers/giftAid');
+const {
+  exportGiftAidDeclarations,
+  downloadGiftAidExportBatchFile,
+  exportGasdsCsv,
+} = require('./handlers/giftAid');
 const { exportDonations } = require('./handlers/donationsExport');
 const { exportSubscriptions } = require('./handlers/subscriptionsExport');
 const { exportKiosks } = require('./handlers/kiosksExport');
@@ -133,6 +137,7 @@ exports.createExpressDashboardLink = functions.https.onRequest(
 );
 exports.exportGiftAidDeclarations = functions.https.onRequest(exportGiftAidDeclarations);
 exports.downloadGiftAidExportBatchFile = functions.https.onRequest(downloadGiftAidExportBatchFile);
+exports.exportGasdsCsv = functions.https.onRequest(exportGasdsCsv);
 exports.exportDonations = functions.https.onRequest(exportDonations);
 exports.exportSubscriptions = functions.https.onRequest(exportSubscriptions);
 exports.exportKiosks = functions.https.onRequest(exportKiosks);
