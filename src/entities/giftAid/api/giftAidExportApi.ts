@@ -63,6 +63,15 @@ export interface GiftAidExportBatchPage {
 }
 
 export type GiftAidExportFileKind = 'hmrc' | 'internal';
+export interface GasdsLocationSummaryRow {
+  locationId: string;
+  locationName: string;
+  postcode: string;
+  totalCollected: number;
+  eligible: number;
+  cap: number;
+  isCommunityBuilding: boolean;
+}
 
 interface GiftAidBatchTimestampFields {
   createdAt?: unknown;
@@ -153,6 +162,10 @@ const getGiftAidBatchDownloadFunctionUrl = () => {
   }
 
   return FUNCTION_URLS.downloadGiftAidExportBatchFile;
+};
+
+const getGasdsExportFunctionUrl = () => {
+  return FUNCTION_URLS.exportGasdsCsv;
 };
 
 const getCurrentUserToken = async () => {
@@ -388,4 +401,53 @@ export async function downloadGiftAidExportFile(
 
   const blob = await response.blob();
   triggerBlobDownload(blob, file.fileName);
+}
+
+const parseFileName = (contentDisposition: string | null, fallbackName: string) => {
+  if (!contentDisposition) return fallbackName;
+  const match = /filename="([^"]+)"/i.exec(contentDisposition);
+  if (!match || !match[1]) return fallbackName;
+  return match[1];
+};
+
+export async function exportGasdsCsv(params: {
+  organizationId: string;
+  taxYear: string;
+  locationIds: string[];
+}) {
+  const token = await getCurrentUserToken();
+  const url = getGasdsExportFunctionUrl();
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(params),
+    });
+  } catch {
+    throw new Error(`Could not reach GASDS export function at ${url}.`);
+  }
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to export GASDS CSV.';
+    try {
+      const errorData = await response.json();
+      if (typeof errorData?.error === 'string' && errorData.error.trim()) {
+        errorMessage = errorData.error;
+      }
+    } catch {
+      const text = await response.text().catch(() => '');
+      if (text) errorMessage = text;
+    }
+    throw new Error(errorMessage);
+  }
+
+  const fallbackName = `gasds-${params.taxYear}.csv`;
+  const fileName = parseFileName(response.headers.get('content-disposition'), fallbackName);
+  const blob = await response.blob();
+  triggerBlobDownload(blob, fileName);
 }
