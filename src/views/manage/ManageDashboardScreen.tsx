@@ -84,6 +84,7 @@ export function ManageDashboardScreen() {
   const [error, setError] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [activeTab, setActiveTab] = useState<'donations' | 'history'>('donations');
+  const [managingId, setManagingId] = useState<string | null>(null);
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -204,6 +205,7 @@ export function ManageDashboardScreen() {
   // Manage subscription → Stripe portal
   // -------------------------------------------------------------------------
   const handleManageSubscription = async (subscriptionId: string) => {
+    setManagingId(subscriptionId);
     try {
       const idToken = await getIdToken();
       const res = await fetch(FUNCTION_URLS.createCustomerPortalSession, {
@@ -215,19 +217,25 @@ export function ManageDashboardScreen() {
       if (!res.ok) {
         if (res.status === 401) {
           setError('Session expired. Please request a new link.');
+          setManagingId(null);
           return;
         }
         if (res.status === 403) {
           setError('You do not have permission to manage this subscription.');
+          setManagingId(null);
           return;
         }
         throw new Error('Failed to create portal session');
       }
 
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) {
+        // Keep the overlay up until the browser has navigated away
+        window.location.href = data.url;
+      }
     } catch {
       setError('Failed to open subscription management. Please try again.');
+      setManagingId(null);
     }
   };
 
@@ -493,6 +501,19 @@ export function ManageDashboardScreen() {
           </div>
         )}
       </div>
+
+      {/* Full-screen loading overlay — shown while opening Stripe portal */}
+      {managingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#EEEFF3]">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Redirecting to Stripe…</h2>
+            <p className="text-gray-500">
+              You'll be taken to a secure page to manage your donation
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Bottom nav — mobile only */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200">
