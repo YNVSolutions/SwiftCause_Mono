@@ -121,25 +121,26 @@ export function ManageEmailScreen() {
         {/* ---- Right panel (form) ---- */}
         <div className="lg:w-[62%] lg:min-h-screen lg:bg-white lg:flex lg:flex-col">
           {/* Centered form area */}
-          <div className="flex-1 flex items-center justify-center px-6 py-10 lg:px-16 xl:px-24">
-            <div className="w-full max-w-md">
+          <div className="flex-1 flex items-center justify-center px-4 py-8 lg:px-16 xl:px-24">
+            {/* White card on mobile, transparent on desktop */}
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] px-6 py-8 lg:bg-transparent lg:shadow-none lg:px-0 lg:py-0">
               {/* Icon — mobile only */}
-              <div className="flex justify-center mb-8 lg:hidden">
+              <div className="flex justify-center mb-6 lg:hidden">
                 <Image
                   src="/logo.png"
                   alt="SwiftCause"
-                  width={72}
-                  height={72}
+                  width={64}
+                  height={64}
                   className="rounded-full"
                 />
               </div>
 
               {/* Heading */}
-              <div className="mb-9">
-                <h2 className="text-[32px] lg:text-[36px] font-bold text-[#111827] leading-tight mb-4">
+              <div className="mb-7 lg:mb-9">
+                <h2 className="text-[28px] lg:text-[36px] font-bold text-[#111827] leading-tight mb-3">
                   Access your donations
                 </h2>
-                <p className="text-[#6B7280] text-base leading-relaxed">
+                <p className="text-[#6B7280] text-sm lg:text-base leading-relaxed">
                   Enter your email address and we'll send a one-time secure link to your inbox.
                 </p>
               </div>
