@@ -4,22 +4,20 @@ module.exports = {
     node: true,
   },
   parserOptions: {
-    "ecmaVersion": 2023,
+    ecmaVersion: 2023,
   },
-  extends: [
-    "eslint:recommended",
-    "google",
-  ],
+  extends: ['eslint:recommended', 'google'],
   rules: {
-    "no-restricted-globals": ["error", "name", "length"],
-    "prefer-arrow-callback": "error",
-    "quotes": ["error", "double", {"allowTemplateLiterals": true}],
+    'no-restricted-globals': ['error', 'name', 'length'],
+    'prefer-arrow-callback': 'error',
+    quotes: ['error', 'double', { allowTemplateLiterals: true }],
   },
   overrides: [
     {
-      files: ["**/*.spec.*"],
+      files: ['**/*.spec.*', '**/*.test.*'],
       env: {
         mocha: true,
+        jest: true,
       },
       rules: {},
     },

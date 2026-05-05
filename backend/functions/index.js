@@ -39,6 +39,13 @@ const {
   cancelRecurringSubscription,
   updateSubscriptionPaymentMethod,
 } = require('./handlers/subscriptions');
+const {
+  sendSubscriptionMagicLink,
+  verifySubscriptionMagicLink,
+  getSubscriptionsByEmail,
+  createCustomerPortalSession,
+  getPaymentHistory,
+} = require('./handlers/subscriptionManagement');
 const { createStripeAccountForNewOrg, sendWelcomeEmailForNewOrg } = require('./handlers/triggers');
 const { verifySignupRecaptcha } = require('./handlers/signup');
 const { kioskLogin } = require('./handlers/kiosk');
@@ -149,6 +156,17 @@ exports.updateSubscriptionPaymentMethod = functions.https.onRequest(
   { secrets: [stripeSecretKey] },
   updateSubscriptionPaymentMethod,
 );
+exports.sendSubscriptionMagicLink = functions.https.onRequest(
+  { secrets: [sendgridApiKey, sendgridFromEmail, sendgridFromName] },
+  sendSubscriptionMagicLink,
+);
+exports.verifySubscriptionMagicLink = functions.https.onRequest(verifySubscriptionMagicLink);
+exports.getSubscriptionsByEmail = functions.https.onRequest(getSubscriptionsByEmail);
+exports.createCustomerPortalSession = functions.https.onRequest(
+  { secrets: [stripeSecretKey] },
+  createCustomerPortalSession,
+);
+exports.getPaymentHistory = functions.https.onRequest(getPaymentHistory);
 exports.createConnectionToken = functions.https.onRequest(
   { secrets: [stripeSecretKey] },
   createConnectionToken,
