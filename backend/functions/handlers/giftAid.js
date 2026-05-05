@@ -179,6 +179,139 @@ const updateDeclarationsAsExported = async ({ declarationIds, batchId, actorId, 
   }
 };
 
+const sanitizeSpreadsheetFormula = (value) => {
+  if (typeof value !== 'string') return value;
+  if (/^[\t\r\n ]*[=+\-@]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+};
+
+const escapeCsvValue = (value) => {
+  if (value === undefined || value === null) return '';
+  const stringValue = String(sanitizeSpreadsheetFormula(value));
+  if (
+    stringValue.includes('"') ||
+    stringValue.includes(',') ||
+    stringValue.includes('\n') ||
+    stringValue.includes('\r')
+  ) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
+const toDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && typeof value.toDate === 'function') return value.toDate();
+  if (typeof value === 'object' && typeof value.seconds === 'number') {
+    return new Date(value.seconds * 1000);
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const buildUkTaxYearLabel = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const startYear = month > 4 || (month === 4 && day >= 6) ? year : year - 1;
+  return `${startYear}-${startYear + 1}`;
+};
+
+const resolveUkTaxYearRange = (taxYear) => {
+  const value = typeof taxYear === 'string' ? taxYear.trim() : '';
+  const match = /^(\d{4})-(\d{4})$/.exec(value);
+  if (!match) return null;
+  const startYear = Number(match[1]);
+  const endYear = Number(match[2]);
+  if (!Number.isInteger(startYear) || !Number.isInteger(endYear) || endYear !== startYear + 1) {
+    return null;
+  }
+
+  const start = new Date(Date.UTC(startYear, 3, 6, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(endYear, 3, 5, 23, 59, 59, 999));
+  return { start, end, label: value };
+};
+
+const resolveDonationDate = (donation) => {
+  return (
+    toDate(donation.paymentCompletedAt) ||
+    toDate(donation.timestamp) ||
+    toDate(donation.createdAt) ||
+    null
+  );
+};
+
+const resolveCampaignMode = (donation) => {
+  const direct = typeof donation.campaign_mode === 'string' ? donation.campaign_mode.trim() : '';
+  if (direct) return direct.toUpperCase();
+
+  const camel = typeof donation.campaignMode === 'string' ? donation.campaignMode.trim() : '';
+  if (camel) return camel.toUpperCase();
+
+  const metadataSnake =
+    typeof donation?.metadata?.campaign_mode === 'string'
+      ? donation.metadata.campaign_mode.trim()
+      : '';
+  if (metadataSnake) return metadataSnake.toUpperCase();
+
+  const metadataCamel =
+    typeof donation?.metadata?.campaignMode === 'string'
+      ? donation.metadata.campaignMode.trim()
+      : '';
+  if (metadataCamel) return metadataCamel.toUpperCase();
+
+  return 'DONATION';
+};
+
+const resolveLocationSnapshot = (donation) => {
+  const snapshot =
+    donation && typeof donation.location_snapshot === 'object' ? donation.location_snapshot : null;
+  if (!snapshot) return null;
+  return {
+    name: typeof snapshot.name === 'string' ? snapshot.name.trim() : '',
+    postcode: typeof snapshot.postcode === 'string' ? snapshot.postcode.trim() : '',
+    addressLine1: typeof snapshot.addressLine1 === 'string' ? snapshot.addressLine1.trim() : '',
+  };
+};
+
+const buildGasdsCsv = (rows) => {
+  const headers = [
+    'donation_id',
+    'amount',
+    'date',
+    'method',
+    'location_name',
+    'postcode',
+    'address_line1',
+    'tax_year',
+    'campaign_mode',
+    'is_gasds_eligible',
+  ];
+
+  const csvRows = rows.map((row) =>
+    [
+      row.donation_id,
+      row.amount,
+      row.date,
+      row.method,
+      row.location_name,
+      row.postcode,
+      row.address_line1,
+      row.tax_year,
+      row.campaign_mode,
+      row.is_gasds_eligible,
+    ]
+      .map(escapeCsvValue)
+      .join(','),
+  );
+
+  return [headers.join(','), ...csvRows].join('\n');
+};
+
 const fetchCapturedDeclarations = async (organizationId) => {
   const snapshot = await admin
     .firestore()
@@ -438,7 +571,95 @@ const downloadGiftAidExportBatchFile = (req, res) => {
   });
 };
 
+const exportGasdsCsv = (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== 'POST') {
+        return res.status(405).send({ error: 'Method not allowed' });
+      }
+
+      const auth = await verifyAuth(req);
+      const organizationId =
+        typeof req.body?.organizationId === 'string' ? req.body.organizationId.trim() : '';
+      await ensureGiftAidExportAccess(auth, organizationId);
+
+      const taxYear = typeof req.body?.taxYear === 'string' ? req.body.taxYear.trim() : '';
+      const resolvedTaxYear = resolveUkTaxYearRange(taxYear);
+      if (!resolvedTaxYear) {
+        return res.status(400).send({ error: 'taxYear must be in YYYY-YYYY format' });
+      }
+
+      const requestedLocationIds = Array.isArray(req.body?.locationIds)
+        ? req.body.locationIds
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter(Boolean)
+        : [];
+
+      if (requestedLocationIds.length === 0) {
+        return res.status(400).send({ error: 'At least one location must be selected' });
+      }
+
+      const snapshot = await admin
+        .firestore()
+        .collection('donations')
+        .where('organizationId', '==', organizationId)
+        .get();
+
+      const selectedLocationIds = new Set(requestedLocationIds);
+      const rows = [];
+      for (const doc of snapshot.docs) {
+        const donation = doc.data() || {};
+        const locationId =
+          typeof donation.location_id === 'string' ? donation.location_id.trim() : null;
+        if (!locationId || !selectedLocationIds.has(locationId)) continue;
+
+        const donationDate = resolveDonationDate(donation);
+        if (!donationDate) continue;
+        if (donationDate < resolvedTaxYear.start || donationDate > resolvedTaxYear.end) continue;
+
+        const taxYearLabel = buildUkTaxYearLabel(donationDate);
+        if (!taxYearLabel || taxYearLabel !== resolvedTaxYear.label) continue;
+
+        const campaignMode = resolveCampaignMode(donation);
+        const amount = Number(donation.amount);
+        const amountMajor = Number.isFinite(amount) ? amount : 0;
+        const isEligible = amountMajor <= 30 && campaignMode === 'DONATION';
+        const locationSnapshot = resolveLocationSnapshot(donation);
+
+        rows.push({
+          donation_id: donation.transactionId || donation.stripePaymentIntentId || doc.id,
+          amount: amountMajor.toFixed(2),
+          date: donationDate.toISOString(),
+          method: donation.platform || 'unknown',
+          location_name: locationSnapshot?.name || '',
+          postcode: locationSnapshot?.postcode || '',
+          address_line1: locationSnapshot?.addressLine1 || '',
+          tax_year: resolvedTaxYear.label,
+          campaign_mode: campaignMode,
+          is_gasds_eligible: isEligible ? 'true' : 'false',
+        });
+      }
+
+      rows.sort((left, right) => left.date.localeCompare(right.date));
+      const csvContent = buildGasdsCsv(rows);
+      const fileName = `gasds-${organizationId}-${resolvedTaxYear.label}.csv`;
+
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.set('Cache-Control', 'private, no-store, max-age=0');
+      return res.status(200).send(csvContent);
+    } catch (error) {
+      console.error('Error exporting GASDS csv:', error);
+      const statusCode = Number.isInteger(error.code) ? error.code : 500;
+      return res.status(statusCode).send({
+        error: error.message || 'Failed to export GASDS csv',
+      });
+    }
+  });
+};
+
 module.exports = {
   exportGiftAidDeclarations,
   downloadGiftAidExportBatchFile,
+  exportGasdsCsv,
 };
