@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Screen, AdminSession, Permission } from '../../shared/types';
 import { GiftAidDeclaration } from '../../entities/giftAid/model/types';
 import {
   downloadGiftAidExportFile,
   exportGiftAidDeclarations,
+  exportGasdsCsv,
   giftAidApi,
   type GiftAidExportFile,
 } from '../../entities/giftAid/api';
@@ -11,7 +12,14 @@ import { AdminLayout } from './AdminLayout';
 import { db } from '../../shared/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Card, CardContent } from '../../shared/ui/card';
-import { Table, TableBody, TableCell, TableHeader, TableRow } from '../../shared/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../shared/ui/table';
 import { Badge } from '../../shared/ui/badge';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
@@ -39,6 +47,8 @@ import { useGiftAidExportBatches } from '../../shared/lib/hooks/useGiftAidExport
 import { PaginationControls } from '../../shared/ui/PaginationControls';
 import { useToast } from '../../shared/ui/ToastProvider';
 import { getAllCampaigns } from '../../shared/api';
+import { getLocationsByOrgId } from '../../entities/location/api/locationApi';
+import type { Location } from '../../entities/location/model/types';
 
 const EXPORT_HISTORY_PAGE_SIZE = 2;
 
@@ -54,6 +64,37 @@ const formatFilterDateKey = (value: Date): string => {
   const month = String(value.getMonth() + 1).padStart(2, '0');
   const day = String(value.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const buildTaxYearLabel = (startYear: number) => `${startYear}-${startYear + 1}`;
+
+const getTaxYearRange = (taxYear: string): { start: Date; end: Date } | null => {
+  const match = /^(\d{4})-(\d{4})$/.exec(taxYear.trim());
+  if (!match) return null;
+  const startYear = Number(match[1]);
+  const endYear = Number(match[2]);
+  if (!Number.isInteger(startYear) || !Number.isInteger(endYear) || endYear !== startYear + 1) {
+    return null;
+  }
+
+  return {
+    start: new Date(Date.UTC(startYear, 3, 6, 0, 0, 0, 0)),
+    end: new Date(Date.UTC(endYear, 3, 5, 23, 59, 59, 999)),
+  };
+};
+
+const toDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && value !== null && 'toDate' in value) {
+    const maybeTs = value as { toDate?: () => Date };
+    if (typeof maybeTs.toDate === 'function') return maybeTs.toDate();
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
 };
 
 export function GiftAidManagement({
@@ -73,10 +114,24 @@ export function GiftAidManagement({
   const [selectedDonation, setSelectedDonation] = useState<GiftAidDeclaration | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isGasdsExporting, setIsGasdsExporting] = useState(false);
   const [isUpdatingPaid, setIsUpdatingPaid] = useState(false);
   const [activeDownloadKey, setActiveDownloadKey] = useState<string | null>(null);
   const [charitySubmittedReference, setCharitySubmittedReference] = useState('');
   const [unresolvedReconciliationCount, setUnresolvedReconciliationCount] = useState(0);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [selectedGasdsTaxYear, setSelectedGasdsTaxYear] = useState('');
+  const [selectedGasdsLocationIds, setSelectedGasdsLocationIds] = useState<string[]>([]);
+  const [gasdsSummaryRows, setGasdsSummaryRows] = useState<
+    Array<{
+      locationId: string;
+      locationName: string;
+      postcode: string;
+      totalCollected: number;
+      eligible: number;
+      isCommunityBuilding: boolean;
+    }>
+  >([]);
   const exportHistoryRef = useRef<HTMLDivElement | null>(null);
 
   const {
@@ -185,9 +240,150 @@ export function GiftAidManagement({
   }, [userSession.user.organizationId]);
 
   useEffect(() => {
+    const organizationId = userSession.user.organizationId;
+    if (!organizationId) {
+      setLocations([]);
+      setSelectedGasdsLocationIds([]);
+      return;
+    }
+
+    let isActive = true;
+    const loadLocations = async () => {
+      try {
+        const list = await getLocationsByOrgId(organizationId);
+        if (!isActive) return;
+        setLocations(list);
+        setSelectedGasdsLocationIds(list.map((location) => location.id));
+      } catch (error) {
+        console.error('Failed to load GASDS locations:', error);
+        if (!isActive) return;
+        setLocations([]);
+        setSelectedGasdsLocationIds([]);
+      }
+    };
+
+    void loadLocations();
+    return () => {
+      isActive = false;
+    };
+  }, [userSession.user.organizationId]);
+
+  const availableGasdsTaxYears = useMemo(() => {
+    const current = new Date();
+    const currentStartYear =
+      current.getUTCMonth() > 3 || (current.getUTCMonth() === 3 && current.getUTCDate() >= 6)
+        ? current.getUTCFullYear()
+        : current.getUTCFullYear() - 1;
+
+    return Array.from({ length: 6 }, (_, index) => buildTaxYearLabel(currentStartYear - index));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedGasdsTaxYear && availableGasdsTaxYears.length > 0) {
+      setSelectedGasdsTaxYear(availableGasdsTaxYears[0]);
+    }
+  }, [availableGasdsTaxYears, selectedGasdsTaxYear]);
+
+  useEffect(() => {
     if (!exportHistoryError) return;
     showToast(exportHistoryError, 'warning');
   }, [exportHistoryError, showToast]);
+
+  useEffect(() => {
+    const organizationId = userSession.user.organizationId;
+    const taxYearRange = getTaxYearRange(selectedGasdsTaxYear);
+    if (!organizationId || !taxYearRange) {
+      setGasdsSummaryRows([]);
+      return;
+    }
+
+    const selectedLocationIds = new Set(selectedGasdsLocationIds);
+    if (selectedLocationIds.size === 0) {
+      setGasdsSummaryRows([]);
+      return;
+    }
+
+    let isActive = true;
+    const loadGasdsSummary = async () => {
+      try {
+        const donationsRef = collection(db, 'donations');
+        const donationsQuery = query(donationsRef, where('organizationId', '==', organizationId));
+        const donationSnapshot = await getDocs(donationsQuery);
+
+        const accumulator = new Map<
+          string,
+          { totalCollected: number; eligible: number; locationName: string; postcode: string }
+        >();
+
+        donationSnapshot.docs.forEach((docSnap) => {
+          const donation = docSnap.data() as Record<string, unknown>;
+          const locationId =
+            typeof donation.location_id === 'string' ? donation.location_id.trim() : '';
+          if (!locationId || !selectedLocationIds.has(locationId)) return;
+
+          const date =
+            toDate(donation.paymentCompletedAt) ||
+            toDate(donation.timestamp) ||
+            toDate(donation.createdAt);
+          if (!date || date < taxYearRange.start || date > taxYearRange.end) return;
+
+          const amount = Number(donation.amount);
+          const amountValue = Number.isFinite(amount) ? amount : 0;
+          const campaignModeRaw =
+            typeof donation.campaign_mode === 'string'
+              ? donation.campaign_mode
+              : typeof donation.campaignMode === 'string'
+                ? donation.campaignMode
+                : 'DONATION';
+          const campaignMode = campaignModeRaw.trim().toUpperCase();
+          const isEligible = amountValue <= 30 && campaignMode === 'DONATION';
+
+          const snapshot =
+            donation.location_snapshot && typeof donation.location_snapshot === 'object'
+              ? (donation.location_snapshot as Record<string, unknown>)
+              : null;
+          const locationName = typeof snapshot?.name === 'string' ? snapshot.name.trim() : '';
+          const postcode = typeof snapshot?.postcode === 'string' ? snapshot.postcode.trim() : '';
+
+          const current = accumulator.get(locationId) || {
+            totalCollected: 0,
+            eligible: 0,
+            locationName,
+            postcode,
+          };
+
+          current.totalCollected += amountValue;
+          if (isEligible) current.eligible += amountValue;
+          if (!current.locationName && locationName) current.locationName = locationName;
+          if (!current.postcode && postcode) current.postcode = postcode;
+          accumulator.set(locationId, current);
+        });
+
+        const rows = selectedGasdsLocationIds.map((locationId) => {
+          const location = locations.find((entry) => entry.id === locationId);
+          const totals = accumulator.get(locationId);
+          return {
+            locationId,
+            locationName: totals?.locationName || location?.name || 'Unknown',
+            postcode: totals?.postcode || location?.postcode || '',
+            totalCollected: totals?.totalCollected || 0,
+            eligible: totals?.eligible || 0,
+            isCommunityBuilding: Boolean(location?.isCommunityBuilding),
+          };
+        });
+
+        if (isActive) setGasdsSummaryRows(rows);
+      } catch (error) {
+        console.error('Failed to load GASDS summary:', error);
+        if (isActive) setGasdsSummaryRows([]);
+      }
+    };
+
+    void loadGasdsSummary();
+    return () => {
+      isActive = false;
+    };
+  }, [locations, selectedGasdsLocationIds, selectedGasdsTaxYear, userSession.user.organizationId]);
 
   const refreshGiftAidSection = useCallback(async () => {
     await Promise.all([refresh(), refreshExportHistory()]);
@@ -361,6 +557,42 @@ export function GiftAidManagement({
       showToast(message, 'error');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleToggleGasdsLocation = (locationId: string) => {
+    setSelectedGasdsLocationIds((current) =>
+      current.includes(locationId)
+        ? current.filter((id) => id !== locationId)
+        : [...current, locationId],
+    );
+  };
+
+  const handleExportGasds = async () => {
+    if (!userSession.user.organizationId || !canExportGiftAid) return;
+    if (!selectedGasdsTaxYear) {
+      showToast('Select a tax year before exporting GASDS CSV.', 'warning');
+      return;
+    }
+    if (selectedGasdsLocationIds.length === 0) {
+      showToast('Select at least one location before exporting GASDS CSV.', 'warning');
+      return;
+    }
+
+    setIsGasdsExporting(true);
+    try {
+      await exportGasdsCsv({
+        organizationId: userSession.user.organizationId,
+        taxYear: selectedGasdsTaxYear,
+        locationIds: selectedGasdsLocationIds,
+      });
+      showToast('GASDS CSV export started. Your download should begin shortly.', 'success');
+    } catch (error) {
+      console.error('Failed to export GASDS CSV:', error);
+      const message = error instanceof Error ? error.message : 'Failed to export GASDS CSV.';
+      showToast(message, 'error');
+    } finally {
+      setIsGasdsExporting(false);
     }
   };
 
@@ -541,6 +773,122 @@ export function GiftAidManagement({
             </CardContent>
           </Card>
         )}
+
+        {canExportGiftAid ? (
+          <Card className="border border-emerald-100">
+            <CardContent className="p-4 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">GASDS Export</h2>
+                  <p className="text-sm text-gray-600">
+                    Export all donations for a UK tax year with GASDS eligibility flags.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleExportGasds}
+                  disabled={
+                    isGasdsExporting ||
+                    !selectedGasdsTaxYear ||
+                    selectedGasdsLocationIds.length === 0
+                  }
+                  className="border-[#064e3b] text-[#064e3b] hover:bg-emerald-50"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {isGasdsExporting ? 'Exporting...' : 'Export GASDS CSV'}
+                </Button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <Label className="mb-1 block text-sm font-medium text-gray-700">Tax year</Label>
+                  <select
+                    value={selectedGasdsTaxYear}
+                    onChange={(event) => setSelectedGasdsTaxYear(event.target.value)}
+                    className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:border-emerald-500 focus:outline-none"
+                  >
+                    {availableGasdsTaxYears.map((taxYear) => (
+                      <option key={taxYear} value={taxYear}>
+                        {taxYear}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <Label className="mb-1 block text-sm font-medium text-gray-700">Locations</Label>
+                  <div className="max-h-32 overflow-auto rounded-xl border border-gray-200 p-2 space-y-1">
+                    {locations.length === 0 ? (
+                      <p className="text-sm text-gray-500">No locations found.</p>
+                    ) : (
+                      locations.map((location) => (
+                        <label
+                          key={location.id}
+                          className="flex items-center gap-2 text-sm text-gray-700"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedGasdsLocationIds.includes(location.id)}
+                            onChange={() => handleToggleGasdsLocation(location.id)}
+                          />
+                          <span>{location.name}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="font-semibold">Location</TableHead>
+                      <TableHead className="font-semibold">Postcode</TableHead>
+                      <TableHead className="font-semibold">Total Collected</TableHead>
+                      <TableHead className="font-semibold">Eligible</TableHead>
+                      <TableHead className="font-semibold">Cap</TableHead>
+                      <TableHead className="font-semibold">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {gasdsSummaryRows.map((row) => {
+                      const exceedsCap = row.eligible > 8000;
+                      return (
+                        <TableRow key={row.locationId}>
+                          <TableCell>{row.locationName}</TableCell>
+                          <TableCell>{row.postcode || 'N/A'}</TableCell>
+                          <TableCell>{formatCurrency(row.totalCollected)}</TableCell>
+                          <TableCell>{formatCurrency(row.eligible)}</TableCell>
+                          <TableCell>
+                            £8,000
+                            {row.isCommunityBuilding ? (
+                              <p className="text-xs text-gray-500">
+                                Potential £16k cap (subject to eligibility)
+                              </p>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                exceedsCap
+                                  ? 'bg-red-50 text-red-700 border-red-200'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }
+                            >
+                              {exceedsCap ? 'Exceeds' : 'OK'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Stats Cards */}
         <AdminStatsGrid className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6">
