@@ -1,87 +1,122 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Button } from '@/shared/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
-import { Mail, ArrowLeft, Info } from 'lucide-react';
+import { Mail, ArrowLeft, Lock, CheckCircle, Loader2 } from 'lucide-react';
+import { FUNCTION_URLS } from '@/shared/config/functions';
 
 export function ManageCheckEmailScreen() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const email = searchParams.get('email') || '';
   const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [error, setError] = useState('');
 
-  // Mask email for privacy (show first 4 chars and domain)
-  const maskEmail = (email: string) => {
-    if (!email) return '';
-    const [local, domain] = email.split('@');
-    if (!domain) return email;
-    const maskedLocal = local.length > 4 ? local.substring(0, 4) + '***' : local;
-    return `${maskedLocal}@${domain}`;
+  const maskEmail = (raw: string) => {
+    if (!raw) return '';
+    const [local, domain] = raw.split('@');
+    if (!domain) return raw;
+    const masked = local.length > 4 ? local.substring(0, 4) + '***' : local;
+    return `${masked}@${domain}`;
   };
 
   const handleResend = async () => {
     setResending(true);
+    setError('');
     try {
-      // TODO: Call API to resend magic link
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await fetch(FUNCTION_URLS.sendSubscriptionMagicLink, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resend link');
+      }
+
+      if (data.devLink) {
+        console.warn('Development Magic Link:', data.devLink);
+      }
+
+      setResent(true);
     } catch (err) {
       console.error('Error resending magic link:', err);
+      setError('Could not resend the link. Please try again.');
     } finally {
       setResending(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] flex items-center justify-center px-4 py-6 sm:p-4">
+    <div className="min-h-screen bg-[#EEEFF3] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Main Card */}
-        <Card className="shadow-sm bg-white">
-          <CardHeader className="text-center space-y-3 sm:space-y-4 pb-5 sm:pb-6 px-4 sm:px-6 pt-5 sm:pt-6">
-            <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-blue-100 mx-auto">
-              <Mail className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600" />
+        {/* Card */}
+        <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] px-8 py-10">
+          {/* Icon */}
+          <div className="flex justify-center mb-7">
+            <div className="w-16 h-16 rounded-full bg-[#D1FAE5] flex items-center justify-center">
+              <Mail className="w-8 h-8 text-[#047857]" />
             </div>
-            <div>
-              <CardTitle className="text-xl sm:text-2xl font-bold mb-1.5 sm:mb-2 text-gray-900">
-                Check your email
-              </CardTitle>
-              <CardDescription className="text-sm sm:text-base text-gray-600">
-                We've sent a secure link to
-                <br />
-                <span className="font-medium text-gray-900">{maskEmail(email)}</span>
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6 pb-4 sm:pb-6">
-            {/* Info Notice */}
-            <div className="flex items-start gap-2.5 sm:gap-3 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <Info className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 shrink-0 mt-0.5" />
-              <p className="text-xs sm:text-sm text-gray-600">
-                The link expires in 15 minutes and can be used once.
-              </p>
-            </div>
+          </div>
 
-            {/* Resend Button */}
-            <Button
-              variant="outline"
-              className="w-full h-11 sm:h-12 text-base"
-              onClick={handleResend}
-              disabled={resending}
-            >
-              {resending ? 'Sending...' : 'Resend link'}
-            </Button>
+          {/* Heading */}
+          <div className="text-center mb-8">
+            <h1 className="text-[28px] font-bold text-[#111827] leading-tight mb-3">
+              Check your email
+            </h1>
+            <p className="text-base text-[#6B7280] leading-relaxed">We sent a secure link to</p>
+            <p className="text-base font-semibold text-[#111827] mt-1">{maskEmail(email)}</p>
+          </div>
 
-            {/* Back to Login */}
+          {/* Actions */}
+          <div className="space-y-3">
+            {/* Resend / Sent state */}
+            {resent ? (
+              <div className="w-full h-14 flex items-center justify-center gap-2.5 rounded-xl bg-[#D1FAE5] border border-[#6EE7B7] text-[#047857] font-semibold text-base">
+                <CheckCircle className="w-5 h-5" />
+                Link sent — check your inbox
+              </div>
+            ) : (
+              <button
+                onClick={handleResend}
+                disabled={resending}
+                className="w-full h-14 flex items-center justify-center gap-2 border-2 border-[#047857] text-[#047857] hover:bg-[#047857] hover:text-white disabled:opacity-50 font-semibold text-base rounded-xl transition-colors"
+              >
+                {resending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sending…
+                  </>
+                ) : (
+                  'Resend link'
+                )}
+              </button>
+            )}
+
+            {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+
+            {/* Back */}
             <button
               onClick={() => router.push('/manage')}
-              className="w-full flex items-center justify-center gap-2 text-sm text-emerald-600 hover:underline font-medium"
+              className="w-full h-12 flex items-center justify-center gap-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to login
             </button>
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Divider */}
+          <div className="my-7 border-t border-[#F3F4F6]" />
+
+          {/* Security note */}
+          <div className="flex items-start gap-3 text-sm text-[#9CA3AF]">
+            <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>The link expires after 15 minutes and can only be used once.</span>
+          </div>
+        </div>
       </div>
     </div>
   );
