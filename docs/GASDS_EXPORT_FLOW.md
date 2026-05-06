@@ -6,10 +6,9 @@ This document explains the GASDS export flow end-to-end:
 
 - what the flow does
 - how tax year and location filtering work
-- how CSV rows are constructed
+- how detailed and summary CSVs are generated
+- how batch history and file re-download work
 - what security and permission controls are enforced
-
-This is the **GASDS CSV export** flow from Admin Gift Aid.
 
 ---
 
@@ -19,8 +18,10 @@ This is the **GASDS CSV export** flow from Admin Gift Aid.
 
 - Exporting donation-level GASDS CSV for a selected UK tax year
 - Optional location filtering (multi-select, default all selected)
-- Per-donation eligibility flag calculation:
-  - `is_gasds_eligible = (amount <= 30) AND (campaign_mode == "DONATION")`
+- Strict export mode (eligible rows only)
+- Eligibility flag + ineligibility reason classification
+- Per-location summary CSV
+- Batch history persistence and re-download
 - CSV safety hardening (formula injection guard + escaping)
 
 ### Out of Scope
@@ -28,7 +29,6 @@ This is the **GASDS CSV export** flow from Admin Gift Aid.
 - HMRC submission integration
 - Cap enforcement in export output
 - 10:1 Gift Aid matching logic
-- Batch history persistence (not implemented for GASDS yet)
 
 ---
 
@@ -38,30 +38,41 @@ This is the **GASDS CSV export** flow from Admin Gift Aid.
 
 - `backend/functions/handlers/giftAid.js`
   - `exportGasdsCsv`
+  - `downloadGasdsExportBatchFile`
   - auth + permission + org checks
   - tax year/date filtering
   - location filtering
-  - GASDS CSV generation
+  - detailed + summary CSV generation
+  - GASDS batch lifecycle persistence
 
 - `backend/functions/index.js`
-  - function registration:
+  - function registrations:
     - `exportGasdsCsv`
+    - `downloadGasdsExportBatchFile`
 
 ### Frontend
 
 - `src/entities/giftAid/api/giftAidExportApi.ts`
-  - `exportGasdsCsv(...)` API call
-  - authenticated request + browser download trigger
+  - `exportGasdsCsv(...)`
+  - GASDS export history fetch (paginated)
+  - GASDS batch file download
+
+- `src/shared/lib/hooks/useGasdsExportBatches.ts`
+  - paginated GASDS batch history hook
 
 - `src/views/admin/GiftAidManagement.tsx`
   - GASDS section UI
   - tax year selector
   - location multi-select
+  - strict mode toggle
+  - compliance note
   - location summary table
-  - export action button
+  - ineligibility summary display
+  - batch history with detailed/summary re-download
 
 - `src/shared/config/functions.ts`
   - `FUNCTION_URLS.exportGasdsCsv`
+  - `FUNCTION_URLS.downloadGasdsExportBatchFile`
 
 ---
 
@@ -72,14 +83,29 @@ flowchart LR
   A[Admin GiftAidManagement UI] --> B[giftAidExportApi.ts]
   B --> C[CF: exportGasdsCsv]
   C --> D[(Firestore: donations)]
-  C --> E[CSV builder in giftAid.js]
-  E --> F[CSV response stream]
-  F --> G[Browser file download]
+  C --> E[(Cloud Storage: gasdsExports/...)]
+  C --> F[(Firestore: gasdsExportBatches)]
+  A --> G[CF: downloadGasdsExportBatchFile]
+  G --> E
+  G --> H[Browser download]
 ```
 
 ---
 
-## 5) End-to-End Sequence
+## 5) Export Batch Lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending
+  pending --> completed: files saved + batch updated
+  pending --> failed: fatal error
+  failed --> [*]
+  completed --> [*]
+```
+
+---
+
+## 6) End-to-End Sequence
 
 ```mermaid
 sequenceDiagram
@@ -88,59 +114,87 @@ sequenceDiagram
   participant API as giftAidExportApi.ts
   participant FN as exportGasdsCsv
   participant DB as Firestore
+  participant ST as Cloud Storage
 
-  Admin->>UI: Select tax year + locations
+  Admin->>UI: Select tax year + locations (+ optional strict mode)
   Admin->>UI: Click "Export GASDS CSV"
-  UI->>API: exportGasdsCsv({ organizationId, taxYear, locationIds })
+  UI->>API: exportGasdsCsv(request)
   API->>FN: POST + Bearer token
   FN->>FN: verifyAuth + permission + org scope
-  FN->>FN: validate taxYear + locationIds
-  FN->>DB: Query donations by organizationId
+  FN->>FN: validate request payload
+  FN->>DB: Query donations for organization
   DB-->>FN: Donation docs
   FN->>FN: Filter by UK tax year + selected locations
-  FN->>FN: Compute campaign_mode + is_gasds_eligible
-  FN-->>API: CSV bytes + attachment headers
-  API-->>UI: Blob download
+  FN->>FN: Build detailed rows + location summary rows
+  FN->>DB: Create batch(status=pending)
+  FN->>ST: Save detailed CSV + summary CSV
+  FN->>DB: Update batch(status=completed, file metadata, counts)
+  FN-->>API: success payload with batch/files/summary
+  UI->>API: downloadGasdsExportFile(batchId, detailed)
+  UI->>API: downloadGasdsExportFile(batchId, summary)
 ```
 
 ---
 
-## 6) Request Contract
+## 7) Request Contract
 
-Endpoint:
+### Export Endpoint
 
 - `POST /exportGasdsCsv`
 
-Body:
+Request body:
 
 ```json
 {
   "organizationId": "org_123",
   "taxYear": "2025-2026",
-  "locationIds": ["loc_a", "loc_b"]
+  "locationIds": ["loc_a", "loc_b"],
+  "strictMode": false
 }
 ```
 
 Validation:
 
 - `organizationId` required
-- `taxYear` must be `YYYY-YYYY` and contiguous (example: `2025-2026`)
+- `taxYear` must be `YYYY-YYYY` and contiguous
 - `locationIds` must include at least one location
+- `strictMode` optional boolean
+
+### Download Endpoint
+
+- `POST /downloadGasdsExportBatchFile`
+
+Request body:
+
+```json
+{
+  "batchId": "batch_abc",
+  "fileKind": "detailed"
+}
+```
+
+`fileKind` must be:
+
+- `detailed`
+- `summary`
 
 ---
 
-## 7) Permission Model
+## 8) Permission Model
 
-GASDS export uses the Gift Aid export permission gate:
+GASDS export uses existing Gift Aid export permissions:
 
-- required permission: `export_giftaid` (or `system_admin`)
-- organization scope:
-  - non-privileged users can export only their own organization
-  - privileged (`super_admin`) can cross organization boundaries
+- create export: `export_giftaid` or `system_admin`
+- download export batch files: `download_giftaid_exports` or `system_admin`
+
+Org scope:
+
+- non-privileged users can only operate on their own organization
+- privileged (`super_admin`) can cross org boundary
 
 ---
 
-## 8) Tax Year Logic (UK)
+## 9) Tax Year Logic (UK)
 
 Tax year boundary:
 
@@ -151,17 +205,17 @@ Example:
 
 - `2025-2026` means `2025-04-06` through `2026-04-05`
 
-Only donations within this range are exported.
+Only donations in this range are considered.
 
 ---
 
-## 9) Donation Selection Rules
+## 10) Donation Selection Rules
 
-A donation is exported when all are true:
+A donation row is considered when all are true:
 
-1. `organizationId` matches request
+1. organization matches request
 2. `location_id` exists and is in selected `locationIds`
-3. effective donation date is inside selected UK tax year range
+3. effective donation date is within selected UK tax year range
 
 Effective date precedence:
 
@@ -171,7 +225,29 @@ Effective date precedence:
 
 ---
 
-## 10) CSV Schema
+## 11) Eligibility and Strict Mode
+
+Eligibility rule:
+
+- `is_gasds_eligible = (amount <= 30) AND (campaign_mode == "DONATION")`
+
+Mode behavior:
+
+- default mode: include all matched rows; ineligible rows carry a reason
+- strict mode: include only eligible rows in detailed CSV
+
+Ineligibility reason values:
+
+- `over_30`
+- `non_donation_mode`
+- `over_30_and_non_donation_mode`
+- empty string when eligible
+
+---
+
+## 12) CSV Schemas
+
+### 12.1 Detailed GASDS CSV
 
 Header order:
 
@@ -185,118 +261,132 @@ Header order:
 8. `tax_year`
 9. `campaign_mode`
 10. `is_gasds_eligible`
+11. `gift_aid_matched_in_same_year`
+12. `reason_not_eligible`
 
-Field sources:
+Field source note:
 
-- `donation_id`: `transactionId` fallback `stripePaymentIntentId` fallback document id
-- `amount`: `donation.amount` (formatted to 2 decimal places)
-- `date`: ISO string from effective donation date
-- `method`: `donation.platform` fallback `unknown`
-- `location_name`, `postcode`, `address_line1`: `donation.location_snapshot`
-- `tax_year`: selected tax year label
-- `campaign_mode`: resolved from:
-  - `campaign_mode`
-  - `campaignMode`
-  - `metadata.campaign_mode`
-  - `metadata.campaignMode`
-  - fallback `DONATION`
-- `is_gasds_eligible`: `true|false`
+- `amount` comes from `donation.amount` (stored in minor units) and is converted to major units for CSV output
+- `location_name` and `postcode` come from `donation.location_snapshot`
+- `address_line1` uses `location_snapshot.addressLine1` when present
+- fallback for legacy snapshots uses `location_snapshot.city` when `addressLine1` is absent
 
----
+### 12.2 Location Summary CSV
 
-## 11) Eligibility Logic
+Header order:
 
-Eligibility is flagged, not filtered:
-
-- `is_gasds_eligible = (amount <= 30) AND (campaign_mode == "DONATION")`
-
-All matched donations are included in CSV, regardless of eligibility.
+1. `location_id`
+2. `location_name`
+3. `postcode`
+4. `total_collected`
+5. `eligible`
+6. `cap`
+7. `status`
+8. `community_building_note`
 
 ---
 
-## 12) UI Behavior (Admin Gift Aid)
+## 13) Batch Storage and Metadata
 
-`GiftAidManagement.tsx` GASDS section provides:
+Collection:
 
-- tax year selector (recent tax years)
-- location checkbox list (all selected by default)
-- summary table by selected location:
-  - Total Collected
-  - Eligible
-  - Cap (`£8,000`)
-  - Status (`OK` / `Exceeds`)
-  - community building note for potential `£16k` cap
+- `gasdsExportBatches`
 
-Validation in UI before export:
+Stored files:
 
-- tax year must be selected
-- at least one location must be selected
+- `gasdsExports/{organizationId}/{batchId}/{fileName}.csv`
 
----
+Batch metadata includes:
 
-## 13) Security Controls
-
-### Auth and Authorization
-
-- Firebase token verification on backend
-- permission and org scope enforcement in cloud function
-
-### CSV Formula Injection Hardening
-
-Before CSV escaping:
-
-- if a cell starts (including leading whitespace/newline/tab) with `=`, `+`, `-`, or `@`
-- value is prefixed with `'`
-
-Then standard CSV escaping is applied for quotes, commas, and line breaks.
+- creator identity
+- tax year
+- strict mode
+- selected location IDs
+- row counts
+- reason counts
+- file metadata (`fileName`, `storagePath`, `sha256`, `sizeBytes`)
+- lifecycle status (`pending`, `completed`, `failed`)
 
 ---
 
-## 14) Error Handling
+## 14) UI Behavior
 
-Typical responses:
+`GiftAidManagement.tsx` GASDS section includes:
 
-- `400` invalid input (`taxYear`, missing location selection, missing organization id)
-- `403` permission or org scope violation
-- `405` method not allowed
-- `500` unhandled server failure
-
-On success:
-
-- returns CSV file bytes with:
-  - `Content-Type: text/csv; charset=utf-8`
-  - `Content-Disposition: attachment; filename="gasds-{organizationId}-{taxYear}.csv"`
-  - `Cache-Control: private, no-store, max-age=0`
+- UK tax year selector label clarified as scheme year
+- compliance note:
+  - eligibility is indicative; final HMRC checks still required
+- location multi-select (all selected by default)
+- strict mode toggle
+- per-location summary table with cap/status
+- ineligibility reason count summary
+- GASDS batch history with detailed/summary re-download actions
 
 ---
 
-## 15) Known Differences vs Gift Aid Export
+## 15) Security Controls
 
-Current GASDS export is **on-demand streaming**:
+### 15.1 Auth + Authorization
 
-- no batch doc persisted
-- no Cloud Storage file persistence
-- no checksum (`sha256`) metadata
-- no re-download history endpoint
+- Firebase token verification
+- permission checks
+- organization scope checks
 
-This can be extended later if parity with Gift Aid batch governance is required.
+### 15.2 CSV Formula Injection Hardening
+
+Before escaping CSV:
+
+- if a string starts (including leading whitespace/tab/newline) with `=`, `+`, `-`, or `@`
+- prefix with `'`
+
+Then apply normal CSV escaping for quotes/commas/newlines.
 
 ---
 
-## 16) Quick Reference
+## 16) Error Handling
 
-Backend function:
+Common errors:
 
-- `exportGasdsCsv` in `backend/functions/handlers/giftAid.js`
+- `400` invalid request payload
+- `403` permission/org scope violations
+- `404` batch/file not found during download
+- `405` wrong HTTP method
+- `500` unhandled server error
 
-Function registration:
+On export failure after batch creation:
 
-- `exports.exportGasdsCsv` in `backend/functions/index.js`
+- batch status is set to `failed`
+- `failureMessage` and `failedAt` are recorded
 
-Frontend API bridge:
+---
 
-- `exportGasdsCsv(...)` in `src/entities/giftAid/api/giftAidExportApi.ts`
+## 17) Tests
 
-Admin UI entry:
+Boundary coverage added for UK tax year logic:
 
-- GASDS section in `src/views/admin/GiftAidManagement.tsx`
+- `5 April 23:59:59.999` remains in previous tax year
+- `6 April 00:00:00.000` moves to next tax year
+- range parsing validates `YYYY-YYYY` contiguity
+
+Test file:
+
+- `backend/functions/handlers/giftAid.gasds.test.js`
+
+---
+
+## 18) Quick Reference
+
+Backend:
+
+- `exportGasdsCsv`
+- `downloadGasdsExportBatchFile`
+
+Frontend API:
+
+- `exportGasdsCsv(...)`
+- `fetchGasdsExportBatchesPaginated(...)`
+- `downloadGasdsExportFile(...)`
+
+UI:
+
+- GASDS panel in `src/views/admin/GiftAidManagement.tsx`
