@@ -403,7 +403,7 @@ describe('handleSubscriptionWebhook recurring location handling', () => {
     expect(res.statusCode).toBe(200);
     expect(createDonationDoc).toHaveBeenCalledWith(
       expect.objectContaining({
-        transactionId: 'pi_locked_location_001',
+        transactionId: 'in_locked_location_001',
         kioskId: 'kiosk_reassigned_001',
         location_id: 'loc_original_building',
         location_snapshot: {

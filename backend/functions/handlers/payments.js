@@ -144,6 +144,16 @@ const createKioskPaymentIntent = (req, res) => {
         customerId,
       } = req.body;
 
+      console.log('[Payment] Incoming createKioskPaymentIntent request', {
+        campaignId: metadata?.campaignId || null,
+        frequency: frequency || null,
+        intervalCount: intervalCount ?? null,
+        hasDonorEmail: Boolean(donor?.email),
+        hasPaymentMethodId: Boolean(paymentMethodId),
+        hasSetupIntentId: Boolean(setupIntentId),
+        hasCustomerId: Boolean(customerId),
+      });
+
       if (!amount || !currency || !metadata || !metadata.campaignId) {
         return res.status(400).send({ error: 'Missing amount, currency, or campaignId' });
       }
@@ -234,6 +244,13 @@ const createKioskPaymentIntent = (req, res) => {
         clientSecret = paymentIntent.client_secret;
       } else {
         // Recurring donation (subscription)
+        console.log('[Payment] Entering recurring branch', {
+          frequency,
+          intervalCount,
+          hasPaymentMethodId: Boolean(paymentMethodId),
+          hasSetupIntentId: Boolean(setupIntentId),
+        });
+
         if (!donor?.email) {
           return res.status(400).send({ error: 'Missing donor.email for recurring donation' });
         }
@@ -254,6 +271,12 @@ const createKioskPaymentIntent = (req, res) => {
         // 1) First call (no paymentMethodId/setupIntentId): return SetupIntent client secret
         // 2) Second call (setupIntentId provided): resolve payment_method from SetupIntent
         if (!resolvedPaymentMethodId && !setupIntentId) {
+          console.log('[Payment] Recurring bootstrap: creating SetupIntent', {
+            customerId: customer.id,
+            frequency,
+            normalizedIntervalCount,
+          });
+
           const setupIntent = await stripeClient.setupIntents.create({
             customer: customer.id,
             payment_method_types: ['card'],
@@ -274,6 +297,11 @@ const createKioskPaymentIntent = (req, res) => {
         }
 
         if (!resolvedPaymentMethodId && setupIntentId) {
+          console.log('[Payment] Recurring finalize: resolving payment method from SetupIntent', {
+            setupIntentId,
+            customerId: customer.id,
+          });
+
           const setupIntent = await stripeClient.setupIntents.retrieve(setupIntentId, {
             expand: ['payment_method'],
           });
@@ -357,6 +385,76 @@ const createKioskPaymentIntent = (req, res) => {
           payment_intent_status: subscription.latest_invoice?.payment_intent?.status,
         });
 
+        // Update invoice + payment intent metadata before heavier persistence work.
+        // Stripe emits payment_intent.created at object creation time, so that event can still
+        // show empty metadata; this ensures subsequent events/object reads have the canonical keys.
+        let latestInvoice = subscription.latest_invoice;
+
+        if (
+          latestInvoice &&
+          !latestInvoice.payment_intent &&
+          latestInvoice.status === 'open' &&
+          latestInvoice.id
+        ) {
+          console.warn(
+            'Latest invoice is open without expanded payment intent; reloading invoice',
+            {
+              subscriptionId: subscription.id,
+              invoiceId: latestInvoice.id,
+            },
+          );
+
+          latestInvoice = await stripeClient.invoices.retrieve(latestInvoice.id, {
+            expand: ['payment_intent'],
+          });
+        }
+
+        const recurringMetadata = {
+          ...canonicalMetadata,
+          isRecurring: true,
+          recurringInterest: true,
+          frequency,
+          intervalCount: String(normalizedIntervalCount),
+          subscriptionId: subscription.id,
+        };
+
+        if (latestInvoice?.id) {
+          try {
+            await stripeClient.invoices.update(latestInvoice.id, {
+              metadata: {
+                ...recurringMetadata,
+                invoiceId: latestInvoice.id,
+              },
+            });
+          } catch (invoiceMetaError) {
+            console.warn('Unable to update invoice metadata for recurring donation', {
+              invoiceId: latestInvoice.id,
+              error: invoiceMetaError.message,
+            });
+          }
+        }
+
+        const paymentIntentId =
+          typeof latestInvoice?.payment_intent === 'string'
+            ? latestInvoice.payment_intent
+            : latestInvoice?.payment_intent?.id;
+
+        if (paymentIntentId) {
+          try {
+            await stripeClient.paymentIntents.update(paymentIntentId, {
+              metadata: {
+                ...recurringMetadata,
+                invoiceId: latestInvoice?.id || null,
+              },
+            });
+          } catch (paymentIntentMetaError) {
+            console.warn('Unable to update payment intent metadata for recurring donation', {
+              paymentIntentId,
+              error: paymentIntentMetaError.message,
+            });
+          }
+        }
+
         await createSubscriptionDoc({
           stripeSubscriptionId: subscription.id,
           customerId: customer.id,
@@ -379,27 +477,6 @@ const createKioskPaymentIntent = (req, res) => {
             ...canonicalMetadata,
           },
         });
-
-        let latestInvoice = subscription.latest_invoice;
-
-        if (
-          latestInvoice &&
-          !latestInvoice.payment_intent &&
-          latestInvoice.status === 'open' &&
-          latestInvoice.id
-        ) {
-          console.warn(
-            'Latest invoice is open without expanded payment intent; reloading invoice',
-            {
-              subscriptionId: subscription.id,
-              invoiceId: latestInvoice.id,
-            },
-          );
-
-          latestInvoice = await stripeClient.invoices.retrieve(latestInvoice.id, {
-            expand: ['payment_intent'],
-          });
-        }
 
         if (latestInvoice) {
           if (latestInvoice.payment_intent) {

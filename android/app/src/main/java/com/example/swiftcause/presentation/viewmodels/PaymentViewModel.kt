@@ -138,8 +138,11 @@ class PaymentViewModel(
                         } else if (response.success == true) {
                             // Recurring payment succeeded immediately
                             Log.d(TAG, "Recurring payment succeeded immediately")
+                            val magicLinkLookupId = response.invoiceId
+                                ?: response.subscriptionId
+                                ?: ""
                             _paymentState.value = PaymentState.Success(
-                                transactionId = response.subscriptionId ?: "",
+                                transactionId = magicLinkLookupId,
                                 amount = amount,
                                 currency = currency
                             )
@@ -246,8 +249,11 @@ class PaymentViewModel(
                         _isSetupIntentFlow.value = false
                         _paymentState.value = PaymentState.Ready
                     } else if (response.success == true) {
+                        val magicLinkLookupId = response.invoiceId
+                            ?: response.subscriptionId
+                            ?: setupIntentId
                         _paymentState.value = PaymentState.Success(
-                            transactionId = response.subscriptionId ?: setupIntentId,
+                            transactionId = magicLinkLookupId,
                             amount = amount,
                             currency = currency
                         )

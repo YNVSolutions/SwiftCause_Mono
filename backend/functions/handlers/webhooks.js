@@ -373,7 +373,7 @@ const handleAccountUpdatedStripeWebhook = async (req, res) => {
           { merge: true },
         );
       console.log(`Stripe account status updated for organization ${orgId}:
-        Charges Enabled: ${chargesEnabled}, 
+        Charges Enabled: ${chargesEnabled},
         Payouts Enabled: ${payoutsEnabled}`);
     } else {
       console.warn('Received account.updated webhook without orgId in metadata.', account.id);
@@ -393,10 +393,11 @@ const handleAccountUpdatedStripeWebhook = async (req, res) => {
  */
 const handlePaymentCompletedStripeWebhook = async (req, res) => {
   let event;
+  let stripeClient;
 
   try {
     // Ensure Stripe is initialized
-    const stripeClient = ensureStripeInitialized();
+    stripeClient = ensureStripeInitialized();
 
     const sig = req.headers['stripe-signature'];
     const { payment: endpointSecretPayment } = getWebhookSecrets();
@@ -427,11 +428,16 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
       let resolvedIsRecurring = toBoolean(metadata.isRecurring);
       let resolvedRecurringInterval = toStringOrNull(metadata.recurringInterval);
       let resolvedSubscriptionId = toStringOrNull(metadata.subscriptionId);
-      let resolvedInvoiceId = toStringOrNull(paymentIntent.invoice);
+      let resolvedInvoiceId =
+        toStringOrNull(paymentIntent.invoice) ||
+        (paymentIntent.payment_details
+          ? toStringOrNull(paymentIntent.payment_details.order_reference)
+          : null);
       let resolvedDonorName = toStringOrNull(metadata.donorName) || 'Anonymous';
       let resolvedDonorEmail = toStringOrNull(metadata.donorEmail);
       let resolvedDonorPhone = toStringOrNull(metadata.donorPhone);
       let resolvedPlatform = toStringOrNull(metadata.platform) || 'unknown';
+      let recurringSubscriptionMetadata = null;
       let lockedSubscriptionLocationId = null;
       let lockedSubscriptionLocationSnapshot = null;
       let lockedSubscriptionKioskId = null;
@@ -450,6 +456,27 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
         }
       }
 
+      // Some payment_intent.succeeded payloads omit invoice references entirely.
+      // For recurring flows, attempt to locate the invoice by payment intent id.
+      if (!resolvedInvoiceId) {
+        try {
+          const invoiceList = await stripeClient.invoices.list({
+            payment_intent: paymentIntent.id,
+            limit: 1,
+          });
+          const fallbackInvoice = invoiceList?.data?.[0];
+          if (fallbackInvoice) {
+            resolvedInvoiceId = toStringOrNull(fallbackInvoice.id) || resolvedInvoiceId;
+          }
+        } catch (invoiceListError) {
+          console.warn(
+            'Unable to resolve invoice by payment intent id:',
+            paymentIntent.id,
+            invoiceListError.message,
+          );
+        }
+      }
+
       // Enrich recurring signals for subscription-driven payment intents.
       // Some first-invoice payment_intent payloads don't carry recurring metadata directly.
       if (resolvedInvoiceId) {
@@ -464,6 +491,7 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
 
             const subscriptionData = await getSubscriptionByStripeId(stripeSubscriptionId);
             if (subscriptionData) {
+              recurringSubscriptionMetadata = subscriptionData.metadata || null;
               resolvedRecurringInterval =
                 subscriptionData.interval === 'year'
                   ? 'yearly'
@@ -515,6 +543,50 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
         }
       }
 
+      // Normalize the donation transaction ID for recurring payments so the same invoice
+      // is not written twice under different IDs across payment_intent.succeeded and invoice.paid.
+      // For recurring donations we prefer the invoice payment intent when available, otherwise
+      // fall back to the invoice id. One-time donations continue to use the payment intent id.
+      const recurringDonationTransactionId =
+        resolvedIsRecurring && resolvedInvoiceId ? resolvedInvoiceId : paymentIntent.id;
+
+      // Invoiced/recurring donations are finalized from invoice.paid where full subscription
+      // context is available. Skipping here prevents creating sparse placeholder docs
+      // and duplicate recurring donation records.
+      const shouldDeferToInvoicePaid =
+        resolvedIsRecurring ||
+        Boolean(resolvedInvoiceId) ||
+        toBoolean(metadata.recurringInterest) ||
+        Boolean(toStringOrNull(metadata.frequency)) ||
+        Boolean(resolvedSubscriptionId) ||
+        (Object.keys(metadata).length === 0 &&
+          !resolvedCampaignId &&
+          !organizationId &&
+          !resolvedSubscriptionId);
+
+      if (shouldDeferToInvoicePaid) {
+        console.log(
+          '[Webhook] Deferring donation write from payment_intent.succeeded to invoice.paid',
+          {
+            paymentIntentId: paymentIntent.id,
+            invoiceId: resolvedInvoiceId,
+            subscriptionId: resolvedSubscriptionId,
+            resolvedIsRecurring,
+            hasRecurringInterest: toBoolean(metadata.recurringInterest),
+            metadataFrequency: toStringOrNull(metadata.frequency),
+            hasMetadataKeys: Object.keys(metadata).length > 0,
+            hasCampaignContext: Boolean(resolvedCampaignId || organizationId),
+          },
+        );
+
+        await markEventProcessed(event.id, {
+          paymentIntentId: paymentIntent.id,
+          deferredTo: 'invoice.paid',
+          recurringDonationTransactionId,
+        });
+        return res.status(200).send('OK');
+      }
+
       // Resolve location — strict for kiosk donations, null for web/recurring.
       // Backwards-compatible fallback: if kioskId is present but location_id is missing
       // from metadata (older payment intent or producer gap), resolve from the kiosk doc
@@ -540,7 +612,7 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
 
       // Use entity to create donation with recurring support
       await createDonationDoc({
-        transactionId: paymentIntent.id,
+        transactionId: recurringDonationTransactionId,
         campaignId: resolvedCampaignId || null,
         organizationId: organizationId || null,
         amount: paymentIntent.amount,
@@ -567,7 +639,10 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
 
       // Create Gift Aid declaration if needed (old flow: isGiftAid=true in metadata)
       await createGiftAidDeclarationIfNeeded({
-        paymentIntent,
+        paymentIntent: {
+          ...paymentIntent,
+          id: recurringDonationTransactionId,
+        },
         metadata,
         campaignId: resolvedCampaignId,
         campaignTitleSnapshot,
@@ -595,15 +670,15 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
 
             // Fix #2: guard against re-homing a declaration already linked to a different donation
             const existingDonationId = toStringOrNull(declarationData.donationId);
-            if (existingDonationId && existingDonationId !== paymentIntent.id) {
+            if (existingDonationId && existingDonationId !== recurringDonationTransactionId) {
               await writeGiftAidReconciliationIssue({
-                paymentIntentId: paymentIntent.id,
+                paymentIntentId: recurringDonationTransactionId,
                 declarationId: preCreatedDeclarationId,
                 organizationId: organizationId || null,
                 reason: 'pre_created_declaration_already_linked_to_other_donation',
                 metadata: {
                   existingDonationId,
-                  incomingDonationId: paymentIntent.id,
+                  incomingDonationId: recurringDonationTransactionId,
                 },
               });
               console.warn(
@@ -611,7 +686,7 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
                 {
                   declarationId: preCreatedDeclarationId,
                   existingDonationId,
-                  incomingDonationId: paymentIntent.id,
+                  incomingDonationId: recurringDonationTransactionId,
                 },
               );
             } else {
@@ -627,12 +702,14 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
                 toStringOrNull(declarationData.organizationId) ||
                 null;
 
-              const donationRef = db.collection('donations').doc(paymentIntent.id);
+              const recurringDonationRef = db
+                .collection('donations')
+                .doc(recurringDonationTransactionId);
 
               // Update donation: mark as Gift Aid, set donor name, link declaration
               await withRetries(
                 () =>
-                  donationRef.set(
+                  recurringDonationRef.set(
                     {
                       isGiftAid: true,
                       giftAidDeclarationId: preCreatedDeclarationId,
@@ -650,7 +727,7 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
                 () =>
                   declarationRef.set(
                     {
-                      donationId: paymentIntent.id,
+                      donationId: recurringDonationTransactionId,
                       donationAmount: paymentIntent.amount,
                       giftAidAmount: Math.round(paymentIntent.amount * 0.25),
                       campaignId: resolvedCampaignId || declarationData.campaignId || null,
@@ -682,7 +759,7 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
               );
 
               console.log('✅ [Gift Aid] Pre-created declaration linked to donation', {
-                donationId: paymentIntent.id,
+                donationId: recurringDonationTransactionId,
                 declarationId: preCreatedDeclarationId,
                 donorName: donorNameFromDeclaration,
               });
@@ -713,12 +790,20 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
 
       // Generate magic link token automatically (Issue #587)
       // Token generated for all Gift Aid campaigns to enable post-donation opt-in
-      const magicLinkPurpose = determinePurpose(metadata);
+      const magicLinkMetadata = resolvedIsRecurring
+        ? {
+            ...(recurringSubscriptionMetadata || {}),
+            ...metadata,
+            isRecurring: true,
+            recurringInterest: true,
+          }
+        : metadata;
+      const magicLinkPurpose = determinePurpose(magicLinkMetadata);
       if (magicLinkPurpose) {
         try {
           const tokenResult = await generateMagicLinkToken({
-            paymentIntentId: paymentIntent.id,
-            donationId: paymentIntent.id,
+            paymentIntentId: recurringDonationTransactionId,
+            donationId: recurringDonationTransactionId,
             campaignId: resolvedCampaignId || null,
             charityId: organizationId || null,
             kioskId: toStringOrNull(metadata.kioskId) || null,
@@ -730,18 +815,18 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
 
           if (tokenResult.alreadyExists) {
             console.log('✅ [Magic Link] Token already exists (idempotent)', {
-              paymentIntentId: paymentIntent.id,
+              paymentIntentId: recurringDonationTransactionId,
               purpose: magicLinkPurpose,
             });
           } else if (tokenResult.skipped) {
             console.log('⚠️ [Magic Link] Generation skipped', {
-              paymentIntentId: paymentIntent.id,
+              paymentIntentId: recurringDonationTransactionId,
               reason: tokenResult.reason,
             });
           } else {
             console.log('✅ [Magic Link] Token generated successfully', {
-              paymentIntentId: paymentIntent.id,
-              donationId: paymentIntent.id,
+              paymentIntentId: recurringDonationTransactionId,
+              donationId: recurringDonationTransactionId,
               purpose: magicLinkPurpose,
               expiresAt: tokenResult.expiresAt?.toDate().toISOString(),
             });
@@ -749,15 +834,17 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
         } catch (magicLinkError) {
           // Don't fail the webhook if magic link generation fails
           console.error('❌ [Magic Link] Generation failed (non-critical)', {
-            paymentIntentId: paymentIntent.id,
+            paymentIntentId: recurringDonationTransactionId,
             error: magicLinkError.message,
           });
         }
       } else {
         console.log('ℹ️ [Magic Link] Not needed for this donation', {
-          paymentIntentId: paymentIntent.id,
+          paymentIntentId: recurringDonationTransactionId,
           isGiftAid: metadata.isGiftAid,
           isRecurring: metadata.isRecurring,
+          recurringInterest: magicLinkMetadata.recurringInterest,
+          sourceMetadataKeys: Object.keys(magicLinkMetadata || {}),
         });
       }
 
@@ -854,9 +941,16 @@ const handleSubscriptionWebhook = async (req, res) => {
  * @return {Promise<void>}
  */
 const handleInvoicePaid = async (invoice) => {
-  const subscriptionId = invoice.subscription;
+  const subscriptionId =
+    toStringOrNull(invoice.subscription) ||
+    (invoice.parent && invoice.parent.subscription_details
+      ? toStringOrNull(invoice.parent.subscription_details.subscription)
+      : null);
   if (!subscriptionId) {
-    console.log('Invoice not associated with subscription:', invoice.id);
+    console.log(
+      'Invoice not associated with subscription (no top-level or parent.subscription_details):',
+      invoice.id,
+    );
     return;
   }
 
@@ -930,7 +1024,7 @@ const handleInvoicePaid = async (invoice) => {
   }
 
   await createDonationDoc({
-    transactionId: invoice.payment_intent || invoice.id,
+    transactionId: invoice.id,
     campaignId: subscriptionData.campaignId,
     organizationId: subscriptionData.organizationId,
     amount: invoice.amount_paid,
@@ -956,7 +1050,7 @@ const handleInvoicePaid = async (invoice) => {
   // Ensure Gift Aid declarations are also created for recurring payments when metadata includes Gift Aid details.
   await createGiftAidDeclarationIfNeeded({
     paymentIntent: {
-      id: invoice.payment_intent || invoice.id,
+      id: invoice.id,
       amount: invoice.amount_paid,
       created: invoice.created,
     },
@@ -965,6 +1059,59 @@ const handleInvoicePaid = async (invoice) => {
     campaignTitleSnapshot: subscriptionData.metadata?.campaignTitle || 'Recurring Donation',
     organizationId: subscriptionData.organizationId,
   });
+
+  // Generate magic link token for recurring donations using canonical invoice id.
+  // This keeps the token key aligned with recurring donation document id and avoids
+  // dependence on sparse payment_intent metadata timing.
+  const magicLinkMetadata = {
+    ...(subscriptionData.metadata || {}),
+    isRecurring: true,
+    recurringInterest: true,
+  };
+  const magicLinkPurpose = determinePurpose(magicLinkMetadata);
+  if (magicLinkPurpose) {
+    try {
+      const tokenResult = await generateMagicLinkToken({
+        paymentIntentId: invoice.id,
+        donationId: invoice.id,
+        campaignId: subscriptionData.campaignId || null,
+        charityId: subscriptionData.organizationId || null,
+        kioskId: recurringKioskId || null,
+        amount: invoice.amount_paid,
+        currency: invoice.currency,
+        purpose: magicLinkPurpose,
+        donorEmail: subscriptionData.donorEmail || subscriptionData.metadata?.donorEmail || null,
+      });
+
+      if (tokenResult.alreadyExists) {
+        console.log('✅ [Magic Link] Recurring token already exists (idempotent)', {
+          invoiceId: invoice.id,
+          purpose: magicLinkPurpose,
+        });
+      } else if (tokenResult.skipped) {
+        console.log('⚠️ [Magic Link] Recurring generation skipped', {
+          invoiceId: invoice.id,
+          reason: tokenResult.reason,
+        });
+      } else {
+        console.log('✅ [Magic Link] Recurring token generated', {
+          invoiceId: invoice.id,
+          purpose: magicLinkPurpose,
+          expiresAt: tokenResult.expiresAt?.toDate().toISOString(),
+        });
+      }
+    } catch (magicLinkError) {
+      console.error('❌ [Magic Link] Recurring generation failed (non-critical)', {
+        invoiceId: invoice.id,
+        error: magicLinkError.message,
+      });
+    }
+  } else {
+    console.log('ℹ️ [Magic Link] Not needed for recurring invoice', {
+      invoiceId: invoice.id,
+      sourceMetadataKeys: Object.keys(magicLinkMetadata || {}),
+    });
+  }
 
   // Update subscription analytics: lastPaymentAt
   await updateSubscriptionStatus(subscriptionId, 'active', {

@@ -2,7 +2,6 @@ const admin = require('firebase-admin');
 const { ensureStripeInitialized } = require('../services/stripe');
 const cors = require('../middleware/cors');
 const { createSubscriptionDoc } = require('../entities/subscription');
-const { createDonationDoc } = require('../entities/donation');
 const { resolveLocationForDonation, resolveLocationIdFromKiosk } = require('../shared/location');
 const DEFAULT_GIFT_AID_DECLARATION_TEXT =
   'I want to Gift Aid my donation and any donations I make in the future or have made in the past four years to this charity. I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital Gains Tax than the amount of Gift Aid claimed on all my donations in that tax year it is my responsibility to pay any difference.';
@@ -453,9 +452,67 @@ const createRecurringSubscription = (req, res) => {
       });
 
       // Handle first invoice
-      const latestInvoice = subscription.latest_invoice;
+      let latestInvoice = subscription.latest_invoice;
+      if (typeof latestInvoice === 'string') {
+        latestInvoice = await stripeClient.invoices.retrieve(latestInvoice, {
+          expand: ['payment_intent'],
+        });
+      }
       const recurringInterval =
         interval === 'year' ? 'yearly' : normalizedIntervalCount === 3 ? 'quarterly' : 'monthly';
+      const recurringMetadata = {
+        campaignId,
+        organizationId: orgId,
+        donorEmail: donor.email || null,
+        donorName: donor.name || 'Anonymous',
+        donorPhone: donor.phone || null,
+        platform: metadata.platform || 'web',
+        ...metadata,
+        ...stripeLocationMetadata,
+        isRecurring: true,
+        recurringInterest: true,
+        recurringInterval,
+        interval,
+        intervalCount: String(normalizedIntervalCount),
+        subscriptionId: subscription.id,
+      };
+
+      if (latestInvoice?.id) {
+        try {
+          await stripeClient.invoices.update(latestInvoice.id, {
+            metadata: {
+              ...recurringMetadata,
+              invoiceId: latestInvoice.id,
+            },
+          });
+        } catch (invoiceMetaError) {
+          console.warn('Unable to update invoice metadata for recurring subscription', {
+            invoiceId: latestInvoice.id,
+            error: invoiceMetaError.message,
+          });
+        }
+      }
+
+      const paymentIntentId =
+        typeof latestInvoice?.payment_intent === 'string'
+          ? latestInvoice.payment_intent
+          : latestInvoice?.payment_intent?.id;
+
+      if (paymentIntentId) {
+        try {
+          await stripeClient.paymentIntents.update(paymentIntentId, {
+            metadata: {
+              ...recurringMetadata,
+              invoiceId: latestInvoice?.id || null,
+            },
+          });
+        } catch (paymentIntentMetaError) {
+          console.warn('Unable to update payment intent metadata for recurring subscription', {
+            paymentIntentId,
+            error: paymentIntentMetaError.message,
+          });
+        }
+      }
 
       console.log('Latest invoice details:', {
         exists: !!latestInvoice,
@@ -466,45 +523,6 @@ const createRecurringSubscription = (req, res) => {
 
       if (latestInvoice?.payment_intent) {
         const paymentIntent = latestInvoice.payment_intent;
-        // Safety net: if first recurring payment is already successful, persist donation immediately.
-        if (paymentIntent.status === 'succeeded') {
-          const donationId = paymentIntent.id || latestInvoice.id || subscription.id;
-          await createDonationDoc({
-            transactionId: donationId,
-            campaignId,
-            organizationId: orgId,
-            amount: latestInvoice.amount_paid || amount,
-            currency,
-            donorEmail: donor.email || null,
-            donorName: donor.name || 'Anonymous',
-            donorPhone: donor.phone || null,
-            isGiftAid: toBoolean(metadata.isGiftAid),
-            isRecurring: true,
-            recurringInterval,
-            subscriptionId: subscription.id,
-            invoiceId: latestInvoice.id || null,
-            kioskId: subscriptionKioskId,
-            platform: metadata.platform || 'web',
-            location_id: subscriptionLocationId,
-            location_snapshot: subscriptionLocationSnapshot,
-            metadata: {
-              campaignTitleSnapshot: campaignData.title || 'Recurring Donation',
-              source: 'create_recurring_subscription',
-            },
-          });
-
-          await createGiftAidDeclarationFromMetadata({
-            donationId,
-            amountMinor: latestInvoice.amount_paid || amount,
-            metadata,
-            campaignId,
-            campaignTitle: campaignData.title || 'Recurring Donation',
-            organizationId: orgId,
-            donationDateIso: new Date(
-              (latestInvoice.created || Math.floor(Date.now() / 1000)) * 1000,
-            ).toISOString(),
-          });
-        }
 
         return res.status(200).send({
           subscriptionId: subscription.id,
@@ -516,43 +534,6 @@ const createRecurringSubscription = (req, res) => {
           requiresAction: paymentIntent.status === 'requires_action',
         });
       } else if (latestInvoice?.status === 'paid') {
-        const donationId = latestInvoice.payment_intent?.id || latestInvoice.id || subscription.id;
-        await createDonationDoc({
-          transactionId: donationId,
-          campaignId,
-          organizationId: orgId,
-          amount: latestInvoice.amount_paid || amount,
-          currency,
-          donorEmail: donor.email || null,
-          donorName: donor.name || 'Anonymous',
-          donorPhone: donor.phone || null,
-          isGiftAid: toBoolean(metadata.isGiftAid),
-          isRecurring: true,
-          recurringInterval,
-          subscriptionId: subscription.id,
-          invoiceId: latestInvoice.id || null,
-          kioskId: subscriptionKioskId,
-          platform: metadata.platform || 'web',
-          location_id: subscriptionLocationId,
-          location_snapshot: subscriptionLocationSnapshot,
-          metadata: {
-            campaignTitleSnapshot: campaignData.title || 'Recurring Donation',
-            source: 'create_recurring_subscription',
-          },
-        });
-
-        await createGiftAidDeclarationFromMetadata({
-          donationId,
-          amountMinor: latestInvoice.amount_paid || amount,
-          metadata,
-          campaignId,
-          campaignTitle: campaignData.title || 'Recurring Donation',
-          organizationId: orgId,
-          donationDateIso: new Date(
-            (latestInvoice.created || Math.floor(Date.now() / 1000)) * 1000,
-          ).toISOString(),
-        });
-
         return res.status(200).send({
           success: true,
           subscriptionId: subscription.id,
