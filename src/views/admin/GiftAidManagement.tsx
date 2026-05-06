@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Screen, AdminSession, Permission } from '../../shared/types';
 import { GiftAidDeclaration } from '../../entities/giftAid/model/types';
 import {
+  downloadGasdsExportFile,
   downloadGiftAidExportFile,
   exportGiftAidDeclarations,
   exportGasdsCsv,
   giftAidApi,
+  type GasdsExportResult,
   type GiftAidExportFile,
 } from '../../entities/giftAid/api';
 import { AdminLayout } from './AdminLayout';
@@ -44,6 +46,7 @@ import { AdminStatsGrid } from './components/AdminStatsGrid';
 import { formatCurrency } from '../../shared/lib/currencyFormatter';
 import { useGiftAid } from '../../shared/lib/hooks/useGiftAid';
 import { useGiftAidExportBatches } from '../../shared/lib/hooks/useGiftAidExportBatches';
+import { useGasdsExportBatches } from '../../shared/lib/hooks/useGasdsExportBatches';
 import { PaginationControls } from '../../shared/ui/PaginationControls';
 import { useToast } from '../../shared/ui/ToastProvider';
 import { getAllCampaigns } from '../../shared/api';
@@ -97,6 +100,14 @@ const toDate = (value: unknown): Date | null => {
   return null;
 };
 
+const chunkArray = <T,>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
 export function GiftAidManagement({
   onNavigate,
   onLogout,
@@ -122,6 +133,10 @@ export function GiftAidManagement({
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedGasdsTaxYear, setSelectedGasdsTaxYear] = useState('');
   const [selectedGasdsLocationIds, setSelectedGasdsLocationIds] = useState<string[]>([]);
+  const [strictGasdsMode, setStrictGasdsMode] = useState(false);
+  const [gasdsExportSummary, setGasdsExportSummary] = useState<GasdsExportResult['summary'] | null>(
+    null,
+  );
   const [gasdsSummaryRows, setGasdsSummaryRows] = useState<
     Array<{
       locationId: string;
@@ -182,6 +197,22 @@ export function GiftAidManagement({
     pageSize: exportHistoryPageSize,
     refresh: refreshExportHistory,
   } = useGiftAidExportBatches(
+    canDownloadGiftAidBatchHistory ? userSession.user.organizationId : undefined,
+    EXPORT_HISTORY_PAGE_SIZE,
+  );
+  const {
+    exportBatches: gasdsExportBatches,
+    loading: gasdsExportHistoryLoading,
+    fetching: gasdsExportHistoryFetching,
+    pageNumber: gasdsExportHistoryPage,
+    canGoNext: canGoGasdsExportHistoryNext,
+    canGoPrev: canGoGasdsExportHistoryPrev,
+    goFirst: goToFirstGasdsExportHistoryPage,
+    goNext: goToNextGasdsExportHistoryPage,
+    goPrev: goToPrevGasdsExportHistoryPage,
+    pageSize: gasdsExportHistoryPageSize,
+    refresh: refreshGasdsExportHistory,
+  } = useGasdsExportBatches(
     canDownloadGiftAidBatchHistory ? userSession.user.organizationId : undefined,
     EXPORT_HISTORY_PAGE_SIZE,
   );
@@ -290,6 +321,10 @@ export function GiftAidManagement({
   }, [exportHistoryError, showToast]);
 
   useEffect(() => {
+    if (!canExportGiftAid) {
+      setGasdsSummaryRows([]);
+      return;
+    }
     const organizationId = userSession.user.organizationId;
     const taxYearRange = getTaxYearRange(selectedGasdsTaxYear);
     if (!organizationId || !taxYearRange) {
@@ -307,16 +342,39 @@ export function GiftAidManagement({
     const loadGasdsSummary = async () => {
       try {
         const donationsRef = collection(db, 'donations');
-        const donationsQuery = query(donationsRef, where('organizationId', '==', organizationId));
-        const donationSnapshot = await getDocs(donationsQuery);
+        const locationChunks = chunkArray(selectedGasdsLocationIds, 10);
+        const byId = new Map<string, Record<string, unknown>>();
+
+        try {
+          for (const locationChunk of locationChunks) {
+            const donationsQuery = query(
+              donationsRef,
+              where('organizationId', '==', organizationId),
+              where('location_id', 'in', locationChunk),
+            );
+            const donationSnapshot = await getDocs(donationsQuery);
+            donationSnapshot.docs.forEach((docSnap) => {
+              byId.set(docSnap.id, docSnap.data() as Record<string, unknown>);
+            });
+          }
+        } catch (err: unknown) {
+          const code = (err as { code?: string })?.code;
+          if (code !== 'failed-precondition') throw err;
+
+          // Fallback for missing composite index in lower environments.
+          const donationsQuery = query(donationsRef, where('organizationId', '==', organizationId));
+          const donationSnapshot = await getDocs(donationsQuery);
+          donationSnapshot.docs.forEach((docSnap) => {
+            byId.set(docSnap.id, docSnap.data() as Record<string, unknown>);
+          });
+        }
 
         const accumulator = new Map<
           string,
           { totalCollected: number; eligible: number; locationName: string; postcode: string }
         >();
 
-        donationSnapshot.docs.forEach((docSnap) => {
-          const donation = docSnap.data() as Record<string, unknown>;
+        byId.forEach((donation) => {
           const locationId =
             typeof donation.location_id === 'string' ? donation.location_id.trim() : '';
           if (!locationId || !selectedLocationIds.has(locationId)) return;
@@ -327,8 +385,8 @@ export function GiftAidManagement({
             toDate(donation.createdAt);
           if (!date || date < taxYearRange.start || date > taxYearRange.end) return;
 
-          const amount = Number(donation.amount);
-          const amountValue = Number.isFinite(amount) ? amount : 0;
+          const amountMinor = Number(donation.amount);
+          const amountValue = Number.isFinite(amountMinor) ? amountMinor : 0;
           const campaignModeRaw =
             typeof donation.campaign_mode === 'string'
               ? donation.campaign_mode
@@ -336,7 +394,7 @@ export function GiftAidManagement({
                 ? donation.campaignMode
                 : 'DONATION';
           const campaignMode = campaignModeRaw.trim().toUpperCase();
-          const isEligible = amountValue <= 30 && campaignMode === 'DONATION';
+          const isEligible = amountValue <= 3000 && campaignMode === 'DONATION';
 
           const snapshot =
             donation.location_snapshot && typeof donation.location_snapshot === 'object'
@@ -383,11 +441,17 @@ export function GiftAidManagement({
     return () => {
       isActive = false;
     };
-  }, [locations, selectedGasdsLocationIds, selectedGasdsTaxYear, userSession.user.organizationId]);
+  }, [
+    canExportGiftAid,
+    locations,
+    selectedGasdsLocationIds,
+    selectedGasdsTaxYear,
+    userSession.user.organizationId,
+  ]);
 
   const refreshGiftAidSection = useCallback(async () => {
-    await Promise.all([refresh(), refreshExportHistory()]);
-  }, [refresh, refreshExportHistory]);
+    await Promise.all([refresh(), refreshExportHistory(), refreshGasdsExportHistory()]);
+  }, [refresh, refreshExportHistory, refreshGasdsExportHistory]);
   const refreshExportHistorySection = useCallback(async () => {
     await refreshExportHistory();
   }, [refreshExportHistory]);
@@ -581,18 +645,66 @@ export function GiftAidManagement({
 
     setIsGasdsExporting(true);
     try {
-      await exportGasdsCsv({
+      const exportResult = await exportGasdsCsv({
         organizationId: userSession.user.organizationId,
         taxYear: selectedGasdsTaxYear,
         locationIds: selectedGasdsLocationIds,
+        strictMode: strictGasdsMode,
       });
-      showToast('GASDS CSV export started. Your download should begin shortly.', 'success');
+      setGasdsExportSummary(exportResult.summary);
+      try {
+        await downloadGasdsExportFile(exportResult.batchId, 'detailed', exportResult.detailedFile);
+      } catch (downloadError) {
+        console.error('Failed to download detailed GASDS export:', downloadError);
+        showToast('GASDS export succeeded, but detailed file download failed.', 'warning');
+      }
+      try {
+        await downloadGasdsExportFile(exportResult.batchId, 'summary', exportResult.summaryFile);
+      } catch (downloadError) {
+        console.error('Failed to download summary GASDS export:', downloadError);
+        showToast('GASDS export succeeded, but summary file download failed.', 'warning');
+      }
+      goToFirstGasdsExportHistoryPage();
+      await refreshGasdsExportHistory();
+      showToast(
+        `GASDS export completed. ${exportResult.rowCount} donation row(s) in batch ${exportResult.batchId}.`,
+        'success',
+      );
     } catch (error) {
       console.error('Failed to export GASDS CSV:', error);
       const message = error instanceof Error ? error.message : 'Failed to export GASDS CSV.';
       showToast(message, 'error');
     } finally {
       setIsGasdsExporting(false);
+    }
+  };
+
+  const handleDownloadGasdsBatchFile = async (
+    batchId: string,
+    fileKind: 'detailed' | 'summary',
+    file: GiftAidExportFile | null | undefined,
+  ) => {
+    if (!canDownloadGiftAidBatchHistory) {
+      showToast('You do not have permission to download GASDS export batches.', 'warning');
+      return;
+    }
+    if (!file) {
+      showToast('This GASDS export file is unavailable for download.', 'warning');
+      return;
+    }
+
+    const downloadKey = `${batchId}:${fileKind}`;
+    setActiveDownloadKey(downloadKey);
+    try {
+      await downloadGasdsExportFile(batchId, fileKind, file);
+    } catch (downloadError) {
+      console.error(`Failed to download ${fileKind} GASDS export:`, downloadError);
+      showToast(
+        'The stored GASDS export file could not be downloaded. It may have been removed from storage.',
+        'error',
+      );
+    } finally {
+      setActiveDownloadKey(null);
     }
   };
 
@@ -781,7 +893,11 @@ export function GiftAidManagement({
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">GASDS Export</h2>
                   <p className="text-sm text-gray-600">
-                    Export all donations for a UK tax year with GASDS eligibility flags.
+                    Export all donations for a UK tax year (used for both Gift Aid and GASDS) with
+                    eligibility flags.
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Eligibility is indicative only. Final HMRC claim checks still apply.
                   </p>
                 </div>
                 <Button
@@ -801,7 +917,9 @@ export function GiftAidManagement({
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <Label className="mb-1 block text-sm font-medium text-gray-700">Tax year</Label>
+                  <Label className="mb-1 block text-sm font-medium text-gray-700">
+                    UK tax year (scheme year)
+                  </Label>
                   <select
                     value={selectedGasdsTaxYear}
                     onChange={(event) => setSelectedGasdsTaxYear(event.target.value)}
@@ -838,8 +956,19 @@ export function GiftAidManagement({
                   </div>
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={strictGasdsMode}
+                  onChange={(event) => setStrictGasdsMode(event.target.checked)}
+                />
+                <span>
+                  Strict mode: export only rows currently marked as GASDS-eligible (summary still
+                  shown for transparency).
+                </span>
+              </label>
 
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -853,7 +982,8 @@ export function GiftAidManagement({
                   </TableHeader>
                   <TableBody>
                     {gasdsSummaryRows.map((row) => {
-                      const exceedsCap = row.eligible > 8000;
+                      const gasdsCapInPence = 800000;
+                      const exceedsCap = row.eligible > gasdsCapInPence;
                       return (
                         <TableRow key={row.locationId}>
                           <TableCell>{row.locationName}</TableCell>
@@ -886,6 +1016,146 @@ export function GiftAidManagement({
                   </TableBody>
                 </Table>
               </div>
+              <div className="md:hidden space-y-3">
+                {gasdsSummaryRows.map((row) => {
+                  const gasdsCapInPence = 800000;
+                  const exceedsCap = row.eligible > gasdsCapInPence;
+                  return (
+                    <Card key={row.locationId} className="border border-gray-200 shadow-sm">
+                      <CardContent className="p-3 space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-900">{row.locationName}</p>
+                            <p className="text-xs text-gray-500">{row.postcode || 'N/A'}</p>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={
+                              exceedsCap
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }
+                          >
+                            {exceedsCap ? 'Exceeds' : 'OK'}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <p className="text-gray-500">Total Collected</p>
+                            <p className="text-slate-900 font-medium">
+                              {formatCurrency(row.totalCollected)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500">Eligible</p>
+                            <p className="text-slate-900 font-medium">
+                              {formatCurrency(row.eligible)}
+                            </p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-gray-500">Cap</p>
+                            <p className="text-slate-900 font-medium">£8,000</p>
+                            {row.isCommunityBuilding ? (
+                              <p className="text-xs text-gray-500">
+                                Potential £16k cap (subject to eligibility)
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+              {gasdsExportSummary ? (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                  <p className="font-medium text-slate-900 mb-1">Ineligibility summary</p>
+                  <p>Over £30: {gasdsExportSummary.byReason.over_30 || 0}</p>
+                  <p>Non-DONATION mode: {gasdsExportSummary.byReason.non_donation_mode || 0}</p>
+                  <p>
+                    Both reasons: {gasdsExportSummary.byReason.over_30_and_non_donation_mode || 0}
+                  </p>
+                </div>
+              ) : null}
+              {canDownloadGiftAidBatchHistory ? (
+                <div className="rounded-xl border border-gray-200">
+                  <div className="border-b border-gray-200 px-3 py-2">
+                    <p className="text-sm font-medium text-slate-900">GASDS Export History</p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {gasdsExportHistoryLoading ? (
+                      <div className="p-3 text-sm text-gray-500">Loading history...</div>
+                    ) : gasdsExportBatches.length === 0 ? (
+                      <div className="p-3 text-sm text-gray-500">No GASDS export batches yet.</div>
+                    ) : (
+                      gasdsExportBatches.map((batch) => (
+                        <div key={batch.id} className="p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-slate-900">
+                                {batch.taxYear} • {batch.strictMode ? 'Strict' : 'All rows'}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {formatBatchTimestamp(batch.createdAt)} • {batch.rowCount} rows
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={
+                                  activeDownloadKey === `${batch.id}:detailed` ||
+                                  !batch.detailedFile
+                                }
+                                onClick={() =>
+                                  handleDownloadGasdsBatchFile(
+                                    batch.id,
+                                    'detailed',
+                                    batch.detailedFile,
+                                  )
+                                }
+                              >
+                                Detailed CSV
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={
+                                  activeDownloadKey === `${batch.id}:summary` || !batch.summaryFile
+                                }
+                                onClick={() =>
+                                  handleDownloadGasdsBatchFile(
+                                    batch.id,
+                                    'summary',
+                                    batch.summaryFile,
+                                  )
+                                }
+                              >
+                                Summary CSV
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {!gasdsExportHistoryLoading &&
+                  (canGoGasdsExportHistoryPrev || canGoGasdsExportHistoryNext) ? (
+                    <div className="border-t border-gray-200 px-3 py-2">
+                      <PaginationControls
+                        pageNumber={gasdsExportHistoryPage}
+                        pageSize={gasdsExportHistoryPageSize}
+                        totalOnPage={gasdsExportBatches.length}
+                        canGoNext={canGoGasdsExportHistoryNext}
+                        canGoPrev={canGoGasdsExportHistoryPrev}
+                        onNext={goToNextGasdsExportHistoryPage}
+                        onPrev={goToPrevGasdsExportHistoryPage}
+                        loading={gasdsExportHistoryFetching}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         ) : null}
