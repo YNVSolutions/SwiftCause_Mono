@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Mail, ArrowLeft, Lock, CheckCircle, Loader2 } from 'lucide-react';
 import { FUNCTION_URLS } from '@/shared/config/functions';
@@ -9,6 +9,10 @@ export function ManageCheckEmailScreen() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const email = searchParams.get('email') || '';
+
+  useEffect(() => {
+    if (!email) router.replace('/manage');
+  }, [email, router]);
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState('');

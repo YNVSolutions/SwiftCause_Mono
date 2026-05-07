@@ -225,6 +225,25 @@ const fetchSubscriptionsForEmail = async (ref, emailNormalized) => {
 };
 
 /**
+ * Checks whether any subscription exists for the given email without
+ * loading document data. Runs 4 existence queries in parallel (one per
+ * storage pattern), each limited to 1 document with no field projections,
+ * and resolves true as soon as any query returns a result.
+ * @param {object} ref - Firestore subscriptions collection reference
+ * @param {string} emailNormalized - Lowercase email
+ * @return {Promise<boolean>}
+ */
+const subscriptionsExistForEmail = async (ref, emailNormalized) => {
+  const snaps = await Promise.all([
+    ref.where('donorEmailNormalized', '==', emailNormalized).select().limit(1).get(),
+    ref.where('metadata.donorEmailNormalized', '==', emailNormalized).select().limit(1).get(),
+    ref.where('donorEmail', '==', emailNormalized).select().limit(1).get(),
+    ref.where('metadata.donorEmail', '==', emailNormalized).select().limit(1).get(),
+  ]);
+  return snaps.some((snap) => !snap.empty);
+};
+
+/**
  * Validates that a subscription document contains all required fields.
  * @param {object} data - Firestore subscription document data
  * @return {{valid: boolean, missingFields: string[]}}
@@ -363,8 +382,7 @@ const sendSubscriptionMagicLink = (req, res) => {
       const emailNormalized = email.toLowerCase();
       const db = admin.firestore();
       const ref = db.collection('subscriptions');
-      const subscriptions = await fetchSubscriptionsForEmail(ref, emailNormalized);
-      const hasSubscriptions = subscriptions.length > 0;
+      const hasSubscriptions = await subscriptionsExistForEmail(ref, emailNormalized);
 
       // Return the same response regardless - prevents email enumeration
       if (!hasSubscriptions) {
@@ -392,20 +410,22 @@ const sendSubscriptionMagicLink = (req, res) => {
       } catch (emailError) {
         console.error('Failed to send magic link email:', emailError);
 
-        // Always return the link in the response when email fails so the
-        // flow can be tested without a working email provider.
-        // TODO: remove devLink from production response once SendGrid is fixed.
-        console.log('MAGIC_LINK_FOR_TESTING:', magicLink);
-        return res.status(200).json({
-          success: true,
-          message: 'Email service unavailable. Check logs for magic link.',
-          devLink: magicLink,
+        // In non-production environments log the link so the flow can be
+        // tested without a working email provider. Never expose it in the
+        // response — doing so bypasses email ownership verification and
+        // reintroduces email enumeration.
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('MAGIC_LINK_FOR_TESTING:', magicLink);
+        }
+
+        return res.status(500).json({
+          error: 'Email service unavailable. Please try again later.',
         });
       }
 
       const response = { success: true, message: MSG_ACTIVE_DONATIONS };
 
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV !== 'production') {
         response.devLink = magicLink;
       }
 
@@ -540,11 +560,11 @@ const getSubscriptionsByEmail = (req, res) => {
         }),
       );
 
-      // Sort: active first, then newest first within each status group
+      // Sort: active-like subscriptions first, then newest first within each group
       enriched.sort((a, b) => {
-        const aActive = a.status === 'active' ? 0 : 1;
-        const bActive = b.status === 'active' ? 0 : 1;
-        if (aActive !== bActive) return aActive - bActive;
+        const aActiveLike = a.status === 'active' || a.status === 'trialing' ? 0 : 1;
+        const bActiveLike = b.status === 'active' || b.status === 'trialing' ? 0 : 1;
+        if (aActiveLike !== bActiveLike) return aActiveLike - bActiveLike;
         return (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
       });
 
@@ -579,10 +599,11 @@ const getSubscriptionsByEmail = (req, res) => {
         count: enriched.length,
       });
     } catch (error) {
-      console.error('Error fetching subscriptions:', error);
+      const errorId = `sub_fetch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      console.error(`Error fetching subscriptions [${errorId}]:`, error);
       return res.status(500).json({
         error: 'Failed to fetch subscriptions',
-        details: error.message,
+        errorId,
       });
     }
   });
@@ -952,11 +973,10 @@ const getPaymentHistory = (req, res) => {
       }
 
       // 4. FETCH DONATIONS FOR THIS SUBSCRIPTION
-      // Strategy: try three query patterns and merge results.
+      // Strategy: two query patterns merged via donationMap dedup.
       // (1) subscriptionId field match — for recurring Stripe invoices
-      // (2) metadata.subscriptionId match — legacy storage pattern
-      // (3) donorEmail + campaignId fallback — for kiosk/one-time donations
-      //     that were never linked by subscriptionId
+      // (2) donorEmail/donorEmailNormalized + campaignId fallback — for
+      //     kiosk/one-time donations never linked by subscriptionId
       const donorEmail = getSubscriptionEmail(subscriptionData);
 
       const tsToIso = (val) => {
@@ -990,14 +1010,27 @@ const getPaymentHistory = (req, res) => {
         .get();
       addSnap(q1);
 
-      // Query 2: email + campaign fallback (covers kiosk/legacy docs)
+      // Query 2: email + campaign fallback (covers kiosk/legacy docs).
+      // Two parallel queries cover both storage patterns:
+      // - donorEmailNormalized (new docs written with a normalised field)
+      // - donorEmail exact match (legacy docs stored in lowercase)
+      // Mixed-case legacy docs (e.g. "Donor@Example.com") are missed until
+      // donorEmailNormalized is backfilled, consistent with the subscription queries.
       if (donorEmail && subscriptionData.campaignId) {
-        const q2 = await db
-          .collection('donations')
-          .where('donorEmail', '==', donorEmail)
-          .where('campaignId', '==', subscriptionData.campaignId)
-          .get();
-        addSnap(q2);
+        const [q2a, q2b] = await Promise.all([
+          db
+            .collection('donations')
+            .where('donorEmailNormalized', '==', donorEmail)
+            .where('campaignId', '==', subscriptionData.campaignId)
+            .get(),
+          db
+            .collection('donations')
+            .where('donorEmail', '==', donorEmail)
+            .where('campaignId', '==', subscriptionData.campaignId)
+            .get(),
+        ]);
+        addSnap(q2a);
+        addSnap(q2b);
       }
 
       const payments = [];

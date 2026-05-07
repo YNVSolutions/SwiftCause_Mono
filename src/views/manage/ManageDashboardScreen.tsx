@@ -166,7 +166,14 @@ export function ManageDashboardScreen() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({ subscriptionId: sub.id }),
-          }).then((r) => (r.ok ? r.json() : { payments: [] })),
+          }).then((r) => {
+            if (r.status === 401 || r.status === 403) {
+              const err = new Error('SESSION_EXPIRED');
+              err.cause = r.status;
+              throw err;
+            }
+            return r.ok ? r.json() : { payments: [] };
+          }),
         ),
       );
 
@@ -187,8 +194,12 @@ export function ManageDashboardScreen() {
 
       setPayments(all);
       setHistoryLoaded(true);
-    } catch {
-      setHistoryError('Could not load payment history. Please try again.');
+    } catch (err) {
+      if (err instanceof Error && err.message === 'SESSION_EXPIRED') {
+        setError('Session expired. Please request a new link.');
+      } else {
+        setHistoryError('Could not load payment history. Please try again.');
+      }
     } finally {
       setHistoryLoading(false);
     }
@@ -229,10 +240,13 @@ export function ManageDashboardScreen() {
       }
 
       const data = await res.json();
-      if (data.url) {
-        // Keep the overlay up until the browser has navigated away
-        window.location.href = data.url;
+      if (typeof data?.url !== 'string' || !data.url.trim()) {
+        setError('Failed to open subscription management. Please try again.');
+        setManagingId(null);
+        return;
       }
+      // Keep the overlay up until the browser has navigated away
+      window.location.href = data.url;
     } catch {
       setError('Failed to open subscription management. Please try again.');
       setManagingId(null);

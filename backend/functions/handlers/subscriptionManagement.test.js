@@ -462,9 +462,9 @@ describe('getSubscriptionsByEmail', () => {
 
   it('sorts active subscriptions before inactive ones', async () => {
     stubAuth('sorted@example.com');
-    await seed('subscriptions', 'sub_cancelled', {
+    await seed('subscriptions', 'sub_canceled', {
       donorEmail: 'sorted@example.com',
-      status: 'cancelled',
+      status: 'canceled',
       amount: 500,
       createdAt: admin.firestore.Timestamp.fromMillis(2000),
     });
@@ -479,7 +479,7 @@ describe('getSubscriptionsByEmail', () => {
     await getSubscriptionsByEmail(makeReq({ method: 'GET', token: 'valid' }), res);
 
     expect(res.body.subscriptions[0].id).toBe('sub_active');
-    expect(res.body.subscriptions[1].id).toBe('sub_cancelled');
+    expect(res.body.subscriptions[1].id).toBe('sub_canceled');
   });
 
   it('sorts subscriptions with same status by newest createdAt', async () => {
