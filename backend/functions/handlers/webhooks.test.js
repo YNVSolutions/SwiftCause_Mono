@@ -7,6 +7,7 @@ jest.mock('../services/stripe', () => ({
   })),
   ensureStripeInitialized: jest.fn(() => ({
     invoices: {
+      list: jest.fn(),
       retrieve: jest.fn(),
     },
     subscriptions: {
@@ -163,6 +164,101 @@ describe('handlePaymentCompletedStripeWebhook', () => {
         },
       }),
     );
+  });
+
+  it('writes a one-time payment even when metadata is sparse and no invoice is present', async () => {
+    const event = {
+      id: 'evt_sparse_one_time',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_sparse_one_time',
+          amount: 1200,
+          currency: 'gbp',
+          invoice: null,
+          metadata: {},
+        },
+      },
+    };
+
+    verifyWebhookSignatureWithAnySecret.mockReturnValue(event);
+
+    const res = createResponse();
+    await handlePaymentCompletedStripeWebhook(makeRequest(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(createDonationDoc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transactionId: 'pi_sparse_one_time',
+        amount: 1200,
+        currency: 'gbp',
+        isRecurring: false,
+      }),
+    );
+  });
+
+  it('defers recurring payment_intent.succeeded when invoice is resolved via Stripe lookup', async () => {
+    const stripe = {
+      invoices: {
+        list: jest.fn(),
+        retrieve: jest.fn(),
+      },
+      subscriptions: {
+        retrieve: jest.fn(),
+      },
+    };
+    require('../services/stripe').ensureStripeInitialized.mockReturnValue(stripe);
+    stripe.invoices.list.mockResolvedValue({
+      data: [
+        {
+          id: 'in_recurring_lookup_001',
+        },
+      ],
+    });
+    stripe.invoices.retrieve.mockResolvedValue({
+      id: 'in_recurring_lookup_001',
+      subscription: 'sub_recurring_lookup_001',
+    });
+    getSubscriptionByStripeId.mockResolvedValue({
+      stripeSubscriptionId: 'sub_recurring_lookup_001',
+      campaignId: 'camp_1',
+      organizationId: 'org_1',
+      interval: 'month',
+      intervalCount: 1,
+      donorEmail: 'donor@example.com',
+      donorName: 'Recurring Donor',
+      metadata: {
+        recurringInterest: 'true',
+      },
+    });
+
+    const event = {
+      id: 'evt_recurring_lookup',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_recurring_lookup_001',
+          amount: 2000,
+          currency: 'gbp',
+          invoice: null,
+          metadata: {
+            recurringInterest: 'true',
+          },
+        },
+      },
+    };
+
+    verifyWebhookSignatureWithAnySecret.mockReturnValue(event);
+
+    const res = createResponse();
+    await handlePaymentCompletedStripeWebhook(makeRequest(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(createDonationDoc).not.toHaveBeenCalled();
+    expect(stripe.invoices.list).toHaveBeenCalledWith({
+      payment_intent: 'pi_recurring_lookup_001',
+      limit: 1,
+    });
   });
 
   // ─── Declaration-first linkage tests ────────────────────────────────────────

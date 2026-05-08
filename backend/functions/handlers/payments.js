@@ -27,6 +27,18 @@ const logOnboardingLinkAccess = (level, payload) => {
 
   console.info('Stripe onboarding link privileged access', logPayload);
 };
+
+const normalizeStripeMetadata = (metadata = {}) =>
+  Object.fromEntries(
+    Object.entries(metadata)
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([key, value]) => {
+        if (typeof value === 'string') return [key, value];
+        if (typeof value === 'number' || typeof value === 'boolean') return [key, String(value)];
+        return [key, JSON.stringify(value)];
+      }),
+  );
+
 /**
  * Create Stripe onboarding link for organization
  * @param {object} req - Express request object
@@ -194,6 +206,7 @@ const createKioskPaymentIntent = (req, res) => {
         // Location reference — read by webhook to build location_snapshot on donation
         location_id: kioskLocationId,
       };
+      const stripeCanonicalMetadata = normalizeStripeMetadata(canonicalMetadata);
 
       const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
       if (!orgSnap.exists) {
@@ -219,7 +232,7 @@ const createKioskPaymentIntent = (req, res) => {
         customer = await stripeClient.customers.create({
           email: donor?.email || undefined,
           name: donor?.name || undefined,
-          metadata: canonicalMetadata,
+          metadata: stripeCanonicalMetadata,
         });
       }
 
@@ -239,7 +252,11 @@ const createKioskPaymentIntent = (req, res) => {
             },
           },
           transfer_data: { destination: stripeAccountId },
-          metadata: { ...canonicalMetadata, platform: 'kiosk', frequency: 'once' },
+          metadata: normalizeStripeMetadata({
+            ...canonicalMetadata,
+            platform: 'kiosk',
+            frequency: 'once',
+          }),
         });
         clientSecret = paymentIntent.client_secret;
       } else {
@@ -281,13 +298,13 @@ const createKioskPaymentIntent = (req, res) => {
             customer: customer.id,
             payment_method_types: ['card'],
             usage: 'off_session',
-            metadata: {
+            metadata: normalizeStripeMetadata({
               ...canonicalMetadata,
               platform: 'kiosk',
               flow: 'recurring_setup',
               frequency,
               intervalCount: String(normalizedIntervalCount),
-            },
+            }),
           });
 
           return res.status(200).send({
@@ -368,12 +385,12 @@ const createKioskPaymentIntent = (req, res) => {
           expand: ['latest_invoice.payment_intent'],
           trial_period_days: 0,
           transfer_data: { destination: stripeAccountId },
-          metadata: {
+          metadata: normalizeStripeMetadata({
             ...canonicalMetadata,
             platform: 'kiosk',
             frequency,
             intervalCount: String(normalizedIntervalCount),
-          },
+          }),
         });
 
         console.log('Subscription created:', {
@@ -421,10 +438,10 @@ const createKioskPaymentIntent = (req, res) => {
         if (latestInvoice?.id) {
           try {
             await stripeClient.invoices.update(latestInvoice.id, {
-              metadata: {
+              metadata: normalizeStripeMetadata({
                 ...recurringMetadata,
                 invoiceId: latestInvoice.id,
-              },
+              }),
             });
           } catch (invoiceMetaError) {
             console.warn('Unable to update invoice metadata for recurring donation', {
@@ -442,10 +459,10 @@ const createKioskPaymentIntent = (req, res) => {
         if (paymentIntentId) {
           try {
             await stripeClient.paymentIntents.update(paymentIntentId, {
-              metadata: {
+              metadata: normalizeStripeMetadata({
                 ...recurringMetadata,
                 invoiceId: latestInvoice?.id || null,
-              },
+              }),
             });
           } catch (paymentIntentMetaError) {
             console.warn('Unable to update payment intent metadata for recurring donation', {

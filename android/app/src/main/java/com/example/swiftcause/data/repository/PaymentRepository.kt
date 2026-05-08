@@ -30,6 +30,12 @@ class PaymentRepository(
         private const val FUNCTION_URL = "https://us-central1-swiftcause-app.cloudfunctions.net/createKioskPaymentIntent"
     }
 
+    private fun JSONObject.putIfNotNull(key: String, value: Any?) {
+        if (value != null) {
+            put(key, value)
+        }
+    }
+
     /**
      * Creates a payment intent for one-time or recurring donations
      * Uses raw HTTP POST (exactly like web) instead of Firebase SDK
@@ -57,19 +63,19 @@ class PaymentRepository(
             val requestJson = JSONObject().apply {
                 put("amount", request.amount)
                 put("currency", request.currency)
-                put("frequency", request.frequency ?: JSONObject.NULL)
-                put("intervalCount", request.intervalCount ?: JSONObject.NULL)
-                put("paymentMethodId", request.paymentMethodId ?: JSONObject.NULL)
-                put("setupIntentId", request.setupIntentId ?: JSONObject.NULL)
-                put("customerId", request.customerId ?: JSONObject.NULL)
+                putIfNotNull("frequency", request.frequency)
+                putIfNotNull("intervalCount", request.intervalCount)
+                putIfNotNull("paymentMethodId", request.paymentMethodId)
+                putIfNotNull("setupIntentId", request.setupIntentId)
+                putIfNotNull("customerId", request.customerId)
                 put("metadata", JSONObject().apply {
                     put("campaignId", request.metadata.campaignId)
                     put("campaignTitle", request.metadata.campaignTitle)
                     put("organizationId", request.metadata.organizationId)
                     put("platform", request.metadata.platform)
-                    put("kioskId", request.metadata.kioskId ?: JSONObject.NULL)
-                    put("donorName", request.metadata.donorName ?: JSONObject.NULL)
-                    put("donorEmail", request.metadata.donorEmail ?: JSONObject.NULL)
+                    putIfNotNull("kioskId", request.metadata.kioskId)
+                    putIfNotNull("donorName", request.metadata.donorName)
+                    putIfNotNull("donorEmail", request.metadata.donorEmail)
                     put("isAnonymous", request.metadata.isAnonymous)
                     put("isGiftAid", request.metadata.isGiftAid)
                     put("recurringInterest", request.metadata.recurringInterest)

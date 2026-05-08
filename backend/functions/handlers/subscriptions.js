@@ -19,6 +19,17 @@ const normalizeEmail = (value) => {
   return email ? email.toLowerCase() : null;
 };
 
+const normalizeStripeMetadata = (metadata = {}) =>
+  Object.fromEntries(
+    Object.entries(metadata)
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([key, value]) => {
+        if (typeof value === 'string') return [key, value];
+        if (typeof value === 'number' || typeof value === 'boolean') return [key, String(value)];
+        return [key, JSON.stringify(value)];
+      }),
+  );
+
 const getTaxYear = (dateValue) => {
   // Handle Firestore Timestamp objects (duck-type on .toDate())
   const resolved =
@@ -397,6 +408,16 @@ const createRecurringSubscription = (req, res) => {
         : {};
 
       // Create subscription
+      const subscriptionMetadata = normalizeStripeMetadata({
+        campaignId,
+        organizationId: orgId,
+        donorEmail: donor.email,
+        donorName: donor.name || 'Anonymous',
+        platform: metadata.platform || 'web',
+        ...metadata,
+        ...stripeLocationMetadata,
+      });
+
       const subscription = await stripeClient.subscriptions.create({
         customer: customer.id,
         items: [{ price: price.id }],
@@ -404,15 +425,7 @@ const createRecurringSubscription = (req, res) => {
         collection_method: 'charge_automatically',
         expand: ['latest_invoice.payment_intent'],
         transfer_data: { destination: stripeAccountId },
-        metadata: {
-          campaignId,
-          organizationId: orgId,
-          donorEmail: donor.email,
-          donorName: donor.name || 'Anonymous',
-          platform: metadata.platform || 'web',
-          ...metadata,
-          ...stripeLocationMetadata,
-        },
+        metadata: subscriptionMetadata,
       });
 
       console.log('Subscription created:', {
@@ -460,7 +473,7 @@ const createRecurringSubscription = (req, res) => {
       }
       const recurringInterval =
         interval === 'year' ? 'yearly' : normalizedIntervalCount === 3 ? 'quarterly' : 'monthly';
-      const recurringMetadata = {
+      const recurringMetadata = normalizeStripeMetadata({
         campaignId,
         organizationId: orgId,
         donorEmail: donor.email || null,
@@ -475,15 +488,15 @@ const createRecurringSubscription = (req, res) => {
         interval,
         intervalCount: String(normalizedIntervalCount),
         subscriptionId: subscription.id,
-      };
+      });
 
       if (latestInvoice?.id) {
         try {
           await stripeClient.invoices.update(latestInvoice.id, {
-            metadata: {
+            metadata: normalizeStripeMetadata({
               ...recurringMetadata,
               invoiceId: latestInvoice.id,
-            },
+            }),
           });
         } catch (invoiceMetaError) {
           console.warn('Unable to update invoice metadata for recurring subscription', {
@@ -501,10 +514,10 @@ const createRecurringSubscription = (req, res) => {
       if (paymentIntentId) {
         try {
           await stripeClient.paymentIntents.update(paymentIntentId, {
-            metadata: {
+            metadata: normalizeStripeMetadata({
               ...recurringMetadata,
               invoiceId: latestInvoice?.id || null,
-            },
+            }),
           });
         } catch (paymentIntentMetaError) {
           console.warn('Unable to update payment intent metadata for recurring subscription', {

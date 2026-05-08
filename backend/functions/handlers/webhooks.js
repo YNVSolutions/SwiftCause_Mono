@@ -428,11 +428,7 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
       let resolvedIsRecurring = toBoolean(metadata.isRecurring);
       let resolvedRecurringInterval = toStringOrNull(metadata.recurringInterval);
       let resolvedSubscriptionId = toStringOrNull(metadata.subscriptionId);
-      let resolvedInvoiceId =
-        toStringOrNull(paymentIntent.invoice) ||
-        (paymentIntent.payment_details
-          ? toStringOrNull(paymentIntent.payment_details.order_reference)
-          : null);
+      let resolvedInvoiceId = toStringOrNull(paymentIntent.invoice);
       let resolvedDonorName = toStringOrNull(metadata.donorName) || 'Anonymous';
       let resolvedDonorEmail = toStringOrNull(metadata.donorEmail);
       let resolvedDonorPhone = toStringOrNull(metadata.donorPhone);
@@ -456,9 +452,16 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
         }
       }
 
-      // Some payment_intent.succeeded payloads omit invoice references entirely.
-      // For recurring flows, attempt to locate the invoice by payment intent id.
-      if (!resolvedInvoiceId) {
+      // Some subscription-driven payment_intent.succeeded payloads omit invoice references.
+      // Only attempt the Stripe invoice lookup when we have a recurring/invoiced signal.
+      const hasRecurringSignal =
+        resolvedIsRecurring ||
+        Boolean(resolvedSubscriptionId) ||
+        toBoolean(metadata.recurringInterest) ||
+        toBoolean(metadata.isRecurring) ||
+        toStringOrNull(metadata.frequency) !== null;
+
+      if (!resolvedInvoiceId && hasRecurringSignal) {
         try {
           const invoiceList = await stripeClient.invoices.list({
             payment_intent: paymentIntent.id,
@@ -558,11 +561,7 @@ const handlePaymentCompletedStripeWebhook = async (req, res) => {
         Boolean(resolvedInvoiceId) ||
         toBoolean(metadata.recurringInterest) ||
         Boolean(toStringOrNull(metadata.frequency)) ||
-        Boolean(resolvedSubscriptionId) ||
-        (Object.keys(metadata).length === 0 &&
-          !resolvedCampaignId &&
-          !organizationId &&
-          !resolvedSubscriptionId);
+        Boolean(resolvedSubscriptionId);
 
       if (shouldDeferToInvoicePaid) {
         console.log(
