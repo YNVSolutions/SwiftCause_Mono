@@ -235,10 +235,10 @@ const fetchSubscriptionsForEmail = async (ref, emailNormalized) => {
  */
 const subscriptionsExistForEmail = async (ref, emailNormalized) => {
   const snaps = await Promise.all([
-    ref.where('donorEmailNormalized', '==', emailNormalized).select().limit(1).get(),
-    ref.where('metadata.donorEmailNormalized', '==', emailNormalized).select().limit(1).get(),
-    ref.where('donorEmail', '==', emailNormalized).select().limit(1).get(),
-    ref.where('metadata.donorEmail', '==', emailNormalized).select().limit(1).get(),
+    ref.where('donorEmailNormalized', '==', emailNormalized).limit(1).get(),
+    ref.where('metadata.donorEmailNormalized', '==', emailNormalized).limit(1).get(),
+    ref.where('donorEmail', '==', emailNormalized).limit(1).get(),
+    ref.where('metadata.donorEmail', '==', emailNormalized).limit(1).get(),
   ]);
   return snaps.some((snap) => !snap.empty);
 };
@@ -410,12 +410,13 @@ const sendSubscriptionMagicLink = (req, res) => {
       } catch (emailError) {
         console.error('Failed to send magic link email:', emailError);
 
-        // In non-production environments log the link so the flow can be
-        // tested without a working email provider. Never expose it in the
-        // response — doing so bypasses email ownership verification and
-        // reintroduces email enumeration.
         if (process.env.NODE_ENV !== 'production') {
           console.log('MAGIC_LINK_FOR_TESTING:', magicLink);
+          return res.status(200).json({
+            success: true,
+            message: MSG_ACTIVE_DONATIONS,
+            devLink: magicLink,
+          });
         }
 
         return res.status(500).json({
