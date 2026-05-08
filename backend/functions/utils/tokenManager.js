@@ -51,7 +51,6 @@ const storeToken = async (token, { email, purpose = 'subscription_management' })
 
   console.log('Token stored:', {
     tokenHash: tokenHash.substring(0, 10) + '...',
-    email,
     purpose,
     expiresAt: expiresAt.toDate().toISOString(),
   });

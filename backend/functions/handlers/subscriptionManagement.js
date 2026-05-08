@@ -528,6 +528,12 @@ const getSubscriptionsByEmail = (req, res) => {
       }
 
       const emailNormalized = decodedToken.email.toLowerCase();
+
+      const withinLimit = await checkRateLimit(emailNormalized);
+      if (!withinLimit) {
+        return res.status(429).json({ error: 'Too many requests. Please try again shortly.' });
+      }
+
       const db = admin.firestore();
       const ref = db.collection('subscriptions');
       const subscriptions = await fetchSubscriptionsForEmail(ref, emailNormalized);
@@ -536,30 +542,32 @@ const getSubscriptionsByEmail = (req, res) => {
         return res.status(200).json({ subscriptions: [], count: 0 });
       }
 
-      // Enrich each subscription with live campaign title / org name
-      const enriched = await Promise.all(
-        subscriptions.map(async (sub) => {
-          try {
-            const campaignDoc = await db.collection('campaigns').doc(sub.campaignId).get();
+      // Batch-fetch all unique campaigns in one getAll() call instead of N reads.
+      const campaignIds = [...new Set(subscriptions.map((s) => s.campaignId).filter(Boolean))];
+      const campaignMap = new Map();
+      if (campaignIds.length > 0) {
+        const refs = campaignIds.map((id) => db.collection('campaigns').doc(id));
+        const docs = await db.getAll(...refs);
+        docs.forEach((d) => {
+          if (d.exists) campaignMap.set(d.id, d.data());
+        });
+      }
 
-            if (campaignDoc.exists) {
-              const cd = campaignDoc.data();
-              const meta = sub.metadata || {};
-              return {
-                ...sub,
-                metadata: {
-                  ...meta,
-                  campaignTitle: cd.title || meta.campaignTitle,
-                  organizationName: cd.organizationName || meta.organizationName,
-                },
-              };
-            }
-          } catch (err) {
-            console.error('Error fetching campaign details:', err);
-          }
-          return sub;
-        }),
-      );
+      const enriched = subscriptions.map((sub) => {
+        const cd = campaignMap.get(sub.campaignId);
+        if (cd) {
+          const meta = sub.metadata || {};
+          return {
+            ...sub,
+            metadata: {
+              ...meta,
+              campaignTitle: cd.title || meta.campaignTitle,
+              organizationName: cd.organizationName || meta.organizationName,
+            },
+          };
+        }
+        return sub;
+      });
 
       // Sort: active-like subscriptions first, then newest first within each group
       enriched.sort((a, b) => {
@@ -946,7 +954,13 @@ const getPaymentHistory = (req, res) => {
 
       const emailNormalized = decodedToken.email.toLowerCase();
 
-      // 2. INPUT VALIDATION
+      // 2. RATE LIMITING
+      const withinLimit = await checkRateLimit(emailNormalized);
+      if (!withinLimit) {
+        return res.status(429).json({ error: 'Too many requests. Please try again shortly.' });
+      }
+
+      // 3. INPUT VALIDATION
       const subscriptionId = normalizeString(req.body?.subscriptionId || req.query?.subscriptionId);
 
       if (!subscriptionId) {

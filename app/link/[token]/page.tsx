@@ -35,17 +35,13 @@ export default function MagicLinkPage({ params }: { params: Promise<{ token: str
         const data = await response.json();
 
         if (data.success && data.email && data.token) {
-          // Store email and Firebase auth token in session storage
           sessionStorage.setItem('donor_email', data.email);
-          sessionStorage.setItem('donor_auth_token', data.token);
 
-          // Sign in with custom token
           const { getAuth, signInWithCustomToken } = await import('firebase/auth');
           const auth = getAuth();
 
           try {
             await signInWithCustomToken(auth, data.token);
-            // Authenticated successfully
           } catch (authError) {
             console.error('Firebase auth error:', authError);
             setError('Unable to start your secure session. Please request a new link.');
@@ -53,13 +49,21 @@ export default function MagicLinkPage({ params }: { params: Promise<{ token: str
             return;
           }
 
-          // Redirect to dashboard
-          router.push(`/manage/dashboard?email=${encodeURIComponent(data.email)}`);
+          router.push('/manage/dashboard');
           return;
         }
       }
 
-      // If subscription link fails, try gift aid link (existing functionality)
+      // Only fall through to the gift-aid handler when the token is definitively
+      // not a subscription token (404). Any other non-2xx (transient 500, 401,
+      // 410 consumed/expired) means we should not attempt a second endpoint —
+      // the token has already been identified or partially consumed.
+      if (!response.ok && response.status !== 404) {
+        setError('This link is invalid or has expired.');
+        setValidating(false);
+        return;
+      }
+
       const giftAidResponse = await fetch(FUNCTION_URLS.validateMagicLinkToken, {
         method: 'POST',
         headers: {
