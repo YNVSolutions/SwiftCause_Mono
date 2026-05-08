@@ -398,8 +398,12 @@ const sendSubscriptionMagicLink = (req, res) => {
         purpose: 'subscription_management',
       });
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      const magicLink = `${appUrl}/link/${token}`;
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (!appUrl && process.env.NODE_ENV === 'production') {
+        console.error('NEXT_PUBLIC_APP_URL is not configured — cannot generate magic link');
+        return res.status(500).json({ error: 'Service misconfiguration. Please try again later.' });
+      }
+      const magicLink = `${appUrl || 'http://localhost:3000'}/link/${token}`;
 
       try {
         await sendSubscriptionMagicLinkEmail({

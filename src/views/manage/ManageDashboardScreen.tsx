@@ -104,7 +104,7 @@ export function ManageDashboardScreen() {
 
       if (!auth.currentUser) {
         await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Auth timeout')), 5000);
+          const timeout = setTimeout(() => reject(new Error('Auth timeout')), 10000);
           const unsubscribe = auth.onAuthStateChanged((user) => {
             clearTimeout(timeout);
             unsubscribe();

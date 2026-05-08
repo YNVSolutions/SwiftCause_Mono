@@ -1,18 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Mail, ArrowLeft, Lock, CheckCircle, Loader2 } from 'lucide-react';
 import { FUNCTION_URLS } from '@/shared/config/functions';
 
 export function ManageCheckEmailScreen() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const email = searchParams.get('email') || '';
+  const [email, setEmail] = useState('');
 
   useEffect(() => {
-    if (!email) router.replace('/manage');
-  }, [email, router]);
+    const stored = sessionStorage.getItem('pending_magic_link_email') || '';
+    if (!stored) {
+      router.replace('/manage');
+      return;
+    }
+    setEmail(stored);
+  }, [router]);
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState('');

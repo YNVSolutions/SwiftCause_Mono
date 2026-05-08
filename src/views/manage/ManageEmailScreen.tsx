@@ -54,9 +54,12 @@ export function ManageEmailScreen() {
         console.warn('Development Magic Link:', data.devLink);
       }
 
-      router.push(`/manage/check-email?email=${encodeURIComponent(email)}`);
+      sessionStorage.setItem('pending_magic_link_email', email);
+      router.push('/manage/check-email');
     } catch (err) {
-      setError('Failed to send access link. Please try again.');
+      setError(
+        err instanceof Error ? err.message : 'Failed to send access link. Please try again.',
+      );
       console.error('Error sending magic link:', err);
     } finally {
       setLoading(false);
