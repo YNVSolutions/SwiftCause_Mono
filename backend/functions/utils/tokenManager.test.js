@@ -6,6 +6,7 @@ const {
   hashToken,
   storeToken,
   verifyToken,
+  consumeToken,
   cleanupExpiredTokens,
   deleteOldTokens,
   TOKEN_EXPIRY_MS,
@@ -80,6 +81,13 @@ describe('tokenManager', () => {
         purpose: 'subscription_management',
       }),
     );
+
+    // Token should still be active after verify-only step
+    const beforeConsume = admin.__getDoc(COLLECTION, hashToken('one-time-token'));
+    expect(beforeConsume.status).toBe('active');
+
+    // Consume explicitly (as the handler does after createCustomToken succeeds)
+    await consumeToken('one-time-token');
 
     const stored = admin.__getDoc(COLLECTION, hashToken('one-time-token'));
     expect(stored.status).toBe('consumed');
