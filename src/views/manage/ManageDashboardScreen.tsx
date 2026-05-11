@@ -172,7 +172,10 @@ export function ManageDashboardScreen() {
               err.cause = r.status;
               throw err;
             }
-            return r.ok ? r.json() : { payments: [] };
+            if (!r.ok) {
+              throw new Error(`PAYMENT_HISTORY_${r.status}`);
+            }
+            return r.json();
           }),
         ),
       );
