@@ -108,13 +108,11 @@ const verifyToken = async (token) => {
       throw new Error('TOKEN_INVALID');
     }
 
-    // Token is valid - consume it (one-time use)
-    transaction.update(tokenRef, {
-      status: 'consumed',
-      consumedAt: admin.firestore.Timestamp.now(),
-    });
-
-    console.log('Token verified and consumed:', {
+    // Token is valid — return data without consuming.
+    // The caller must call consumeToken() only after any downstream operations
+    // (e.g. Firebase custom-token issuance) complete successfully. This ensures
+    // a transient Auth failure does not burn the link with no retry path.
+    console.log('Token verified (not yet consumed):', {
       tokenHash: tokenHash.substring(0, 10) + '...',
       email: tokenData.email,
     });
@@ -131,6 +129,31 @@ const verifyToken = async (token) => {
   }
 
   return result;
+};
+
+/**
+ * Atomically mark a previously-verified token as consumed.
+ * Must be called only after all downstream operations (e.g. custom-token
+ * issuance) have succeeded. Silently no-ops if the token was already consumed
+ * by a concurrent request so the caller never throws on a race.
+ * @param {string} token - Plain token (will be hashed)
+ * @return {Promise<void>}
+ */
+const consumeToken = async (token) => {
+  const tokenHash = hashToken(token);
+  const db = admin.firestore();
+  const tokenRef = db.collection(COLLECTION_NAME).doc(tokenHash);
+
+  await db.runTransaction(async (transaction) => {
+    const tokenDoc = await transaction.get(tokenRef);
+    if (!tokenDoc.exists || tokenDoc.data().status !== 'active') return;
+    transaction.update(tokenRef, {
+      status: 'consumed',
+      consumedAt: admin.firestore.Timestamp.now(),
+    });
+  });
+
+  console.log('Token consumed:', { tokenHash: tokenHash.substring(0, 10) + '...' });
 };
 
 /**
@@ -227,6 +250,7 @@ module.exports = {
   hashToken,
   storeToken,
   verifyToken,
+  consumeToken,
   cleanupExpiredTokens,
   deleteOldTokens,
   TOKEN_EXPIRY_MS,

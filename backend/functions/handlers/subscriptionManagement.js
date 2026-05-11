@@ -2,7 +2,7 @@ const admin = require('firebase-admin');
 const cors = require('../middleware/cors');
 const { ensureStripeInitialized } = require('../services/stripe');
 const { sendSubscriptionMagicLinkEmail } = require('../services/email');
-const { generateToken, storeToken, verifyToken } = require('../utils/tokenManager');
+const { generateToken, storeToken, verifyToken, consumeToken } = require('../utils/tokenManager');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -381,6 +381,21 @@ const sendSubscriptionMagicLink = (req, res) => {
 
       const emailNormalized = email.toLowerCase();
       const db = admin.firestore();
+
+      // Rate limiting BEFORE token generation and email send.
+      // Checked sequentially: email first so a known-limited email short-circuits
+      // before the IP counter is incremented.
+      const emailAllowed = await checkRateLimit(emailNormalized);
+      if (!emailAllowed) {
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      }
+
+      const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || 'unknown';
+      const ipAllowed = await checkRateLimit(`ip:${clientIp}`);
+      if (!ipAllowed) {
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      }
+
       const ref = db.collection('subscriptions');
       const hasSubscriptions = await subscriptionsExistForEmail(ref, emailNormalized);
 
@@ -466,17 +481,23 @@ const verifySubscriptionMagicLink = (req, res) => {
       }
 
       try {
+        // Step 1: Validate without consuming — token stays active if anything
+        // below fails transiently, so the donor can click the link again.
         const tokenData = await verifyToken(token);
         const { email } = tokenData;
 
         const crypto = require('crypto');
         const uid = `donor_${crypto.createHash('sha256').update(email).digest('hex')}`;
 
+        // Step 2: Issue Firebase custom token BEFORE consuming the magic link.
         const customToken = await admin.auth().createCustomToken(uid, {
           email,
           purpose: 'subscription_management',
           type: 'donor',
         });
+
+        // Step 3: Consume only after successful issuance.
+        await consumeToken(token);
 
         return res.status(200).json({
           success: true,
