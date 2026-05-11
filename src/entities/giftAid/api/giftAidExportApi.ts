@@ -61,8 +61,53 @@ export interface GiftAidExportBatchPage {
   lastDoc: DocumentSnapshot | null;
   hasNextPage: boolean;
 }
+export interface GasdsExportResult {
+  success: true;
+  batchId: string;
+  rowCount: number;
+  taxYear: string;
+  strictMode: boolean;
+  detailedFile: GiftAidExportFile;
+  summaryFile: GiftAidExportFile;
+  summary: {
+    byReason: Record<string, number>;
+    summaryRowCount: number;
+  };
+}
+
+export interface GasdsExportBatch {
+  id: string;
+  batchId?: string;
+  organizationId: string;
+  taxYear: string;
+  strictMode: boolean;
+  status: string;
+  rowCount: number;
+  summaryRowCount?: number;
+  detailedFile?: GiftAidExportFile | null;
+  summaryFile?: GiftAidExportFile | null;
+  createdAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  failureMessage?: string;
+}
+
+export interface GasdsExportBatchPage {
+  batches: GasdsExportBatch[];
+  lastDoc: DocumentSnapshot | null;
+  hasNextPage: boolean;
+}
 
 export type GiftAidExportFileKind = 'hmrc' | 'internal';
+export interface GasdsLocationSummaryRow {
+  locationId: string;
+  locationName: string;
+  postcode: string;
+  totalCollected: number;
+  eligible: number;
+  cap: number;
+  isCommunityBuilding: boolean;
+}
 
 interface GiftAidBatchTimestampFields {
   createdAt?: unknown;
@@ -153,6 +198,14 @@ const getGiftAidBatchDownloadFunctionUrl = () => {
   }
 
   return FUNCTION_URLS.downloadGiftAidExportBatchFile;
+};
+
+const getGasdsExportFunctionUrl = () => {
+  return FUNCTION_URLS.exportGasdsCsv;
+};
+
+const getGasdsBatchDownloadFunctionUrl = () => {
+  return FUNCTION_URLS.downloadGasdsExportBatchFile;
 };
 
 const getCurrentUserToken = async () => {
@@ -388,4 +441,164 @@ export async function downloadGiftAidExportFile(
 
   const blob = await response.blob();
   triggerBlobDownload(blob, file.fileName);
+}
+
+const parseFileName = (contentDisposition: string | null, fallbackName: string) => {
+  if (!contentDisposition) return fallbackName;
+  const match = /filename="([^"]+)"/i.exec(contentDisposition);
+  if (!match || !match[1]) return fallbackName;
+  return match[1];
+};
+
+export async function exportGasdsCsv(params: {
+  organizationId: string;
+  taxYear: string;
+  locationIds: string[];
+  strictMode?: boolean;
+}) {
+  const token = await getCurrentUserToken();
+  const url = getGasdsExportFunctionUrl();
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(params),
+    });
+  } catch {
+    throw new Error(`Could not reach GASDS export function at ${url}.`);
+  }
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to export GASDS CSV.';
+    try {
+      const errorData = await response.json();
+      if (typeof errorData?.error === 'string' && errorData.error.trim()) {
+        errorMessage = errorData.error;
+      }
+    } catch {
+      const text = await response.text().catch(() => '');
+      if (text) errorMessage = text;
+    }
+    throw new Error(errorMessage);
+  }
+
+  return (await response.json()) as GasdsExportResult;
+}
+
+export async function fetchGasdsExportBatchesPaginated(
+  organizationId: string,
+  cursor: DocumentSnapshot | null,
+  pageSize: number,
+): Promise<GasdsExportBatchPage> {
+  const constraints: Parameters<typeof query>[1][] = [
+    where('organizationId', '==', organizationId),
+    orderBy('createdAt', 'desc'),
+    orderBy('__name__', 'desc'),
+    limit(pageSize + 1),
+  ];
+
+  if (cursor) constraints.push(startAfter(cursor));
+
+  const batchesQuery = query(collection(db, 'gasdsExportBatches'), ...constraints);
+
+  let snapshot;
+  try {
+    snapshot = await getDocs(batchesQuery);
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    if (code !== 'failed-precondition') throw err;
+
+    const fallbackQuery = query(
+      collection(db, 'gasdsExportBatches'),
+      where('organizationId', '==', organizationId),
+    );
+    const fallbackSnapshot = await getDocs(fallbackQuery);
+    const sortedDocs = [...fallbackSnapshot.docs].sort((a, b) => {
+      const aTime = getBatchSortMillis(a.data() as GiftAidBatchTimestampFields);
+      const bTime = getBatchSortMillis(b.data() as GiftAidBatchTimestampFields);
+      if (aTime !== bTime) return bTime - aTime;
+      return b.id.localeCompare(a.id);
+    });
+
+    const startIndex = cursor ? sortedDocs.findIndex((docSnap) => docSnap.id === cursor.id) + 1 : 0;
+    const docs = sortedDocs.slice(startIndex, startIndex + pageSize);
+    const hasNextPage = startIndex + pageSize < sortedDocs.length;
+
+    return {
+      batches: docs.map(
+        (docSnapshot) =>
+          ({
+            id: docSnapshot.id,
+            ...docSnapshot.data(),
+          }) as GasdsExportBatch,
+      ),
+      lastDoc: docs[docs.length - 1] ?? null,
+      hasNextPage,
+    };
+  }
+
+  if (snapshot.empty) return { batches: [], lastDoc: null, hasNextPage: false };
+
+  const hasNextPage = snapshot.docs.length > pageSize;
+  const docs: QueryDocumentSnapshot[] = hasNextPage
+    ? snapshot.docs.slice(0, pageSize)
+    : snapshot.docs;
+
+  return {
+    batches: docs.map(
+      (docSnapshot) =>
+        ({
+          id: docSnapshot.id,
+          ...docSnapshot.data(),
+        }) as GasdsExportBatch,
+    ),
+    lastDoc: docs[docs.length - 1] ?? null,
+    hasNextPage,
+  };
+}
+
+export async function downloadGasdsExportFile(
+  batchId: string,
+  fileKind: 'detailed' | 'summary',
+  file: GiftAidExportFile,
+) {
+  const token = await getCurrentUserToken();
+  const url = getGasdsBatchDownloadFunctionUrl();
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ batchId, fileKind }),
+    });
+  } catch {
+    throw new Error(`Could not reach GASDS batch download function at ${url}.`);
+  }
+
+  if (!response.ok) {
+    let errorMessage = `Failed to download ${file.fileName}.`;
+    try {
+      const errorData = await response.json();
+      if (typeof errorData?.error === 'string' && errorData.error.trim()) {
+        errorMessage = errorData.error;
+      }
+    } catch {
+      // keep generic
+    }
+    throw new Error(errorMessage);
+  }
+
+  const fallbackName = `gasds-${batchId}-${fileKind}.csv`;
+  const fileName = parseFileName(response.headers.get('content-disposition'), fallbackName);
+  const blob = await response.blob();
+  triggerBlobDownload(blob, fileName);
 }

@@ -154,6 +154,43 @@ const chunkArray = (items, size) => {
   return chunks;
 };
 
+const fetchDonationsForGasdsExport = async ({ organizationId, requestedLocationIds }) => {
+  const db = admin.firestore();
+  const selectedChunks = chunkArray(requestedLocationIds, 10);
+  const byId = new Map();
+
+  try {
+    for (const locationChunk of selectedChunks) {
+      const snapshot = await db
+        .collection('donations')
+        .where('organizationId', '==', organizationId)
+        .where('location_id', 'in', locationChunk)
+        .get();
+
+      snapshot.docs.forEach((doc) => {
+        byId.set(doc.id, doc);
+      });
+    }
+  } catch (error) {
+    // Fallback for environments missing composite indexes.
+    // We preserve correctness via later in-memory filtering.
+    const code = error?.code;
+    if (code !== 9 && code !== 'failed-precondition') {
+      throw error;
+    }
+
+    const snapshot = await db
+      .collection('donations')
+      .where('organizationId', '==', organizationId)
+      .get();
+    snapshot.docs.forEach((doc) => {
+      byId.set(doc.id, doc);
+    });
+  }
+
+  return [...byId.values()];
+};
+
 const updateDeclarationsAsExported = async ({ declarationIds, batchId, actorId, exportedAt }) => {
   const db = admin.firestore();
   const chunks = chunkArray(declarationIds, WRITE_BATCH_SIZE);
@@ -177,6 +214,197 @@ const updateDeclarationsAsExported = async ({ declarationIds, batchId, actorId, 
     });
     await batch.commit();
   }
+};
+
+const sanitizeSpreadsheetFormula = (value) => {
+  if (typeof value !== 'string') return value;
+  if (/^[\t\r\n ]*[=+\-@]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+};
+
+const escapeCsvValue = (value) => {
+  if (value === undefined || value === null) return '';
+  const stringValue = String(sanitizeSpreadsheetFormula(value));
+  if (
+    stringValue.includes('"') ||
+    stringValue.includes(',') ||
+    stringValue.includes('\n') ||
+    stringValue.includes('\r')
+  ) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
+const toDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && typeof value.toDate === 'function') return value.toDate();
+  if (typeof value === 'object' && typeof value.seconds === 'number') {
+    return new Date(value.seconds * 1000);
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const buildUkTaxYearLabel = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const startYear = month > 4 || (month === 4 && day >= 6) ? year : year - 1;
+  return `${startYear}-${startYear + 1}`;
+};
+
+const resolveUkTaxYearRange = (taxYear) => {
+  const value = typeof taxYear === 'string' ? taxYear.trim() : '';
+  const match = /^(\d{4})-(\d{4})$/.exec(value);
+  if (!match) return null;
+  const startYear = Number(match[1]);
+  const endYear = Number(match[2]);
+  if (!Number.isInteger(startYear) || !Number.isInteger(endYear) || endYear !== startYear + 1) {
+    return null;
+  }
+
+  const start = new Date(Date.UTC(startYear, 3, 6, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(endYear, 3, 5, 23, 59, 59, 999));
+  return { start, end, label: value };
+};
+
+const resolveDonationDate = (donation) => {
+  return (
+    toDate(donation.paymentCompletedAt) ||
+    toDate(donation.timestamp) ||
+    toDate(donation.createdAt) ||
+    null
+  );
+};
+
+const resolveCampaignMode = (donation) => {
+  const direct = typeof donation.campaign_mode === 'string' ? donation.campaign_mode.trim() : '';
+  if (direct) return direct.toUpperCase();
+
+  const camel = typeof donation.campaignMode === 'string' ? donation.campaignMode.trim() : '';
+  if (camel) return camel.toUpperCase();
+
+  const metadataSnake =
+    typeof donation?.metadata?.campaign_mode === 'string'
+      ? donation.metadata.campaign_mode.trim()
+      : '';
+  if (metadataSnake) return metadataSnake.toUpperCase();
+
+  const metadataCamel =
+    typeof donation?.metadata?.campaignMode === 'string'
+      ? donation.metadata.campaignMode.trim()
+      : '';
+  if (metadataCamel) return metadataCamel.toUpperCase();
+
+  return 'DONATION';
+};
+
+const resolveLocationSnapshot = (donation) => {
+  const snapshot =
+    donation && typeof donation.location_snapshot === 'object' ? donation.location_snapshot : null;
+  if (!snapshot) return null;
+  const addressLine1 =
+    typeof snapshot.addressLine1 === 'string' && snapshot.addressLine1.trim()
+      ? snapshot.addressLine1.trim()
+      : typeof snapshot.city === 'string'
+        ? snapshot.city.trim()
+        : '';
+  return {
+    name: typeof snapshot.name === 'string' ? snapshot.name.trim() : '',
+    postcode: typeof snapshot.postcode === 'string' ? snapshot.postcode.trim() : '',
+    addressLine1,
+  };
+};
+
+const buildGasdsCsv = (rows) => {
+  const headers = [
+    'donation_id',
+    'amount',
+    'date',
+    'method',
+    'location_name',
+    'postcode',
+    'address_line1',
+    'tax_year',
+    'campaign_mode',
+    'is_gasds_eligible',
+    'gift_aid_matched_in_same_year',
+    'reason_not_eligible',
+  ];
+
+  const csvRows = rows.map((row) =>
+    [
+      row.donation_id,
+      row.amount,
+      row.date,
+      row.method,
+      row.location_name,
+      row.postcode,
+      row.address_line1,
+      row.tax_year,
+      row.campaign_mode,
+      row.is_gasds_eligible,
+      row.gift_aid_matched_in_same_year,
+      row.reason_not_eligible,
+    ]
+      .map(escapeCsvValue)
+      .join(','),
+  );
+
+  return [headers.join(','), ...csvRows].join('\n');
+};
+
+const buildGasdsSummaryCsv = (rows) => {
+  const headers = [
+    'location_id',
+    'location_name',
+    'postcode',
+    'total_collected',
+    'eligible',
+    'cap',
+    'status',
+    'community_building_note',
+  ];
+
+  const csvRows = rows.map((row) =>
+    [
+      row.location_id,
+      row.location_name,
+      row.postcode,
+      row.total_collected,
+      row.eligible,
+      row.cap,
+      row.status,
+      row.community_building_note,
+    ]
+      .map(escapeCsvValue)
+      .join(','),
+  );
+
+  return [headers.join(','), ...csvRows].join('\n');
+};
+
+const resolveGasdsIneligibilityReason = ({ amountMajor, campaignMode }) => {
+  if (amountMajor > 30 && campaignMode !== 'DONATION') return 'over_30_and_non_donation_mode';
+  if (amountMajor > 30) return 'over_30';
+  if (campaignMode !== 'DONATION') return 'non_donation_mode';
+  return '';
+};
+
+const resolveFileNameToken = (timestamp, prefix) => {
+  const timestampToken = buildTimestampToken(timestamp);
+  return `${prefix}-${timestampToken}.csv`;
+};
+
+const resolveGasdsBatchFile = (batchData, fileKind) => {
+  if (fileKind === 'detailed') return batchData.detailedFile || null;
+  if (fileKind === 'summary') return batchData.summaryFile || null;
+  return null;
 };
 
 const fetchCapturedDeclarations = async (organizationId) => {
@@ -438,7 +666,305 @@ const downloadGiftAidExportBatchFile = (req, res) => {
   });
 };
 
+const exportGasdsCsv = (req, res) => {
+  cors(req, res, async () => {
+    let batchRef = null;
+    try {
+      if (req.method !== 'POST') {
+        return res.status(405).send({ error: 'Method not allowed' });
+      }
+
+      const auth = await verifyAuth(req);
+      const organizationId =
+        typeof req.body?.organizationId === 'string' ? req.body.organizationId.trim() : '';
+      await ensureGiftAidExportAccess(auth, organizationId);
+
+      const taxYear = typeof req.body?.taxYear === 'string' ? req.body.taxYear.trim() : '';
+      const resolvedTaxYear = resolveUkTaxYearRange(taxYear);
+      if (!resolvedTaxYear) {
+        return res.status(400).send({ error: 'taxYear must be in YYYY-YYYY format' });
+      }
+
+      const requestedLocationIds = Array.isArray(req.body?.locationIds)
+        ? req.body.locationIds
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter(Boolean)
+        : [];
+
+      if (requestedLocationIds.length === 0) {
+        return res.status(400).send({ error: 'At least one location must be selected' });
+      }
+      const strictMode = req.body?.strictMode === true;
+
+      const donationDocs = await fetchDonationsForGasdsExport({
+        organizationId,
+        requestedLocationIds,
+      });
+
+      const selectedLocationIds = new Set(requestedLocationIds);
+      const locationSnapshot = await admin
+        .firestore()
+        .collection('locations')
+        .where('orgId', '==', organizationId)
+        .get()
+        .catch(() => null);
+      const locationMeta = new Map();
+      if (locationSnapshot && locationSnapshot.docs) {
+        locationSnapshot.docs.forEach((doc) => {
+          const data = doc.data() || {};
+          if (!selectedLocationIds.has(doc.id)) return;
+          locationMeta.set(doc.id, {
+            name: typeof data.name === 'string' ? data.name.trim() : '',
+            postcode: typeof data.postcode === 'string' ? data.postcode.trim() : '',
+            isCommunityBuilding: Boolean(data.isCommunityBuilding),
+          });
+        });
+      }
+
+      const rows = [];
+      const summaryByLocation = new Map();
+      const reasonCounts = {
+        over_30: 0,
+        non_donation_mode: 0,
+        over_30_and_non_donation_mode: 0,
+      };
+
+      for (const doc of donationDocs) {
+        const donation = doc.data() || {};
+        const locationId =
+          typeof donation.location_id === 'string' ? donation.location_id.trim() : null;
+        if (!locationId || !selectedLocationIds.has(locationId)) continue;
+
+        const donationDate = resolveDonationDate(donation);
+        if (!donationDate) continue;
+        if (donationDate < resolvedTaxYear.start || donationDate > resolvedTaxYear.end) continue;
+
+        const taxYearLabel = buildUkTaxYearLabel(donationDate);
+        if (!taxYearLabel || taxYearLabel !== resolvedTaxYear.label) continue;
+
+        const campaignMode = resolveCampaignMode(donation);
+        const amountMinor = Number(donation.amount);
+        const amountMajor = Number.isFinite(amountMinor) ? amountMinor / 100 : 0;
+        const isEligible = amountMajor <= 30 && campaignMode === 'DONATION';
+        const reasonNotEligible = isEligible
+          ? ''
+          : resolveGasdsIneligibilityReason({ amountMajor, campaignMode });
+        if (reasonNotEligible && reasonCounts[reasonNotEligible] !== undefined) {
+          reasonCounts[reasonNotEligible] += 1;
+        }
+        const locationSnapshot = resolveLocationSnapshot(donation);
+        const locationRecord = locationMeta.get(locationId) || {};
+        const resolvedLocationName = locationSnapshot?.name || locationRecord.name || '';
+        const resolvedPostcode = locationSnapshot?.postcode || locationRecord.postcode || '';
+
+        const currentSummary = summaryByLocation.get(locationId) || {
+          location_id: locationId,
+          location_name: resolvedLocationName || 'Unknown',
+          postcode: resolvedPostcode,
+          total_collected: 0,
+          eligible: 0,
+          cap: '8000.00',
+          status: 'OK',
+          community_building_note: locationRecord.isCommunityBuilding
+            ? 'Potential £16k cap (subject to eligibility)'
+            : '',
+        };
+        currentSummary.total_collected += amountMajor;
+        if (isEligible) currentSummary.eligible += amountMajor;
+        currentSummary.status = currentSummary.eligible > 8000 ? 'Exceeds' : 'OK';
+        summaryByLocation.set(locationId, currentSummary);
+        if (strictMode && !isEligible) continue;
+
+        rows.push({
+          location_id: locationId,
+          donation_id: donation.transactionId || donation.stripePaymentIntentId || doc.id,
+          amount: amountMajor.toFixed(2),
+          date: donationDate.toISOString(),
+          method: donation.platform || 'unknown',
+          location_name: resolvedLocationName,
+          postcode: resolvedPostcode,
+          address_line1: locationSnapshot?.addressLine1 || '',
+          tax_year: resolvedTaxYear.label,
+          campaign_mode: campaignMode,
+          is_gasds_eligible: isEligible ? 'true' : 'false',
+          gift_aid_matched_in_same_year: donation.isGiftAid === true ? 'true' : 'false',
+          reason_not_eligible: reasonNotEligible,
+        });
+      }
+
+      rows.sort((left, right) => left.date.localeCompare(right.date));
+      const csvContent = buildGasdsCsv(rows);
+      const summaryRows = [...summaryByLocation.values()]
+        .map((row) => ({
+          ...row,
+          total_collected: Number(row.total_collected).toFixed(2),
+          eligible: Number(row.eligible).toFixed(2),
+        }))
+        .sort((left, right) => left.location_name.localeCompare(right.location_name));
+      const summaryCsv = buildGasdsSummaryCsv(summaryRows);
+
+      const exportedAt = admin.firestore.Timestamp.now();
+      const callerData = await getCallerProfile(auth.uid);
+      batchRef = await admin
+        .firestore()
+        .collection('gasdsExportBatches')
+        .add({
+          organizationId,
+          status: 'pending',
+          createdAt: exportedAt,
+          createdByUserId: auth.uid,
+          createdByEmail: auth.email || callerData.email || null,
+          createdByName: callerData.username || null,
+          taxYear: resolvedTaxYear.label,
+          strictMode,
+          locationIds: requestedLocationIds,
+          rowCount: rows.length,
+          reasonCounts,
+        });
+
+      const batchId = batchRef.id;
+      const storageBasePath = `gasdsExports/${organizationId}/${batchId}`;
+      const detailedFileName = resolveFileNameToken(
+        exportedAt,
+        `gasds-detailed-${resolvedTaxYear.label}`,
+      );
+      const summaryFileName = resolveFileNameToken(
+        exportedAt,
+        `gasds-summary-${resolvedTaxYear.label}`,
+      );
+      const bucket = admin.storage().bucket();
+      const detailedFile = await createCsvStorageFile({
+        bucket,
+        storagePath: `${storageBasePath}/${detailedFileName}`,
+        fileName: detailedFileName,
+        csvContent,
+      });
+      const summaryFile = await createCsvStorageFile({
+        bucket,
+        storagePath: `${storageBasePath}/${summaryFileName}`,
+        fileName: summaryFileName,
+        csvContent: summaryCsv,
+      });
+
+      await batchRef.set(
+        {
+          batchId,
+          status: 'completed',
+          completedAt: exportedAt,
+          detailedFile,
+          summaryFile,
+          rowCount: rows.length,
+          summaryRowCount: summaryRows.length,
+          updatedAt: exportedAt,
+        },
+        { merge: true },
+      );
+
+      return res.status(200).send({
+        success: true,
+        batchId,
+        rowCount: rows.length,
+        taxYear: resolvedTaxYear.label,
+        strictMode,
+        detailedFile,
+        summaryFile,
+        summary: {
+          byReason: reasonCounts,
+          summaryRowCount: summaryRows.length,
+        },
+      });
+    } catch (error) {
+      console.error('Error exporting GASDS csv:', error);
+      if (batchRef) {
+        try {
+          await batchRef.set(
+            {
+              status: 'failed',
+              failureMessage: error.message || 'GASDS export failed',
+              failedAt: admin.firestore.Timestamp.now(),
+            },
+            { merge: true },
+          );
+        } catch (batchError) {
+          console.error('Failed to update GASDS export batch status:', batchError);
+        }
+      }
+      const statusCode = Number.isInteger(error.code) ? error.code : 500;
+      return res.status(statusCode).send({
+        error: error.message || 'Failed to export GASDS csv',
+      });
+    }
+  });
+};
+
+const downloadGasdsExportBatchFile = (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== 'POST') {
+        return res.status(405).send({ error: 'Method not allowed' });
+      }
+
+      const auth = await verifyAuth(req);
+      const batchId = typeof req.body?.batchId === 'string' ? req.body.batchId.trim() : '';
+      const fileKind = typeof req.body?.fileKind === 'string' ? req.body.fileKind.trim() : '';
+
+      if (!batchId) return res.status(400).send({ error: 'batchId is required' });
+      if (fileKind !== 'detailed' && fileKind !== 'summary') {
+        return res.status(400).send({ error: "fileKind must be 'detailed' or 'summary'" });
+      }
+
+      const batchSnapshot = await admin
+        .firestore()
+        .collection('gasdsExportBatches')
+        .doc(batchId)
+        .get();
+      if (!batchSnapshot.exists)
+        return res.status(404).send({ error: 'GASDS export batch not found' });
+
+      const batchData = batchSnapshot.data() || {};
+      const organizationId =
+        typeof batchData.organizationId === 'string' ? batchData.organizationId.trim() : '';
+      await ensureGiftAidBatchDownloadAccess(auth, organizationId);
+
+      const fileMeta = resolveGasdsBatchFile(batchData, fileKind);
+      const storagePath =
+        typeof fileMeta?.storagePath === 'string' ? fileMeta.storagePath.trim() : '';
+      const fileName = typeof fileMeta?.fileName === 'string' ? fileMeta.fileName.trim() : '';
+      if (!storagePath || !fileName)
+        return res.status(404).send({ error: 'Requested GASDS export file is unavailable' });
+
+      const storageFile = admin.storage().bucket().file(storagePath);
+      const [exists] = await storageFile.exists();
+      if (!exists)
+        return res.status(404).send({ error: 'GASDS export file could not be found in storage' });
+      const [buffer] = await storageFile.download();
+
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.set('Cache-Control', 'private, no-store, max-age=0');
+      return res.status(200).send(buffer);
+    } catch (error) {
+      console.error('Error downloading GASDS export batch file:', error);
+      const statusCode = Number.isInteger(error.code) ? error.code : 500;
+      return res.status(statusCode).send({
+        error: error.message || 'Failed to download GASDS export batch file',
+      });
+    }
+  });
+};
+
 module.exports = {
   exportGiftAidDeclarations,
   downloadGiftAidExportBatchFile,
+  exportGasdsCsv,
+  downloadGasdsExportBatchFile,
+  resolveUkTaxYearRange,
+  buildUkTaxYearLabel,
+  resolveCampaignMode,
+  resolveGasdsIneligibilityReason,
+  resolveLocationSnapshot,
+  resolveDonationDate,
+  buildGasdsCsv,
+  escapeCsvValue,
+  sanitizeSpreadsheetFormula,
 };
