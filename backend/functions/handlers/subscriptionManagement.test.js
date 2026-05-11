@@ -27,12 +27,19 @@ jest.mock('../utils/tokenManager', () => ({
   storeToken: jest.fn(),
   verifyToken: jest.fn(),
   consumeToken: jest.fn(),
+  releaseToken: jest.fn(),
 }));
 
 const admin = require('firebase-admin');
 const { ensureStripeInitialized } = require('../services/stripe');
 const { sendSubscriptionMagicLinkEmail } = require('../services/email');
-const { generateToken, storeToken, verifyToken, consumeToken } = require('../utils/tokenManager');
+const {
+  generateToken,
+  storeToken,
+  verifyToken,
+  consumeToken,
+  releaseToken,
+} = require('../utils/tokenManager');
 
 const {
   sendSubscriptionMagicLink,

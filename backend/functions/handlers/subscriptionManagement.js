@@ -2,7 +2,13 @@ const admin = require('firebase-admin');
 const cors = require('../middleware/cors');
 const { ensureStripeInitialized } = require('../services/stripe');
 const { sendSubscriptionMagicLinkEmail } = require('../services/email');
-const { generateToken, storeToken, verifyToken, consumeToken } = require('../utils/tokenManager');
+const {
+  generateToken,
+  storeToken,
+  verifyToken,
+  consumeToken,
+  releaseToken,
+} = require('../utils/tokenManager');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -480,23 +486,26 @@ const verifySubscriptionMagicLink = (req, res) => {
         return res.status(400).json({ error: 'Token is required' });
       }
 
+      let tokenClaimed = false;
       try {
-        // Step 1: Validate without consuming — token stays active if anything
-        // below fails transiently, so the donor can click the link again.
+        // Step 1: Atomically claim the token (active → claiming).
+        // Concurrent requests see 'claiming' and get TOKEN_CONSUMED immediately,
+        // closing the verify/mint/consume race window.
         const tokenData = await verifyToken(token);
+        tokenClaimed = true;
         const { email } = tokenData;
 
         const crypto = require('crypto');
         const uid = `donor_${crypto.createHash('sha256').update(email).digest('hex')}`;
 
-        // Step 2: Issue Firebase custom token BEFORE consuming the magic link.
+        // Step 2: Issue Firebase custom token.
         const customToken = await admin.auth().createCustomToken(uid, {
           email,
           purpose: 'subscription_management',
           type: 'donor',
         });
 
-        // Step 3: Consume only after successful issuance.
+        // Step 3: Commit (claiming → consumed) only after successful issuance.
         await consumeToken(token);
 
         return res.status(200).json({
@@ -505,6 +514,14 @@ const verifySubscriptionMagicLink = (req, res) => {
           token: customToken,
         });
       } catch (error) {
+        // If the token was claimed but a downstream step failed, release it
+        // back to 'active' so the donor can retry via the same link.
+        if (tokenClaimed) {
+          await releaseToken(token).catch((releaseErr) => {
+            console.error('Failed to release token after error:', releaseErr.message);
+          });
+        }
+
         const errorMessage = error.message || 'UNKNOWN_ERROR';
         const statusMap = {
           TOKEN_NOT_FOUND: 401,
@@ -860,8 +877,15 @@ const createCustomerPortalSession = (req, res) => {
       // 10. VALIDATE RETURN URL
       // The URL is constructed from an env var, not user input. The check
       // guards against misconfiguration (e.g. a typo in NEXT_PUBLIC_APP_URL).
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      const returnUrl = `${appUrl}/manage/dashboard`;
+      // Fail explicitly in production rather than silently falling back to
+      // localhost — localhost is in TRUSTED_DOMAINS for dev and would otherwise
+      // pass isValidReturnUrl, creating a real portal session with a useless URL.
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (!appUrl && process.env.NODE_ENV === 'production') {
+        console.error('NEXT_PUBLIC_APP_URL is not configured — cannot build portal return URL');
+        return res.status(500).json({ error: 'Service misconfiguration. Please try again later.' });
+      }
+      const returnUrl = `${appUrl || 'http://localhost:3000'}/manage/dashboard`;
 
       if (!isValidReturnUrl(returnUrl)) {
         auditLog('portal_session_failed', {
@@ -1051,26 +1075,31 @@ const getPaymentHistory = (req, res) => {
       addSnap(q1);
 
       // Query 2: email + campaign fallback (covers kiosk/legacy docs).
-      // Two parallel queries cover both storage patterns:
-      // - donorEmailNormalized (new docs written with a normalised field)
-      // - donorEmail exact match (legacy docs stored in lowercase)
-      // Mixed-case legacy docs (e.g. "Donor@Example.com") are missed until
-      // donorEmailNormalized is backfilled, consistent with the subscription queries.
+      // Treated as best-effort: a failure here (e.g. missing composite index)
+      // must not mask q1 results or surface as an empty-payment response.
+      // Errors are logged and q1 results are returned without the fallback data.
       if (donorEmail && subscriptionData.campaignId) {
-        const [q2a, q2b] = await Promise.all([
-          db
-            .collection('donations')
-            .where('donorEmailNormalized', '==', donorEmail)
-            .where('campaignId', '==', subscriptionData.campaignId)
-            .get(),
-          db
-            .collection('donations')
-            .where('donorEmail', '==', donorEmail)
-            .where('campaignId', '==', subscriptionData.campaignId)
-            .get(),
-        ]);
-        addSnap(q2a);
-        addSnap(q2b);
+        try {
+          const [q2a, q2b] = await Promise.all([
+            db
+              .collection('donations')
+              .where('donorEmailNormalized', '==', donorEmail)
+              .where('campaignId', '==', subscriptionData.campaignId)
+              .get(),
+            db
+              .collection('donations')
+              .where('donorEmail', '==', donorEmail)
+              .where('campaignId', '==', subscriptionData.campaignId)
+              .get(),
+          ]);
+          addSnap(q2a);
+          addSnap(q2b);
+        } catch (q2Error) {
+          console.error(
+            'Payment history fallback queries failed (returning q1 results only):',
+            q2Error.message,
+          );
+        }
       }
 
       const payments = [];

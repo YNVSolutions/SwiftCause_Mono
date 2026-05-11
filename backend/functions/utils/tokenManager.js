@@ -81,9 +81,12 @@ const verifyToken = async (token) => {
 
     const tokenData = tokenDoc.data();
 
-    // Check if already consumed
-    if (tokenData.status === 'consumed') {
-      console.warn('Token already consumed:', tokenHash.substring(0, 10) + '...');
+    // Check if already consumed or being claimed by a concurrent request
+    if (tokenData.status === 'consumed' || tokenData.status === 'claiming') {
+      console.warn(
+        'Token already consumed or claim in progress:',
+        tokenHash.substring(0, 10) + '...',
+      );
       throw new Error('TOKEN_CONSUMED');
     }
 
@@ -108,11 +111,14 @@ const verifyToken = async (token) => {
       throw new Error('TOKEN_INVALID');
     }
 
-    // Token is valid — return data without consuming.
-    // The caller must call consumeToken() only after any downstream operations
-    // (e.g. Firebase custom-token issuance) complete successfully. This ensures
-    // a transient Auth failure does not burn the link with no retry path.
-    console.log('Token verified (not yet consumed):', {
+    // Atomically claim the token: active → claiming.
+    // Any concurrent request will see 'claiming' and receive TOKEN_CONSUMED,
+    // eliminating the verify/mint/consume race window. The caller must call
+    // consumeToken() on success or releaseToken() on failure so the token
+    // is never left permanently in the 'claiming' state.
+    transaction.update(tokenRef, { status: 'claiming' });
+
+    console.log('Token claimed:', {
       tokenHash: tokenHash.substring(0, 10) + '...',
       email: tokenData.email,
     });
@@ -146,7 +152,7 @@ const consumeToken = async (token) => {
 
   await db.runTransaction(async (transaction) => {
     const tokenDoc = await transaction.get(tokenRef);
-    if (!tokenDoc.exists || tokenDoc.data().status !== 'active') return;
+    if (!tokenDoc.exists || tokenDoc.data().status !== 'claiming') return;
     transaction.update(tokenRef, {
       status: 'consumed',
       consumedAt: admin.firestore.Timestamp.now(),
@@ -154,6 +160,27 @@ const consumeToken = async (token) => {
   });
 
   console.log('Token consumed:', { tokenHash: tokenHash.substring(0, 10) + '...' });
+};
+
+/**
+ * Roll back a claimed token to active so the donor can retry.
+ * Must be called when any operation after verifyToken fails (e.g. createCustomToken).
+ * Silently no-ops if the token is not in 'claiming' state.
+ * @param {string} token - Plain token (will be hashed)
+ * @return {Promise<void>}
+ */
+const releaseToken = async (token) => {
+  const tokenHash = hashToken(token);
+  const db = admin.firestore();
+  const tokenRef = db.collection(COLLECTION_NAME).doc(tokenHash);
+
+  await db.runTransaction(async (transaction) => {
+    const tokenDoc = await transaction.get(tokenRef);
+    if (!tokenDoc.exists || tokenDoc.data().status !== 'claiming') return;
+    transaction.update(tokenRef, { status: 'active' });
+  });
+
+  console.log('Token released back to active:', { tokenHash: tokenHash.substring(0, 10) + '...' });
 };
 
 /**
@@ -251,6 +278,7 @@ module.exports = {
   storeToken,
   verifyToken,
   consumeToken,
+  releaseToken,
   cleanupExpiredTokens,
   deleteOldTokens,
   TOKEN_EXPIRY_MS,

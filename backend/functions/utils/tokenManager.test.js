@@ -7,6 +7,7 @@ const {
   storeToken,
   verifyToken,
   consumeToken,
+  releaseToken,
   cleanupExpiredTokens,
   deleteOldTokens,
   TOKEN_EXPIRY_MS,
@@ -82,9 +83,9 @@ describe('tokenManager', () => {
       }),
     );
 
-    // Token should still be active after verify-only step
+    // After verifyToken, token must be in 'claiming' state (blocks concurrent requests)
     const beforeConsume = admin.__getDoc(COLLECTION, hashToken('one-time-token'));
-    expect(beforeConsume.status).toBe('active');
+    expect(beforeConsume.status).toBe('claiming');
 
     // Consume explicitly (as the handler does after createCustomToken succeeds)
     await consumeToken('one-time-token');
@@ -94,6 +95,37 @@ describe('tokenManager', () => {
     expect(stored.consumedAt.toMillis()).toEqual(expect.any(Number));
 
     await expect(verifyToken('one-time-token')).rejects.toThrow('TOKEN_CONSUMED');
+  });
+
+  it('rejects a concurrent claim on the same token', async () => {
+    await storeToken('race-token', {
+      email: 'donor@example.com',
+      purpose: 'subscription_management',
+    });
+
+    // First claim succeeds
+    await verifyToken('race-token');
+    expect(admin.__getDoc(COLLECTION, hashToken('race-token')).status).toBe('claiming');
+
+    // Second concurrent claim sees 'claiming' and is rejected
+    await expect(verifyToken('race-token')).rejects.toThrow('TOKEN_CONSUMED');
+  });
+
+  it('releases a claimed token back to active on downstream failure', async () => {
+    await storeToken('release-token', {
+      email: 'donor@example.com',
+      purpose: 'subscription_management',
+    });
+
+    await verifyToken('release-token');
+    expect(admin.__getDoc(COLLECTION, hashToken('release-token')).status).toBe('claiming');
+
+    await releaseToken('release-token');
+    expect(admin.__getDoc(COLLECTION, hashToken('release-token')).status).toBe('active');
+
+    // Token is claimable again after release
+    const result = await verifyToken('release-token');
+    expect(result.email).toBe('donor@example.com');
   });
 
   it('rejects unknown tokens', async () => {
