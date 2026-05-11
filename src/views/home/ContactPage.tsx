@@ -1,52 +1,62 @@
-import React, { useState } from 'react';
-import { Button } from '../../shared/ui/button';
-import { ArrowLeft, Mail, SendHorizontal, Loader2, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Send, Loader2, CheckCircle, AlertCircle, Clock, Mail, Menu, X } from 'lucide-react';
+import Image from 'next/image';
 import { submitFeedback, queueContactConfirmationEmail } from '../../shared/api/firestoreService';
 import { useToast } from '../../shared/ui/ToastProvider';
 
-const ContactInfoItem = ({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) => (
-  <div className="flex items-start gap-4 rounded-2xl border border-[#e6e2d8] bg-white/80 p-4 shadow-sm">
-    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-      {icon}
-    </div>
-    <div>
-      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-      <div className="mt-1 text-sm text-slate-600">{children}</div>
-    </div>
-  </div>
-);
-
-export function ContactPage({ onNavigate, onBack }: { onNavigate?: (screen: string) => void; onBack?: () => void }) {
+export function ContactPage({ onNavigate }: { onNavigate?: (screen: string) => void }) {
   const { showToast } = useToast();
+  const [scrolled, setScrolled] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
+    fullName: '',
     email: '',
     message: '',
-    website: ''
+    website: '',
   });
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleChange =
+    (field: keyof typeof formData) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
-
     try {
       if (formData.website.trim()) {
         setIsLoading(false);
         setIsSubmitted(true);
         return;
       }
-      await submitFeedback(formData);
+      await submitFeedback({
+        firstName: formData.fullName,
+        lastName: '',
+        email: formData.email,
+        message: formData.message,
+      });
       let confirmationEmailFailed = false;
       try {
-        await queueContactConfirmationEmail(formData);
-      } catch (emailError) {
+        await queueContactConfirmationEmail({
+          firstName: formData.fullName,
+          lastName: '',
+          email: formData.email,
+          message: formData.message,
+        });
+      } catch {
         confirmationEmailFailed = true;
-        console.error('Error queueing confirmation email:', emailError);
       }
       setIsLoading(false);
       setIsSubmitted(true);
@@ -63,193 +73,368 @@ export function ContactPage({ onNavigate, onBack }: { onNavigate?: (screen: stri
     }
   };
 
-  const handleChange = (field: keyof typeof formData) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: e.target.value
-    }));
-  };
+  const navItems = [
+    { label: 'Features', href: '/#features' },
+    { label: 'FAQ', href: '/#faq' },
+    { label: 'Contact', href: '/contact' },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#F3F1EA] font-['Helvetica',sans-serif] text-slate-700">
-      <style jsx>{`
-        .glass-card {
-          background: rgba(255, 255, 255, 0.85);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        .hero-gradient {
-          background: linear-gradient(180deg, #0f5132 0%, #064e3b 100%);
-        }
-      `}</style>
-      <header className="sticky top-0 z-40">
-        <div className="max-w-[1200px] mx-auto flex items-center justify-between py-4 glass-card px-4 rounded-b-2xl">
-          <button
-            onClick={() => onNavigate && onNavigate('home')}
-            className="flex items-center gap-3 text-left"
-            aria-label="Go to home"
-          >
-            <img src="/logo.png" alt="SwiftCause" className="w-8 h-8" />
-            <div>
-              <span className="font-bold text-lg tracking-tight text-[#064e3b]">SwiftCause</span>
-              <p className="text-[11px] text-slate-500">Donation Platform</p>
-            </div>
+    <div className="min-h-screen bg-white selection:bg-[#0f9d58] selection:text-white">
+      {/* Nav */}
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/90 backdrop-blur-md shadow-sm py-3' : 'bg-transparent py-5'}`}
+      >
+        <div className="container mx-auto px-6 flex items-center justify-between">
+          <button onClick={() => onNavigate?.('home')} className="flex items-center gap-2">
+            <Image
+              src="/logo.png"
+              alt="SwiftCause Logo"
+              width={40}
+              height={40}
+              className="rounded-xl shadow-lg"
+            />
+            <span className="text-2xl tracking-tight">
+              <span className="font-extrabold text-[#1a2332]">Swift</span>
+              <span className="font-bold text-[#0f9d58]">Cause</span>
+            </span>
           </button>
-          <Button
-            variant="ghost"
-            onClick={() => (onBack ? onBack() : onNavigate && onNavigate('home'))}
-            className="flex items-center gap-2 text-[#064e3b] border border-[#064e3b] px-4 py-2 rounded-2xl hover:bg-[#064e3b] hover:text-stone-50 transition-all duration-300"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm font-semibold">Back</span>
-          </Button>
-        </div>
-      </header>
 
-      <main className="py-10 sm:py-14">
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-10 items-start">
-            <section className="space-y-8">
-              <div className="hero-gradient rounded-[2.5rem] overflow-hidden relative shadow-2xl shadow-green-900/10">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-400/10 rounded-full blur-3xl -mr-20 -mt-16"></div>
-                <div className="absolute bottom-0 left-0 w-56 h-56 bg-emerald-300/10 rounded-full blur-3xl -ml-16 -mb-10"></div>
-                <div className="relative px-8 py-10 sm:py-12 text-left">
-                  <p className="text-emerald-100/80 text-xs tracking-[0.3em] uppercase">Contact</p>
-                  <h1 className="mt-3 text-3xl sm:text-4xl font-semibold text-white leading-tight">
-                    Let's talk about your next campaign.
-                  </h1>
-                  <p className="mt-4 text-sm sm:text-base text-emerald-50/85 leading-relaxed">
-                    Tell us what you're building and we will point you to the right team.
-                  </p>
+          <div className="hidden md:flex items-center gap-8">
+            {navItems.map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                className="text-[#1a2332]/70 hover:text-[#1a2332] font-medium transition-colors"
+              >
+                {item.label}
+              </a>
+            ))}
+          </div>
+
+          <div className="hidden md:flex items-center gap-4">
+            <button
+              onClick={() => onNavigate?.('login')}
+              className="px-5 py-2 text-[#9ca3af] font-semibold rounded-lg transition-colors"
+            >
+              Login
+            </button>
+            <button
+              onClick={() => onNavigate?.('signup')}
+              className="px-5 py-2 bg-[#f57c00] text-white font-semibold rounded-lg shadow-md hover:bg-[#e65100] transition-all"
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <button
+            className="md:hidden p-2 text-[#1a2332]"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? <X /> : <Menu />}
+          </button>
+        </div>
+
+        {isMenuOpen && (
+          <>
+            <div
+              className="md:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+              onClick={() => setIsMenuOpen(false)}
+            />
+            <div className="md:hidden fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-white shadow-2xl z-50 flex flex-col">
+              <div className="flex items-center justify-between p-6 border-b border-[#e5e7eb]">
+                <span className="text-xl tracking-tight">
+                  <span className="font-extrabold text-[#1a2332]">Swift</span>
+                  <span className="font-bold text-[#0f9d58]">Cause</span>
+                </span>
+                <button
+                  onClick={() => setIsMenuOpen(false)}
+                  className="p-2 hover:bg-[#f9fafb] rounded-lg"
+                >
+                  <X className="w-6 h-6 text-[#1a2332]" />
+                </button>
+              </div>
+              <div className="flex-1 p-6">
+                <nav className="flex flex-col gap-2">
+                  {navItems.map((item) => (
+                    <a
+                      key={item.label}
+                      href={item.href}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="text-lg font-medium text-[#1a2332] hover:bg-[#f9fafb] px-4 py-3 rounded-xl transition-colors"
+                    >
+                      {item.label}
+                    </a>
+                  ))}
+                </nav>
+              </div>
+              <div className="p-6 border-t border-[#e5e7eb] space-y-3">
+                <button
+                  onClick={() => onNavigate?.('login')}
+                  className="w-full py-3 text-[#9ca3af] font-semibold border-2 border-[#e5e7eb] rounded-xl"
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => onNavigate?.('signup')}
+                  className="w-full py-3 bg-[#f57c00] text-white font-semibold rounded-xl hover:bg-[#e65100] transition-colors"
+                >
+                  Sign Up Free
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </nav>
+
+      <main className="pt-32 pb-20 px-6">
+        <div className="container mx-auto">
+          <div className="bg-white rounded-[3rem] border border-[#e5e7eb] shadow-xl p-8 md:p-16 flex flex-col lg:flex-row gap-16 max-w-6xl mx-auto relative overflow-hidden">
+            {/* Left */}
+            <div className="lg:w-1/2 space-y-8 relative z-10">
+              <h2 className="text-4xl font-bold text-[#1a2332]">Let's talk about your mission.</h2>
+              <p className="text-lg text-[#4b5563]">
+                Ready to streamline your fundraising? Whether you have a question about Gift Aid,
+                GASDS, or getting started, our team is here to help.
+              </p>
+              <div className="space-y-4 pt-2">
+                <div className="flex items-start gap-4 rounded-2xl border border-[#e5e7eb] bg-[#f9fafb] p-4">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8f5e9] text-[#0f9d58] flex-shrink-0">
+                    <Mail className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-[#1a2332]">Email Us</h3>
+                    <p className="text-sm text-[#6b7280]">hello@swiftcause.com</p>
+                    <p className="text-xs text-[#6b7280] mt-0.5">General &amp; Support Inquiries</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4 rounded-2xl border border-[#e5e7eb] bg-[#f9fafb] p-4">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8f5e9] text-[#0f9d58] flex-shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-[#1a2332]">Response Time</h3>
+                    <p className="text-sm text-[#6b7280]">
+                      Typically within 24 hours on business days
+                    </p>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                <ContactInfoItem icon={<Mail size={22} />} title="Email Us">
-                  <a href="mailto:swiftcauseweb@gmail.com" className="hover:text-[#064e3b] transition">
-                    swiftcauseweb@gmail.com
-                  </a>
-                  <p className="text-xs text-slate-500">General & Support Inquiries</p>
-                </ContactInfoItem>
-                <ContactInfoItem icon={<Clock size={22} />} title="Response Time">
-                  <p>Typically within 24 hours on business days</p>
-                </ContactInfoItem>
-              </div>
-            </section>
-
-            <section className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/30 border border-white/70 p-6 sm:p-8">
+            {/* Right — Form */}
+            <div className="lg:w-1/2 relative z-10">
               {isSubmitted ? (
                 <div className="text-center py-10">
-                  <CheckCircle className="h-16 w-16 mx-auto text-emerald-500" />
-                  <h2 className="mt-4 text-2xl font-bold text-slate-900">Message Sent!</h2>
-                  <p className="mt-2 text-slate-600">
+                  <CheckCircle className="h-16 w-16 mx-auto text-[#0f9d58]" />
+                  <h2 className="mt-4 text-2xl font-bold text-[#1a2332]">Message Sent!</h2>
+                  <p className="mt-2 text-[#4b5563]">
                     Thank you for reaching out. We'll get back to you as soon as possible.
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="hidden" aria-hidden="true">
-                    <label htmlFor="website">Website</label>
                     <input
                       type="text"
-                      id="website"
                       tabIndex={-1}
                       autoComplete="off"
                       value={formData.website}
                       onChange={handleChange('website')}
                     />
                   </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400/70">Send a message</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-slate-900">How can we help?</h2>
-                    <p className="mt-2 text-sm text-slate-500">
-                      Share a few details and we'll respond with next steps.
-                    </p>
-                  </div>
 
                   {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md flex items-start">
-                      <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-start gap-2">
+                      <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
                       <span>{error}</span>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="firstName" className="block text-sm font-medium text-slate-700 mb-1">
-                        First Name
-                      </label>
-                      <input
-                        type="text"
-                        id="firstName"
-                        required
-                        value={formData.firstName}
-                        onChange={handleChange('firstName')}
-                        className="block w-full px-4 py-3 border border-slate-300 rounded-xl shadow-sm focus:ring-[#064e3b] focus:border-[#064e3b] transition bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="lastName" className="block text-sm font-medium text-slate-700 mb-1">
-                        Last Name
-                      </label>
-                      <input
-                        type="text"
-                        id="lastName"
-                        required
-                        value={formData.lastName}
-                        onChange={handleChange('lastName')}
-                        className="block w-full px-4 py-3 border border-slate-300 rounded-xl shadow-sm focus:ring-[#064e3b] focus:border-[#064e3b] transition bg-white"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <label htmlFor="fullName" className="text-sm font-bold text-[#4b5563] ml-1">
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      id="fullName"
+                      required
+                      placeholder="Jane Doe"
+                      value={formData.fullName}
+                      onChange={handleChange('fullName')}
+                      className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none"
+                    />
                   </div>
-                  <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
+
+                  <div className="space-y-2">
+                    <label htmlFor="email" className="text-sm font-bold text-[#4b5563] ml-1">
                       Email Address
                     </label>
                     <input
                       type="email"
                       id="email"
                       required
+                      placeholder="jane@charity.org"
                       value={formData.email}
                       onChange={handleChange('email')}
-                      className="block w-full px-4 py-3 border border-slate-300 rounded-xl shadow-sm focus:ring-[#064e3b] focus:border-[#064e3b] transition bg-white"
+                      className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none"
                     />
                   </div>
-                  <div>
-                    <label htmlFor="message" className="block text-sm font-medium text-slate-700 mb-1">
+
+                  <div className="space-y-2">
+                    <label htmlFor="message" className="text-sm font-bold text-[#4b5563] ml-1">
                       Message
                     </label>
                     <textarea
                       id="message"
                       rows={4}
                       required
+                      placeholder="Tell us about your organisation..."
                       value={formData.message}
                       onChange={handleChange('message')}
-                      className="block w-full px-4 py-3 border border-slate-300 rounded-xl shadow-sm focus:ring-[#064e3b] focus:border-[#064e3b] transition bg-white"
+                      className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none resize-none"
                     />
                   </div>
-                  <div>
-                    <Button type="submit" className="w-full flex justify-center items-center py-3 px-6" disabled={isLoading}>
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          Send Message <SendHorizontal className="ml-2 h-5 w-5" />
-                        </>
-                      )}
-                    </Button>
-                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full py-4 bg-[#f57c00] text-white font-bold rounded-2xl shadow-lg hover:bg-[#e65100] transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" /> Sending...
+                      </>
+                    ) : (
+                      <>
+                        Send Message{' '}
+                        <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
+                  </button>
                 </form>
               )}
-            </section>
+            </div>
+
+            <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-[#0f9d58]/5 rounded-full blur-3xl"></div>
           </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="bg-[#111827] pt-16 pb-8 px-6">
+        <div className="container mx-auto">
+          <div className="grid md:grid-cols-4 gap-10 mb-12">
+            <div className="space-y-4">
+              <button onClick={() => onNavigate?.('home')} className="flex items-center gap-2">
+                <Image
+                  src="/logo.png"
+                  alt="SwiftCause Logo"
+                  width={32}
+                  height={32}
+                  className="rounded-lg"
+                />
+                <span className="text-xl tracking-tight">
+                  <span className="font-extrabold text-white">Swift</span>
+                  <span className="font-bold text-[#4ade80]">Cause</span>
+                </span>
+              </button>
+              <p className="text-white/60 text-sm leading-relaxed">
+                Simplifying digital and physical fundraising for charities across the United
+                Kingdom. Built for impact, designed for trust.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <h5 className="font-bold text-white/40 uppercase tracking-wider text-xs">
+                Navigation
+              </h5>
+              <ul className="space-y-2 text-sm">
+                {[
+                  { label: 'Features', href: '/#features' },
+                  { label: 'FAQ', href: '/#faq' },
+                  { label: 'Contact', href: '/contact' },
+                ].map((item) => (
+                  <li key={item.label}>
+                    <a
+                      href={item.href}
+                      className="text-white/60 hover:text-white transition-colors"
+                    >
+                      {item.label}
+                    </a>
+                  </li>
+                ))}
+                <li>
+                  <button
+                    onClick={() => onNavigate?.('login')}
+                    className="text-white/60 hover:text-white transition-colors"
+                  >
+                    Login
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => onNavigate?.('signup')}
+                    className="text-white/60 hover:text-white transition-colors"
+                  >
+                    Sign Up
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <div className="space-y-4">
+              <h5 className="font-bold text-white/40 uppercase tracking-wider text-xs">Legal</h5>
+              <ul className="space-y-2 text-sm">
+                {['Terms of Service', 'Privacy Policy', 'Cookie Policy'].map((label) => (
+                  <li key={label}>
+                    <button
+                      onClick={() => onNavigate?.('terms')}
+                      className="text-white/60 hover:text-white transition-colors"
+                    >
+                      {label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="space-y-4">
+              <h5 className="font-bold text-white/40 uppercase tracking-wider text-xs">Connect</h5>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <a
+                    href="https://www.linkedin.com/company/ynv-solutions"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/60 hover:text-white transition-colors"
+                  >
+                    LinkedIn
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/YNVSolutions/SwiftCause_Web"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/60 hover:text-white transition-colors"
+                  >
+                    GitHub
+                  </a>
+                </li>
+                <li>
+                  <span className="text-white/40 text-sm">hello@swiftcause.com</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-white/40">
+            <span>© 2026 SwiftCause Ltd. Registered in England &amp; Wales.</span>
+            <span className="italic">[FCA regulatory statement, per fintech lawyer]</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
