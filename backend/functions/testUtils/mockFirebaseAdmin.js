@@ -2,9 +2,36 @@ const collections = new Map();
 let transactionQueue = Promise.resolve();
 let autoIdCounter = 0;
 
+const makeTimestamp = (ms) => ({
+  __type: 'timestamp',
+  ms,
+  toMillis() {
+    return this.ms;
+  },
+  toDate() {
+    return new Date(this.ms);
+  },
+});
+
 const clone = (value) => {
   if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
+  if (value === null || typeof value !== 'object') return value;
+  if (value.__type === 'timestamp' && typeof value.ms === 'number') {
+    return makeTimestamp(value.ms);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => clone(item));
+  }
+
+  const next = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item && typeof item.toMillis === 'function' && typeof item.toDate === 'function') {
+      next[key] = makeTimestamp(item.toMillis());
+    } else {
+      next[key] = clone(item);
+    }
+  }
+  return next;
 };
 
 const getCollectionStore = (name) => {
@@ -29,17 +56,11 @@ const mergeData = (current = {}, incoming = {}) => {
   return next;
 };
 
-const createSnapshot = (id, data) => ({
-  id,
-  exists: data !== undefined,
-  data: () => clone(data),
-});
-
 const doc = (collectionName, id) => ({
   id,
   async get() {
     const stored = getCollectionStore(collectionName).get(id);
-    return createSnapshot(id, stored);
+    return createSnapshot(collectionName, id, stored);
   },
   async set(data, options = {}) {
     const store = getCollectionStore(collectionName);
@@ -55,18 +76,104 @@ const doc = (collectionName, id) => ({
     }
     store.set(id, mergeData(current, data));
   },
+  async delete() {
+    getCollectionStore(collectionName).delete(id);
+  },
+});
+
+const createSnapshot = (collectionName, id, data) => ({
+  id,
+  ref: doc(collectionName, id),
+  exists: data !== undefined,
+  data: () => clone(data),
+});
+
+const getFieldValue = (data, field) => {
+  const parts = field.split('.');
+  let actual = data;
+  for (const part of parts) {
+    actual = actual != null ? actual[part] : undefined;
+  }
+  return actual;
+};
+
+const comparableValue = (value) => {
+  if (value && typeof value.toMillis === 'function') {
+    return value.toMillis();
+  }
+  if (value && value.__type === 'timestamp' && typeof value.ms === 'number') {
+    return value.ms;
+  }
+  return value;
+};
+
+const matchesFilter = (actualValue, op, expectedValue) => {
+  const actual = comparableValue(actualValue);
+  const expected = comparableValue(expectedValue);
+  if (op === '==') return actual === expected;
+  if (op === '!=') return actual !== expected;
+  if (op === '>') return actual > expected;
+  if (op === '>=') return actual >= expected;
+  if (op === '<') return actual < expected;
+  if (op === '<=') return actual <= expected;
+  return false;
+};
+
+const createQuerySnapshot = (docs) => ({
+  docs,
+  empty: docs.length === 0,
+  size: docs.length,
+  forEach(fn) {
+    docs.forEach(fn);
+  },
 });
 
 const firestoreInstance = {
   collection(name) {
+    // Build a chainable query object that filters the in-memory store
+    const buildQuery = (collectionName, filters, limitCount) => ({
+      where(field, op, value) {
+        return buildQuery(collectionName, [...filters, { field, op, value }], limitCount);
+      },
+      limit(n) {
+        return buildQuery(collectionName, filters, n);
+      },
+      async get() {
+        const store = getCollectionStore(collectionName);
+        let entries = Array.from(store.entries());
+
+        for (const { field, op, value } of filters) {
+          entries = entries.filter(([, data]) => {
+            // Support nested field paths like "metadata.donorEmail"
+            return matchesFilter(getFieldValue(data, field), op, value);
+          });
+        }
+
+        if (limitCount != null) {
+          entries = entries.slice(0, limitCount);
+        }
+
+        const docs = entries.map(([id, data]) => createSnapshot(collectionName, id, data));
+        return createQuerySnapshot(docs);
+      },
+    });
+
     return {
       doc(id) {
         return doc(name, id);
       },
+      where(field, op, value) {
+        return buildQuery(name, [{ field, op, value }], null);
+      },
+      limit(n) {
+        return buildQuery(name, [], n);
+      },
       async get() {
         const store = getCollectionStore(name);
-        const docs = Array.from(store.entries()).map(([id, value]) => createSnapshot(id, value));
-        return { docs };
+        const docs = Array.from(store.entries()).map(([id, value]) =>
+          createSnapshot(name, id, value),
+        );
+        return createQuerySnapshot(docs);
       },
       async add(data) {
         autoIdCounter += 1;
@@ -96,6 +203,9 @@ const firestoreInstance = {
       update(ref, data) {
         operations.push(() => ref.update(data));
       },
+      delete(ref) {
+        operations.push(() => ref.delete());
+      },
     };
 
     try {
@@ -109,6 +219,25 @@ const firestoreInstance = {
       release();
       throw error;
     }
+  },
+  batch() {
+    const operations = [];
+    return {
+      set(ref, data, options) {
+        operations.push(() => ref.set(data, options));
+      },
+      update(ref, data) {
+        operations.push(() => ref.update(data));
+      },
+      delete(ref) {
+        operations.push(() => ref.delete());
+      },
+      async commit() {
+        for (const operation of operations) {
+          await operation();
+        }
+      },
+    };
   },
 };
 
@@ -127,20 +256,9 @@ const admin = {
 };
 
 admin.firestore.Timestamp = {
-  now: () => ({
-    __type: 'timestamp',
-    ms: Date.now(),
-    toMillis() {
-      return this.ms;
-    },
-  }),
-  fromDate: (date) => ({
-    __type: 'timestamp',
-    ms: date.getTime(),
-    toMillis() {
-      return this.ms;
-    },
-  }),
+  now: () => makeTimestamp(Date.now()),
+  fromDate: (date) => makeTimestamp(date.getTime()),
+  fromMillis: (ms) => makeTimestamp(ms),
 };
 
 admin.firestore.FieldValue = {

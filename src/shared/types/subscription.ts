@@ -1,13 +1,23 @@
-export type SubscriptionInterval = "month" | "year";
+export type SubscriptionInterval = 'month' | 'year';
 
 export type SubscriptionStatus =
-  | "active"
-  | "past_due"
-  | "canceled"
-  | "incomplete"
-  | "incomplete_expired"
-  | "trialing"
-  | "unpaid";
+  | 'active'
+  | 'past_due'
+  | 'canceled'
+  | 'incomplete'
+  | 'incomplete_expired'
+  | 'trialing'
+  | 'unpaid';
+
+export interface Payment {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  campaignTitle: string | null;
+  createdAt: string | Date | { seconds: number; nanoseconds?: number } | null;
+  isGiftAid: boolean;
+}
 
 export interface Subscription {
   id: string;

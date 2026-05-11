@@ -30,6 +30,14 @@ export const FUNCTION_URLS = {
   updateUser: getFunctionUrl('updateUser'),
   deleteUser: getFunctionUrl('deleteUser'),
   updateOrganizationSettings: getFunctionUrl('updateOrganizationSettings'),
+  // Subscription management (donor self-service portal)
+  sendSubscriptionMagicLink: getFunctionUrl('sendSubscriptionMagicLink'),
+  verifySubscriptionMagicLink: getFunctionUrl('verifySubscriptionMagicLink'),
+  getSubscriptionsByEmail: getFunctionUrl('getSubscriptionsByEmail'),
+  createCustomerPortalSession: getFunctionUrl('createCustomerPortalSession'),
+  getPaymentHistory: getFunctionUrl('getPaymentHistory'),
+  // Gift Aid magic link validation
+  validateMagicLinkToken: getFunctionUrl('validateMagicLinkToken'),
 } as const;
 
 export default FUNCTION_URLS;
