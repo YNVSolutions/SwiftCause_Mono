@@ -3,6 +3,7 @@ const { stripe, ensureStripeInitialized } = require('../services/stripe');
 const { verifyAuth } = require('../middleware/auth');
 const cors = require('../middleware/cors');
 const { resolveLocationIdFromKiosk, resolveLocationForDonation } = require('../shared/location');
+const { createSubscriptionDoc } = require('../entities/subscription');
 
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:3000',
@@ -26,6 +27,18 @@ const logOnboardingLinkAccess = (level, payload) => {
 
   console.info('Stripe onboarding link privileged access', logPayload);
 };
+
+const normalizeStripeMetadata = (metadata = {}) =>
+  Object.fromEntries(
+    Object.entries(metadata)
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([key, value]) => {
+        if (typeof value === 'string') return [key, value];
+        if (typeof value === 'number' || typeof value === 'boolean') return [key, String(value)];
+        return [key, JSON.stringify(value)];
+      }),
+  );
+
 /**
  * Create Stripe onboarding link for organization
  * @param {object} req - Express request object
@@ -131,7 +144,27 @@ const createKioskPaymentIntent = (req, res) => {
       // Ensure Stripe is initialized
       const stripeClient = ensureStripeInitialized();
 
-      const { amount, currency = 'usd', metadata, frequency, donor, paymentMethodId } = req.body;
+      const {
+        amount,
+        currency = 'usd',
+        metadata,
+        frequency,
+        intervalCount = 1,
+        donor,
+        paymentMethodId,
+        setupIntentId,
+        customerId,
+      } = req.body;
+
+      console.log('[Payment] Incoming createKioskPaymentIntent request', {
+        campaignId: metadata?.campaignId || null,
+        frequency: frequency || null,
+        intervalCount: intervalCount ?? null,
+        hasDonorEmail: Boolean(donor?.email),
+        hasPaymentMethodId: Boolean(paymentMethodId),
+        hasSetupIntentId: Boolean(setupIntentId),
+        hasCustomerId: Boolean(customerId),
+      });
 
       if (!amount || !currency || !metadata || !metadata.campaignId) {
         return res.status(400).send({ error: 'Missing amount, currency, or campaignId' });
@@ -173,6 +206,7 @@ const createKioskPaymentIntent = (req, res) => {
         // Location reference — read by webhook to build location_snapshot on donation
         location_id: kioskLocationId,
       };
+      const stripeCanonicalMetadata = normalizeStripeMetadata(canonicalMetadata);
 
       const orgSnap = await admin.firestore().collection('organizations').doc(orgId).get();
       if (!orgSnap.exists) {
@@ -184,13 +218,23 @@ const createKioskPaymentIntent = (req, res) => {
         return res.status(400).send({ error: 'Org not onboarded with Stripe' });
       }
 
-      // Create a Customer for tracking donations and supporting recurring payments
-      // Note: Link will appear if customer has an email, but that's okay for kiosk use
-      const customer = await stripeClient.customers.create({
-        email: donor?.email || undefined,
-        name: donor?.name || undefined,
-        metadata: canonicalMetadata,
-      });
+      // Resolve or create a Stripe customer for donation/subscription tracking.
+      // Recurring setup + finalize calls must share the same customer.
+      let customer = null;
+      if (customerId) {
+        customer = await stripeClient.customers.retrieve(customerId);
+        if (!customer || customer.deleted) {
+          return res.status(400).send({ error: 'Invalid customerId' });
+        }
+      } else {
+        // Create a Customer for tracking donations and supporting recurring payments
+        // Note: Link will appear if customer has an email, but that's okay for kiosk use
+        customer = await stripeClient.customers.create({
+          email: donor?.email || undefined,
+          name: donor?.name || undefined,
+          metadata: stripeCanonicalMetadata,
+        });
+      }
 
       let clientSecret;
 
@@ -208,43 +252,145 @@ const createKioskPaymentIntent = (req, res) => {
             },
           },
           transfer_data: { destination: stripeAccountId },
-          metadata: { ...canonicalMetadata, platform: 'kiosk', frequency: 'once' },
+          metadata: normalizeStripeMetadata({
+            ...canonicalMetadata,
+            platform: 'kiosk',
+            frequency: 'once',
+          }),
         });
         clientSecret = paymentIntent.client_secret;
       } else {
         // Recurring donation (subscription)
-        if (!paymentMethodId) {
-          return res.status(400).send({ error: 'Missing paymentMethodId for subscription' });
+        console.log('[Payment] Entering recurring branch', {
+          frequency,
+          intervalCount,
+          hasPaymentMethodId: Boolean(paymentMethodId),
+          hasSetupIntentId: Boolean(setupIntentId),
+        });
+
+        if (!donor?.email) {
+          return res.status(400).send({ error: 'Missing donor.email for recurring donation' });
         }
 
-        // Attach payment method to customer and set as default
-        await stripeClient.paymentMethods.attach(paymentMethodId, {
-          customer: customer.id,
-        });
-        await stripeClient.customers.update(customer.id, {
-          invoice_settings: { default_payment_method: paymentMethodId },
-        });
+        const normalizedIntervalCount = Number(intervalCount);
+        if (
+          !Number.isInteger(normalizedIntervalCount) ||
+          normalizedIntervalCount < 1 ||
+          (frequency === 'year' && normalizedIntervalCount !== 1) ||
+          (frequency === 'month' && ![1, 3].includes(normalizedIntervalCount))
+        ) {
+          return res.status(400).send({ error: 'Invalid intervalCount for frequency' });
+        }
+
+        let resolvedPaymentMethodId = paymentMethodId;
+
+        // Two-step recurring flow support:
+        // 1) First call (no paymentMethodId/setupIntentId): return SetupIntent client secret
+        // 2) Second call (setupIntentId provided): resolve payment_method from SetupIntent
+        if (!resolvedPaymentMethodId && !setupIntentId) {
+          console.log('[Payment] Recurring bootstrap: creating SetupIntent', {
+            customerId: customer.id,
+            frequency,
+            normalizedIntervalCount,
+          });
+
+          const setupIntent = await stripeClient.setupIntents.create({
+            customer: customer.id,
+            payment_method_types: ['card'],
+            usage: 'off_session',
+            metadata: normalizeStripeMetadata({
+              ...canonicalMetadata,
+              platform: 'kiosk',
+              flow: 'recurring_setup',
+              frequency,
+              intervalCount: String(normalizedIntervalCount),
+            }),
+          });
+
+          return res.status(200).send({
+            setupIntentClientSecret: setupIntent.client_secret,
+            customerId: customer.id,
+          });
+        }
+
+        if (!resolvedPaymentMethodId && setupIntentId) {
+          console.log('[Payment] Recurring finalize: resolving payment method from SetupIntent', {
+            setupIntentId,
+            customerId: customer.id,
+          });
+
+          const setupIntent = await stripeClient.setupIntents.retrieve(setupIntentId, {
+            expand: ['payment_method'],
+          });
+
+          if (!setupIntent || !setupIntent.customer || setupIntent.customer !== customer.id) {
+            return res.status(400).send({ error: 'Invalid setupIntentId for customer' });
+          }
+
+          if (setupIntent.status !== 'succeeded') {
+            return res.status(400).send({
+              error: `SetupIntent status: ${setupIntent.status}`,
+              setupIntentId,
+            });
+          }
+
+          resolvedPaymentMethodId =
+            typeof setupIntent.payment_method === 'string'
+              ? setupIntent.payment_method
+              : setupIntent.payment_method?.id;
+        }
+
+        if (!resolvedPaymentMethodId) {
+          console.error('Missing payment method for recurring donation finalization');
+          return res.status(400).send({
+            error: 'Missing paymentMethodId for recurring donation; use PaymentSheet setup first',
+          });
+        }
 
         // Create price for subscription
         const price = await stripeClient.prices.create({
           unit_amount: amount,
           currency,
-          recurring: { interval: frequency }, // "month" or "year"
+          recurring: { interval: frequency, interval_count: normalizedIntervalCount }, // month/year with count
           product_data: {
             name: `Recurring donation to campaign ${campaignId}`,
           },
         });
 
-        // Create subscription with the default payment method
-        const subscription = await stripeClient.subscriptions.create({
+        let subscription;
+        // Attach payment method to customer and set as default
+        try {
+          await stripeClient.paymentMethods.attach(resolvedPaymentMethodId, {
+            customer: customer.id,
+          });
+        } catch (attachError) {
+          const alreadyAttached =
+            attachError?.code === 'resource_already_exists' ||
+            (typeof attachError?.message === 'string' &&
+              attachError.message.includes('already attached'));
+          if (!alreadyAttached) {
+            throw attachError;
+          }
+        }
+        await stripeClient.customers.update(customer.id, {
+          invoice_settings: { default_payment_method: resolvedPaymentMethodId },
+        });
+
+        // Create subscription using the attached payment method (web-like flow)
+        subscription = await stripeClient.subscriptions.create({
           customer: customer.id,
           items: [{ price: price.id }],
-          default_payment_method: paymentMethodId,
+          default_payment_method: resolvedPaymentMethodId,
           collection_method: 'charge_automatically',
           expand: ['latest_invoice.payment_intent'],
           trial_period_days: 0,
           transfer_data: { destination: stripeAccountId },
-          metadata: { ...canonicalMetadata, platform: 'kiosk', frequency },
+          metadata: normalizeStripeMetadata({
+            ...canonicalMetadata,
+            platform: 'kiosk',
+            frequency,
+            intervalCount: String(normalizedIntervalCount),
+          }),
         });
 
         console.log('Subscription created:', {
@@ -256,7 +402,98 @@ const createKioskPaymentIntent = (req, res) => {
           payment_intent_status: subscription.latest_invoice?.payment_intent?.status,
         });
 
-        const latestInvoice = subscription.latest_invoice;
+        // Update invoice + payment intent metadata before heavier persistence work.
+        // Stripe emits payment_intent.created at object creation time, so that event can still
+        // show empty metadata; this ensures subsequent events/object reads have the canonical keys.
+        let latestInvoice = subscription.latest_invoice;
+
+        if (
+          latestInvoice &&
+          !latestInvoice.payment_intent &&
+          latestInvoice.status === 'open' &&
+          latestInvoice.id
+        ) {
+          console.warn(
+            'Latest invoice is open without expanded payment intent; reloading invoice',
+            {
+              subscriptionId: subscription.id,
+              invoiceId: latestInvoice.id,
+            },
+          );
+
+          latestInvoice = await stripeClient.invoices.retrieve(latestInvoice.id, {
+            expand: ['payment_intent'],
+          });
+        }
+
+        const recurringMetadata = {
+          ...canonicalMetadata,
+          isRecurring: true,
+          recurringInterest: true,
+          frequency,
+          intervalCount: String(normalizedIntervalCount),
+          subscriptionId: subscription.id,
+        };
+
+        if (latestInvoice?.id) {
+          try {
+            await stripeClient.invoices.update(latestInvoice.id, {
+              metadata: normalizeStripeMetadata({
+                ...recurringMetadata,
+                invoiceId: latestInvoice.id,
+              }),
+            });
+          } catch (invoiceMetaError) {
+            console.warn('Unable to update invoice metadata for recurring donation', {
+              invoiceId: latestInvoice.id,
+              error: invoiceMetaError.message,
+            });
+          }
+        }
+
+        const paymentIntentId =
+          typeof latestInvoice?.payment_intent === 'string'
+            ? latestInvoice.payment_intent
+            : latestInvoice?.payment_intent?.id;
+
+        if (paymentIntentId) {
+          try {
+            await stripeClient.paymentIntents.update(paymentIntentId, {
+              metadata: normalizeStripeMetadata({
+                ...recurringMetadata,
+                invoiceId: latestInvoice?.id || null,
+              }),
+            });
+          } catch (paymentIntentMetaError) {
+            console.warn('Unable to update payment intent metadata for recurring donation', {
+              paymentIntentId,
+              error: paymentIntentMetaError.message,
+            });
+          }
+        }
+
+        await createSubscriptionDoc({
+          stripeSubscriptionId: subscription.id,
+          customerId: customer.id,
+          campaignId,
+          organizationId: orgId,
+          interval: frequency,
+          intervalCount: normalizedIntervalCount,
+          amount,
+          currency,
+          status: subscription.status,
+          currentPeriodEnd: subscription.current_period_end,
+          startedAt: subscription.start_date || subscription.current_period_start || null,
+          nextPaymentAt: subscription.current_period_end || null,
+          metadata: {
+            donorEmail: donor?.email || canonicalMetadata.donorEmail || null,
+            donorName: donor?.name || canonicalMetadata.donorName || 'Anonymous',
+            donorPhone: donor?.phone || canonicalMetadata.donorPhone || null,
+            campaignTitle: campaignData.title || canonicalMetadata.campaignTitle || null,
+            platform: canonicalMetadata.platform || 'kiosk',
+            ...canonicalMetadata,
+          },
+        });
 
         if (latestInvoice) {
           if (latestInvoice.payment_intent) {

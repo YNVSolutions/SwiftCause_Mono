@@ -194,6 +194,7 @@ fun KioskMainContent(
     val uiState by viewModel.uiState.collectAsState()
     val paymentState by paymentViewModel.paymentState.collectAsState()
     val clientSecret by paymentViewModel.clientSecret.collectAsState()
+    val isSetupIntentFlow by paymentViewModel.isSetupIntentFlow.collectAsState()
     val tapToPayState by tapToPayViewModel.state.collectAsState()
     val isTapToPaySimulated by tapToPayViewModel.isSimulatedMode.collectAsState()
     val context = LocalContext.current
@@ -249,20 +250,37 @@ fun KioskMainContent(
                     when (selectedPaymentMethod) {
                         "card" -> {
                             // Show PaymentSheet for card entry
-                            paymentSheet.presentWithPaymentIntent(
-                                paymentIntentClientSecret = secret,
-                                configuration = PaymentSheet.Configuration(
-                                    merchantDisplayName = appName,
-                                    allowsDelayedPaymentMethods = false,
-                                    billingDetailsCollectionConfiguration = PaymentSheet.BillingDetailsCollectionConfiguration(
-                                        name = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
-                                        email = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
-                                        phone = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
-                                        address = PaymentSheet.BillingDetailsCollectionConfiguration.AddressCollectionMode.Never,
-                                        attachDefaultsToPaymentMethod = false
+                            if (isSetupIntentFlow) {
+                                paymentSheet.presentWithSetupIntent(
+                                    setupIntentClientSecret = secret,
+                                    configuration = PaymentSheet.Configuration(
+                                        merchantDisplayName = appName,
+                                        allowsDelayedPaymentMethods = false,
+                                        billingDetailsCollectionConfiguration = PaymentSheet.BillingDetailsCollectionConfiguration(
+                                            name = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
+                                            email = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
+                                            phone = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
+                                            address = PaymentSheet.BillingDetailsCollectionConfiguration.AddressCollectionMode.Never,
+                                            attachDefaultsToPaymentMethod = false
+                                        )
                                     )
                                 )
-                            )
+                            } else {
+                                paymentSheet.presentWithPaymentIntent(
+                                    paymentIntentClientSecret = secret,
+                                    configuration = PaymentSheet.Configuration(
+                                        merchantDisplayName = appName,
+                                        allowsDelayedPaymentMethods = false,
+                                        billingDetailsCollectionConfiguration = PaymentSheet.BillingDetailsCollectionConfiguration(
+                                            name = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
+                                            email = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
+                                            phone = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
+                                            address = PaymentSheet.BillingDetailsCollectionConfiguration.AddressCollectionMode.Never,
+                                            attachDefaultsToPaymentMethod = false
+                                        )
+                                    )
+                                )
+                            }
                         }
                         "tap" -> {
                             if (tapToPayViewModel.isReaderReady()) {
@@ -430,8 +448,9 @@ fun KioskMainContent(
                         }
                     },
                     onDonateClick = { amount, isRecurring, interval, email ->
-                        // Auto-route payment method based on NFC capability:
-                        // NFC-capable device -> Tap to Pay, otherwise -> Card details.
+                        // MVP routing:
+                        // - Recurring donations -> PaymentSheet (card entry)
+                        // - One-time donations -> Tap to Pay when available, else PaymentSheet
                         pendingDonation = PendingDonation(
                             campaign = campaign,
                             amount = amount,
@@ -441,7 +460,13 @@ fun KioskMainContent(
                         )
 
                         val canUseTapToPay = hasNfcCapability && hasLocationPermission && tapToPayViewModel.isReaderReady()
-                        selectedPaymentMethod = if (canUseTapToPay) "tap" else "card"
+                        selectedPaymentMethod = if (isRecurring) {
+                            "card"
+                        } else if (canUseTapToPay) {
+                            "tap"
+                        } else {
+                            "card"
+                        }
                         handleDonation(
                             campaign = campaign,
                             amount = amount,
@@ -854,11 +879,20 @@ private fun handleDonation(
     val frequency = if (isRecurring) {
         when (interval) {
             "monthly" -> "month"
+            "quarterly" -> "month"
             "yearly" -> "year"
             else -> "month"
         }
     } else {
         null  // One-time donation
+    }
+    val intervalCount = if (isRecurring) {
+        when (interval) {
+            "quarterly" -> 3
+            else -> 1
+        }
+    } else {
+        null
     }
 
     android.util.Log.d("MainActivity", "Calling PaymentViewModel.preparePayment()")
@@ -873,6 +907,7 @@ private fun handleDonation(
         donorEmail = email,
         isAnonymous = email == null,  // Anonymous if no email provided
         frequency = frequency,
+        intervalCount = intervalCount,
         isGiftAid = campaign.isGiftAid,  // Pass Gift Aid flag for magic link generation
         kioskId = kioskSession?.kioskId
     )

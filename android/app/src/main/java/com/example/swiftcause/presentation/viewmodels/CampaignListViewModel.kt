@@ -33,6 +33,8 @@ class CampaignListViewModel(
     private val repository: CampaignRepository = CampaignRepository()
 ) : AndroidViewModel(application) {
 
+    constructor(application: Application) : this(application, CampaignRepository())
+
     private val _uiState = MutableStateFlow(CampaignListUiState())
     val uiState: StateFlow<CampaignListUiState> = _uiState.asStateFlow()
 

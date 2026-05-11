@@ -11,17 +11,29 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 /**
  * Repository for handling payment operations via raw HTTP
  * Matches the web implementation which uses fetch() instead of Firebase SDK
  */
 class PaymentRepository(
-    private val httpClient: OkHttpClient = OkHttpClient()
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(75, TimeUnit.SECONDS)
+        .build()
 ) {
     companion object {
         private const val TAG = "PaymentRepository"
         private const val FUNCTION_URL = "https://us-central1-swiftcause-app.cloudfunctions.net/createKioskPaymentIntent"
+    }
+
+    private fun JSONObject.putIfNotNull(key: String, value: Any?) {
+        if (value != null) {
+            put(key, value)
+        }
     }
 
     /**
@@ -51,18 +63,33 @@ class PaymentRepository(
             val requestJson = JSONObject().apply {
                 put("amount", request.amount)
                 put("currency", request.currency)
+                putIfNotNull("frequency", request.frequency)
+                putIfNotNull("intervalCount", request.intervalCount)
+                putIfNotNull("paymentMethodId", request.paymentMethodId)
+                putIfNotNull("setupIntentId", request.setupIntentId)
+                putIfNotNull("customerId", request.customerId)
                 put("metadata", JSONObject().apply {
                     put("campaignId", request.metadata.campaignId)
                     put("campaignTitle", request.metadata.campaignTitle)
                     put("organizationId", request.metadata.organizationId)
                     put("platform", request.metadata.platform)
-                    put("kioskId", request.metadata.kioskId ?: JSONObject.NULL)
-                    put("donorName", request.metadata.donorName ?: JSONObject.NULL)
-                    put("donorEmail", request.metadata.donorEmail ?: JSONObject.NULL)
+                    putIfNotNull("kioskId", request.metadata.kioskId)
+                    putIfNotNull("donorName", request.metadata.donorName)
+                    putIfNotNull("donorEmail", request.metadata.donorEmail)
                     put("isAnonymous", request.metadata.isAnonymous)
                     put("isGiftAid", request.metadata.isGiftAid)
                     put("recurringInterest", request.metadata.recurringInterest)
                 })
+                put(
+                    "donor",
+                    request.donor?.let {
+                        JSONObject().apply {
+                            put("email", it.email)
+                            put("name", it.name)
+                            put("phone", it.phone ?: JSONObject.NULL)
+                        }
+                    } ?: JSONObject.NULL
+                )
             }
 
             Log.d(TAG, "Calling Cloud Function: $FUNCTION_URL")
@@ -94,20 +121,39 @@ class PaymentRepository(
 
             // Parse response
             val responseJson = JSONObject(responseBody)
-            val clientSecret = responseJson.optString("clientSecret")
+            val readNullableString = { key: String ->
+                if (!responseJson.has(key) || responseJson.isNull(key)) null else responseJson.optString(key).ifEmpty { null }
+            }
+            val clientSecret = readNullableString("clientSecret")
+            val setupIntentClientSecret = readNullableString("setupIntentClientSecret")
+            val customerId = readNullableString("customerId")
+            val success = responseJson.optBoolean("success", false)
+            val message = readNullableString("message")
+            val subscriptionId = readNullableString("subscriptionId")
+            val invoiceId = readNullableString("invoiceId")
+            val amountPaid = if (responseJson.has("amountPaid") && !responseJson.isNull("amountPaid")) {
+                responseJson.optLong("amountPaid")
+            } else {
+                null
+            }
 
-            if (clientSecret.isEmpty()) {
-                throw Exception("Missing clientSecret in response")
+            if (clientSecret == null && setupIntentClientSecret == null && !success) {
+                throw Exception(message ?: "Missing payment confirmation data in response")
             }
 
             Log.d(TAG, "✓ Payment Intent Created Successfully")
-            Log.d(TAG, "Client Secret: ${clientSecret.take(20)}...")
+            Log.d(TAG, "Client Secret: ${clientSecret?.take(20)}...")
 
             Result.success(
                 CreatePaymentIntentResponse(
                     clientSecret = clientSecret,
-                    success = true,
-                    message = "Payment intent created"
+                    setupIntentClientSecret = setupIntentClientSecret,
+                    customerId = customerId,
+                    success = success,
+                    message = message ?: if (clientSecret != null) "Payment intent created" else null,
+                    subscriptionId = subscriptionId,
+                    invoiceId = invoiceId,
+                    amountPaid = amountPaid
                 )
             )
 
