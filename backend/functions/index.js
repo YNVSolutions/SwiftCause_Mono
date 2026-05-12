@@ -42,6 +42,13 @@ const {
 const { createStripeAccountForNewOrg, sendWelcomeEmailForNewOrg } = require('./handlers/triggers');
 const { verifySignupRecaptcha } = require('./handlers/signup');
 const { kioskLogin } = require('./handlers/kiosk');
+const {
+  kioskDeviceRegister,
+  kioskDevicePolicy,
+  kioskDeviceStatus,
+  kioskDeviceHeartbeat,
+  kioskApkDownload,
+} = require('./handlers/managedDevices');
 const { completeEmailVerification } = require('./handlers/verification');
 const { logAuthEvent } = require('./handlers/auth');
 const { createConnectionToken } = require('./handlers/terminal');
@@ -150,6 +157,11 @@ exports.createConnectionToken = functions.https.onRequest(
 exports.createStripeAccountForNewOrg = createStripeAccountForNewOrg;
 exports.sendWelcomeEmailForNewOrg = sendWelcomeEmailForNewOrg;
 exports.kioskLogin = functions.https.onRequest(kioskLogin);
+exports.kioskDeviceRegister = functions.https.onRequest(kioskDeviceRegister);
+exports.kioskDevicePolicy = functions.https.onRequest(kioskDevicePolicy);
+exports.kioskDeviceStatus = functions.https.onRequest(kioskDeviceStatus);
+exports.kioskDeviceHeartbeat = functions.https.onRequest(kioskDeviceHeartbeat);
+exports.kioskApkDownload = functions.https.onRequest(kioskApkDownload);
 exports.updateOrganizationSettings = functions.https.onRequest(updateOrganizationSettings);
 
 // Export v2 function with secret
