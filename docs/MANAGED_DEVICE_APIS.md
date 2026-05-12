@@ -33,6 +33,25 @@ The device controller is the Android management app. It is expected to use packa
 The Headwind Android agent can provide the controller foundation, but SwiftCause owns the
 admin UI, backend APIs, Firestore model, and donor kiosk app.
 
+The backend pins the controller package server-side. Client-provided package names are not
+used to derive managed device identity.
+
+## Device Authentication
+
+Registration is authenticated by an active enrollment token. After registration, the backend
+returns a one-time plaintext `deviceSecret` and stores only `deviceSecretHash` on the
+`managedDevices` record.
+
+The Android controller must store the plaintext secret locally and send it on later requests
+using either:
+
+- `Authorization: Bearer <deviceSecret>`
+- `x-device-secret: <deviceSecret>`
+
+The device secret is required for policy, status, heartbeat, and APK download endpoints. App
+Check, attestation, secret rotation, and admin-driven revocation can be layered on top of this
+contract later.
+
 ## Firestore Model
 
 The first API slice uses these collections:
@@ -62,6 +81,8 @@ Important behavior:
 
 - validates the enrollment record
 - creates a deterministic `managedDevices` ID
+- returns a one-time `deviceSecret`
+- stores only `deviceSecretHash`
 - links the device to enrollment `organizationId` and optional `kioskId`
 - stores controller and device metadata
 
@@ -71,6 +92,7 @@ Returns the current policy for a registered device.
 
 Important behavior:
 
+- requires a valid device secret
 - resolves controller and kiosk package names
 - returns launch package and heartbeat interval
 - returns assigned kiosk APK metadata when available
@@ -92,7 +114,9 @@ Supported statuses:
 
 Important behavior:
 
+- requires a valid device secret
 - updates install, launch, Device Owner, and error state
+- preserves omitted optional fields on partial updates
 - appends a `STATUS_UPDATED` event
 
 ### `kioskDeviceHeartbeat`
@@ -101,6 +125,7 @@ Records periodic liveness from the Android controller.
 
 Important behavior:
 
+- requires a valid device secret
 - marks the device online
 - updates heartbeat, battery, and network metadata
 - appends a `HEARTBEAT` event
@@ -112,7 +137,9 @@ Returns APK download metadata for a registered device.
 
 Important behavior:
 
+- requires a valid device secret
 - validates the device
+- validates the requested APK is the resolved assigned APK for the device policy
 - validates APK organization ownership
 - returns package, version, checksum, and download URL metadata
 
@@ -128,10 +155,13 @@ for:
 - repeated registration updating the same device
 - rejecting unknown or revoked enrollments
 - fetching policy with assigned APK metadata
+- rejecting unauthenticated policy/status requests
 - recording status updates and events
+- preserving existing state during partial status updates
 - recording heartbeat updates and events
 - rejecting invalid status values
 - preventing cross-organization APK access
+- preventing same-organization but unassigned APK access
 
 React admin UI, Android controller wiring, QR provisioning, and Firebase Storage upload/signing
 are intentionally left for follow-up PRs.

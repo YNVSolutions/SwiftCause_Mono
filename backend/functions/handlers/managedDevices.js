@@ -19,6 +19,23 @@ const timestamp = () => admin.firestore.Timestamp.now();
 
 const sendError = (res, code, message) => res.status(code).send({ error: message });
 
+const hashSecret = (secret) => crypto.createHash('sha256').update(secret).digest('hex');
+
+const createDeviceSecret = () => crypto.randomBytes(32).toString('base64url');
+
+const getDeviceSecret = (req) => {
+  const authHeader =
+    typeof req.headers?.authorization === 'string' ? req.headers.authorization : '';
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (bearerMatch) {
+    return bearerMatch[1].trim();
+  }
+
+  return typeof req.headers?.['x-device-secret'] === 'string'
+    ? req.headers['x-device-secret'].trim()
+    : '';
+};
+
 const requiredString = (value, fieldName) => {
   if (typeof value !== 'string' || !value.trim()) {
     const error = new Error(`${fieldName} is required`);
@@ -49,6 +66,22 @@ const getDevice = async (deviceId) => {
   }
 
   return { id: doc.id, ...doc.data() };
+};
+
+const getAuthenticatedDevice = async (req, deviceId) => {
+  const device = await getDevice(deviceId);
+  const deviceSecret = getDeviceSecret(req);
+  if (
+    !deviceSecret ||
+    !device.deviceSecretHash ||
+    hashSecret(deviceSecret) !== device.deviceSecretHash
+  ) {
+    const error = new Error('Invalid device credentials');
+    error.code = 401;
+    throw error;
+  }
+
+  return device;
 };
 
 const getAssignedApk = async (device) => {
@@ -109,7 +142,6 @@ const kioskDeviceRegister = (req, res) => {
       }
 
       const enrollmentToken = requiredString(req.body?.enrollmentToken, 'enrollmentToken');
-      const controllerPackage = req.body?.controllerPackage || CONTROLLER_PACKAGE;
       const androidId = typeof req.body?.androidId === 'string' ? req.body.androidId.trim() : '';
       const serialNumber =
         typeof req.body?.serialNumber === 'string' ? req.body.serialNumber.trim() : '';
@@ -133,17 +165,19 @@ const kioskDeviceRegister = (req, res) => {
 
       const deviceId = buildDeviceId({
         organizationId: enrollment.organizationId,
-        controllerPackage,
+        controllerPackage: CONTROLLER_PACKAGE,
         androidId,
         serialNumber,
       });
       const now = timestamp();
+      const deviceSecret = createDeviceSecret();
       const device = {
         organizationId: enrollment.organizationId,
         kioskId: enrollment.kioskId || null,
         enrollmentId: enrollmentToken,
-        controllerPackage,
+        controllerPackage: CONTROLLER_PACKAGE,
         kioskPackage: enrollment.kioskPackage || KIOSK_PACKAGE,
+        deviceSecretHash: hashSecret(deviceSecret),
         status: 'enrolled',
         deviceInfo: {
           androidId: androidId || null,
@@ -165,6 +199,7 @@ const kioskDeviceRegister = (req, res) => {
       return res.status(200).send({
         success: true,
         deviceId,
+        deviceSecret,
         organizationId: device.organizationId,
         kioskId: device.kioskId,
         status: device.status,
@@ -183,7 +218,7 @@ const kioskDevicePolicy = (req, res) => {
       }
 
       const deviceId = requiredString(req.query?.deviceId, 'deviceId');
-      const device = await getDevice(deviceId);
+      const device = await getAuthenticatedDevice(req, deviceId);
       const apk = await getAssignedApk(device);
 
       await admin.firestore().collection('managedDevices').doc(deviceId).set(
@@ -232,16 +267,24 @@ const kioskDeviceStatus = (req, res) => {
         return sendError(res, 400, 'Invalid device status');
       }
 
-      const device = await getDevice(deviceId);
+      const device = await getAuthenticatedDevice(req, deviceId);
       const update = {
         status,
-        installStatus: req.body?.installStatus || null,
-        launchStatus: req.body?.launchStatus || null,
-        deviceOwner: Boolean(req.body?.deviceOwner),
-        lastError: req.body?.error || null,
         lastStatusAt: timestamp(),
         updatedAt: timestamp(),
       };
+      if (Object.prototype.hasOwnProperty.call(req.body, 'installStatus')) {
+        update.installStatus = req.body.installStatus;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'launchStatus')) {
+        update.launchStatus = req.body.launchStatus;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'deviceOwner')) {
+        update.deviceOwner = req.body.deviceOwner === null ? null : Boolean(req.body.deviceOwner);
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'error')) {
+        update.lastError = req.body.error;
+      }
 
       await admin
         .firestore()
@@ -269,7 +312,7 @@ const kioskDeviceHeartbeat = (req, res) => {
       }
 
       const deviceId = requiredString(req.body?.deviceId, 'deviceId');
-      const device = await getDevice(deviceId);
+      const device = await getAuthenticatedDevice(req, deviceId);
       const update = {
         status: 'online',
         batteryLevel: req.body?.batteryLevel ?? null,
@@ -305,7 +348,12 @@ const kioskApkDownload = (req, res) => {
 
       const deviceId = requiredString(req.query?.deviceId, 'deviceId');
       const apkId = requiredString(req.query?.apkId, 'apkId');
-      const device = await getDevice(deviceId);
+      const device = await getAuthenticatedDevice(req, deviceId);
+      const assignedApk = await getAssignedApk(device);
+      if (!assignedApk || assignedApk.id !== apkId) {
+        return sendError(res, 403, 'APK is not assigned to this device');
+      }
+
       const apkDoc = await admin.firestore().collection('kioskApks').doc(apkId).get();
       if (!apkDoc.exists) {
         return sendError(res, 404, 'APK not found');

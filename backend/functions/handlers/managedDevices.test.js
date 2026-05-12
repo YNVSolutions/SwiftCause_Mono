@@ -55,6 +55,15 @@ const request = ({ method = 'POST', body = {}, query = {} } = {}) => ({
   method,
   body,
   query,
+  headers: {},
+});
+
+const withDeviceSecret = (req, deviceSecret) => ({
+  ...req,
+  headers: {
+    ...(req.headers || {}),
+    authorization: `Bearer ${deviceSecret}`,
+  },
 });
 
 const seedEnrollment = async (id = 'enroll-1', data = {}) => {
@@ -134,6 +143,7 @@ describe('managed device APIs', () => {
       kioskId: 'kiosk-1',
       status: 'enrolled',
     });
+    expect(res.body.deviceSecret).toEqual(expect.any(String));
 
     const device = admin.__getDoc('managedDevices', res.body.deviceId);
     expect(device).toMatchObject({
@@ -147,6 +157,8 @@ describe('managed device APIs', () => {
         model: 'Medium Tablet',
       }),
     });
+    expect(device.deviceSecretHash).toEqual(expect.any(String));
+    expect(device.deviceSecret).toBeUndefined();
   });
 
   it('updates the same managed device when it registers again', async () => {
@@ -157,6 +169,17 @@ describe('managed device APIs', () => {
     expect(admin.__getCollection('managedDevices')).toHaveLength(1);
     expect(admin.__getDoc('managedDevices', first.body.deviceId).deviceInfo.model).toBe(
       'Medium Tablet API 35',
+    );
+  });
+
+  it('pins controller package when deriving device identity', async () => {
+    const first = await registerDevice({ controllerPackage: 'com.attacker.controller' });
+    const second = await registerDevice({ controllerPackage: 'com.swiftcause.devicecontroller' });
+
+    expect(second.body.deviceId).toBe(first.body.deviceId);
+    expect(admin.__getCollection('managedDevices')).toHaveLength(1);
+    expect(admin.__getDoc('managedDevices', first.body.deviceId).controllerPackage).toBe(
+      'com.swiftcause.devicecontroller',
     );
   });
 
@@ -182,7 +205,10 @@ describe('managed device APIs', () => {
 
     const res = await invokeHandler(
       kioskDevicePolicy,
-      request({ method: 'GET', query: { deviceId: registered.body.deviceId } }),
+      withDeviceSecret(
+        request({ method: 'GET', query: { deviceId: registered.body.deviceId } }),
+        registered.body.deviceSecret,
+      ),
     );
 
     expect(res.statusCode).toBe(200);
@@ -200,19 +226,33 @@ describe('managed device APIs', () => {
     });
   });
 
+  it('rejects policy requests without the device secret', async () => {
+    const registered = await registerDevice();
+
+    const res = await invokeHandler(
+      kioskDevicePolicy,
+      request({ method: 'GET', query: { deviceId: registered.body.deviceId } }),
+    );
+
+    expect(res.statusCode).toBe(401);
+  });
+
   it('records status updates and appends a device event', async () => {
     const registered = await registerDevice();
 
     const res = await invokeHandler(
       kioskDeviceStatus,
-      request({
-        body: {
-          deviceId: registered.body.deviceId,
-          status: 'kiosk_active',
-          installStatus: 'installed',
-          deviceOwner: true,
-        },
-      }),
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            status: 'kiosk_active',
+            installStatus: 'installed',
+            deviceOwner: true,
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
     );
 
     expect(res.statusCode).toBe(200);
@@ -232,18 +272,121 @@ describe('managed device APIs', () => {
     ]);
   });
 
+  it('rejects status updates with an invalid device secret', async () => {
+    const registered = await registerDevice();
+    const res = await invokeHandler(
+      kioskDeviceStatus,
+      withDeviceSecret(
+        request({ body: { deviceId: registered.body.deviceId, status: 'online' } }),
+        'wrong-secret',
+      ),
+    );
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('preserves existing status detail fields when a partial update omits them', async () => {
+    const registered = await registerDevice();
+
+    await invokeHandler(
+      kioskDeviceStatus,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            status: 'install_failed',
+            installStatus: 'failed',
+            launchStatus: 'blocked',
+            deviceOwner: true,
+            error: 'Package installer blocked',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    const res = await invokeHandler(
+      kioskDeviceStatus,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            status: 'online',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(admin.__getDoc('managedDevices', registered.body.deviceId)).toMatchObject({
+      status: 'online',
+      installStatus: 'failed',
+      launchStatus: 'blocked',
+      deviceOwner: true,
+      lastError: 'Package installer blocked',
+    });
+  });
+
+  it('clears optional status detail fields when null is explicitly provided', async () => {
+    const registered = await registerDevice();
+
+    await invokeHandler(
+      kioskDeviceStatus,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            status: 'install_failed',
+            installStatus: 'failed',
+            launchStatus: 'blocked',
+            error: 'Package installer blocked',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    const res = await invokeHandler(
+      kioskDeviceStatus,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            status: 'online',
+            installStatus: null,
+            launchStatus: null,
+            error: null,
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(admin.__getDoc('managedDevices', registered.body.deviceId)).toMatchObject({
+      status: 'online',
+      installStatus: null,
+      launchStatus: null,
+      lastError: null,
+    });
+  });
+
   it('updates heartbeat state and appends a heartbeat event', async () => {
     const registered = await registerDevice();
 
     const res = await invokeHandler(
       kioskDeviceHeartbeat,
-      request({
-        body: {
-          deviceId: registered.body.deviceId,
-          batteryLevel: 82,
-          networkType: 'wifi',
-        },
-      }),
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            batteryLevel: 82,
+            networkType: 'wifi',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
     );
 
     expect(res.statusCode).toBe(200);
@@ -266,7 +409,10 @@ describe('managed device APIs', () => {
     const registered = await registerDevice();
     const res = await invokeHandler(
       kioskDeviceStatus,
-      request({ body: { deviceId: registered.body.deviceId, status: 'sideways' } }),
+      withDeviceSecret(
+        request({ body: { deviceId: registered.body.deviceId, status: 'sideways' } }),
+        registered.body.deviceSecret,
+      ),
     );
 
     expect(res.statusCode).toBe(400);
@@ -279,7 +425,10 @@ describe('managed device APIs', () => {
 
     const res = await invokeHandler(
       kioskApkDownload,
-      request({ method: 'GET', query: { deviceId: registered.body.deviceId, apkId: 'apk-1' } }),
+      withDeviceSecret(
+        request({ method: 'GET', query: { deviceId: registered.body.deviceId, apkId: 'apk-1' } }),
+        registered.body.deviceSecret,
+      ),
     );
 
     expect(res.statusCode).toBe(200);
@@ -293,8 +442,41 @@ describe('managed device APIs', () => {
     await seedApk('other-apk', { organizationId: 'org-2' });
     const denied = await invokeHandler(
       kioskApkDownload,
-      request({ method: 'GET', query: { deviceId: registered.body.deviceId, apkId: 'other-apk' } }),
+      withDeviceSecret(
+        request({
+          method: 'GET',
+          query: { deviceId: registered.body.deviceId, apkId: 'other-apk' },
+        }),
+        registered.body.deviceSecret,
+      ),
     );
+    expect(denied.statusCode).toBe(403);
+  });
+
+  it('rejects same-org APK IDs that are not assigned to the device policy', async () => {
+    await seedKiosk();
+    await seedApk();
+    await seedApk('same-org-unassigned-apk', {
+      organizationId: 'org-1',
+      versionCode: 8,
+      downloadUrl: 'https://example.test/unassigned.apk',
+    });
+    const registered = await registerDevice();
+
+    const denied = await invokeHandler(
+      kioskApkDownload,
+      withDeviceSecret(
+        request({
+          method: 'GET',
+          query: {
+            deviceId: registered.body.deviceId,
+            apkId: 'same-org-unassigned-apk',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
     expect(denied.statusCode).toBe(403);
   });
 });
