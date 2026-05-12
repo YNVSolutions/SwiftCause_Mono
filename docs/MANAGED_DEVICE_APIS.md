@@ -68,6 +68,57 @@ links to a kiosk with `kioskId` when the tablet should run that kiosk.
 
 ## API Contract
 
+### Admin portal APIs
+
+The organization portal uses admin-only functions protected by Firebase ID token auth. These
+functions enforce the caller's `organizationId` from the `users` collection and require kiosk
+management access through role or permissions.
+
+Organization admins can:
+
+- create a device provisioning profile
+- list devices in their organization
+- update placement metadata and kiosk linkage
+- queue safe remote commands
+- view device command and event history
+
+Organization admins cannot set APK IDs, package names, device secrets, organization ownership,
+or policy internals.
+
+Supported safe remote commands:
+
+- `sync_policy`
+- `restart_kiosk`
+- `refresh_content`
+- `clear_error`
+
+### `adminCreateDeviceProfile`
+
+Creates an active organization-scoped enrollment profile and returns a copyable provisioning
+payload. The profile can optionally be preassigned to a kiosk in the same organization.
+
+### `adminListManagedDevices`
+
+Lists managed devices for the caller's organization, optionally filtered by kiosk.
+
+### `adminUpdateManagedDeviceMetadata`
+
+Updates organization-facing metadata such as display name, placement label, placement notes,
+latitude, longitude, and kiosk assignment. Protected device and policy fields are rejected.
+
+### `adminQueueDeviceCommand`
+
+Queues an allowlisted remote command for a device in the caller's organization. Android command
+pickup and execution are handled in a later controller integration.
+
+### `adminListDeviceCommands`
+
+Lists command history for a device in the caller's organization.
+
+### `adminListDeviceEvents`
+
+Lists recent device events for a device in the caller's organization.
+
 ### `kioskDeviceRegister`
 
 Registers or updates a managed device from an active enrollment token.
@@ -162,15 +213,18 @@ for:
 - rejecting invalid status values
 - preventing cross-organization APK access
 - preventing same-organization but unassigned APK access
+- creating organization-scoped admin provisioning profiles
+- rejecting cross-organization admin device/profile access
+- updating placement metadata without allowing protected policy fields
+- queueing only allowlisted remote commands
 
 React admin UI, Android controller wiring, QR provisioning, and Firebase Storage upload/signing
 are intentionally left for follow-up PRs.
 
 ## Next Integration Steps
 
-1. Add admin UI for enrollment creation, device listing, kiosk linking, APK assignment, and
-   device event history.
-2. Add storage-backed APK upload and signed download resolution.
-3. Wire the Android controller to register, fetch policy, install the kiosk APK, launch it,
-   and report heartbeat/status.
+1. Add admin UI for provisioning profile creation, device listing, kiosk linking, placement
+   metadata, safe commands, and event history.
+2. Wire the Android controller to pick up queued commands and report command results.
+3. Add storage-backed APK download signing for SwiftCause-controlled rollout.
 4. Validate the full emulator path before physical QR/factory-reset provisioning.

@@ -1,6 +1,7 @@
 const collections = new Map();
 let transactionQueue = Promise.resolve();
 let autoIdCounter = 0;
+const authTokens = new Map();
 
 const clone = (value) => {
   if (value === undefined) return undefined;
@@ -116,6 +117,22 @@ const admin = {
   firestore() {
     return firestoreInstance;
   },
+  auth() {
+    return {
+      async verifyIdToken(token) {
+        if (authTokens.has(token)) {
+          return clone(authTokens.get(token));
+        }
+        if (typeof token === 'string' && token.startsWith('uid:')) {
+          return { uid: token.slice(4) };
+        }
+        throw new Error('Invalid token');
+      },
+      async createCustomToken(uid, claims = {}) {
+        return `custom-token:${uid}:${JSON.stringify(claims)}`;
+      },
+    };
+  },
   app() {
     const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'demo-project';
     return {
@@ -137,8 +154,13 @@ admin.firestore.FieldValue = {
 
 admin.__reset = () => {
   collections.clear();
+  authTokens.clear();
   transactionQueue = Promise.resolve();
   autoIdCounter = 0;
+};
+
+admin.__setAuthToken = (token, decoded) => {
+  authTokens.set(token, clone(decoded));
 };
 
 admin.__getDoc = (collectionName, id) => {

@@ -48,6 +48,12 @@ const {
   kioskDeviceStatus,
   kioskDeviceHeartbeat,
   kioskApkDownload,
+  adminCreateDeviceProfile,
+  adminListManagedDevices,
+  adminUpdateManagedDeviceMetadata,
+  adminQueueDeviceCommand,
+  adminListDeviceCommands,
+  adminListDeviceEvents,
 } = require('./handlers/managedDevices');
 const { completeEmailVerification } = require('./handlers/verification');
 const { logAuthEvent } = require('./handlers/auth');
@@ -162,6 +168,14 @@ exports.kioskDevicePolicy = functions.https.onRequest(kioskDevicePolicy);
 exports.kioskDeviceStatus = functions.https.onRequest(kioskDeviceStatus);
 exports.kioskDeviceHeartbeat = functions.https.onRequest(kioskDeviceHeartbeat);
 exports.kioskApkDownload = functions.https.onRequest(kioskApkDownload);
+exports.adminCreateDeviceProfile = functions.https.onRequest(adminCreateDeviceProfile);
+exports.adminListManagedDevices = functions.https.onRequest(adminListManagedDevices);
+exports.adminUpdateManagedDeviceMetadata = functions.https.onRequest(
+  adminUpdateManagedDeviceMetadata,
+);
+exports.adminQueueDeviceCommand = functions.https.onRequest(adminQueueDeviceCommand);
+exports.adminListDeviceCommands = functions.https.onRequest(adminListDeviceCommands);
+exports.adminListDeviceEvents = functions.https.onRequest(adminListDeviceEvents);
 exports.updateOrganizationSettings = functions.https.onRequest(updateOrganizationSettings);
 
 // Export v2 function with secret
