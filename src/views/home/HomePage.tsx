@@ -16,6 +16,7 @@ import {
   Linkedin,
   Lock,
   ShieldCheck,
+  FileCheck,
 } from 'lucide-react';
 import Image from 'next/image';
 import { AnimatedDashboardDemo } from './components/AnimatedDashboardDemo';
@@ -307,9 +308,15 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
         <section className="py-14 bg-white px-6">
           <div className="container mx-auto max-w-4xl">
             <p className="text-center text-[10px] font-semibold text-[#9ca3af] uppercase tracking-[0.2em] mb-10">
-              Built on infrastructure trusted worldwide
+              Empowering your mission with a foundation of trust
             </p>
             <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
+              {/* HMRC compliant */}
+              <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
+                <FileCheck className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
+                <span className="text-[13px] font-semibold tracking-tight">HMRC compliant</span>
+              </div>
+
               {/* Stripe wordmark */}
               <svg
                 viewBox="0 0 360 151"
@@ -357,32 +364,20 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                 />
               </svg>
 
-              {/* HMRC compliant */}
-              <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
-                <svg
-                  viewBox="0 0 32 32"
-                  className="h-5 w-5 flex-shrink-0"
-                  fill="currentColor"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path d="M16 2a14 14 0 1 0 0 28A14 14 0 0 0 16 2zm0 4a10 10 0 1 1 0 20A10 10 0 0 1 16 6zm-1 4v6H9v2h6v4h2v-4h6v-2h-6v-6h-2z" />
-                </svg>
-                <span className="text-[13px] font-semibold tracking-tight">HMRC compliant</span>
-              </div>
-
-              {/* PCI DSS Level 1 */}
+              {/* PCI Level 1 */}
               <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
                 <Lock className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
                 <span className="text-[13px] font-semibold tracking-tight">
-                  PCI DSS <span className="font-normal">Level 1</span>
+                  Secure payments <span className="font-normal">(PCI Level 1)</span>
                 </span>
               </div>
 
-              {/* GDPR Compliant */}
+              {/* GDPR */}
               <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
                 <ShieldCheck className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
-                <span className="text-[13px] font-semibold tracking-tight">GDPR Compliant</span>
+                <span className="text-[13px] font-semibold tracking-tight">
+                  Data protected <span className="font-normal">(GDPR)</span>
+                </span>
               </div>
             </div>
           </div>
@@ -409,12 +404,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                   key={idx}
                   className="p-8 rounded-[2rem] bg-[#f9fafb] border border-[#e5e7eb] hover:shadow-xl transition-all group"
                 >
-                  <div
-                    className="w-14 h-14 rounded-2xl flex items-center justify-center text-[#0f9d58] shadow-sm mb-6 group-hover:bg-[#0f9d58] group-hover:text-white transition-all duration-300"
-                    style={{
-                      backgroundColor: (feature as { iconBg?: string }).iconBg ?? '#e8f5e9',
-                    }}
-                  >
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-[#0f9d58] bg-[#e8f5e9] shadow-sm mb-6 group-hover:bg-[#0f9d58] group-hover:text-white transition-all duration-300">
                     {feature.icon}
                   </div>
                   <h3 className="text-xl font-bold text-[#1a2332] mb-4">{feature.title}</h3>
@@ -448,8 +438,8 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                 {
                   step: '02',
                   icon: <Smartphone className="w-6 h-6" />,
-                  title: 'Share or tap',
-                  body: 'Share a link, show a QR code, or let donors tap their phone. Works on any device your volunteers already own.',
+                  title: 'Assign to your kiosk',
+                  body: "Pin your campaign to a kiosk and it's live instantly. Donors walk up, tap, and give  no staff needed.",
                 },
                 {
                   step: '03',

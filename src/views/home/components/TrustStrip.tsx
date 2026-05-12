@@ -78,6 +78,15 @@ export function TrustStrip() {
       role="list"
       aria-label="Trust signals"
     >
+      <div role="listitem">
+        <TrustItem
+          icon={<FileCheck className="w-3.5 h-3.5" strokeWidth={2} />}
+          label="HMRC Gift Aid Ready"
+        />
+      </div>
+
+      <Divider />
+
       {/* Stripe */}
       <div
         className="opacity-45 hover:opacity-80 transition-opacity duration-300 cursor-default"
@@ -101,15 +110,6 @@ export function TrustStrip() {
         <TrustItem
           icon={<Fingerprint className="w-3.5 h-3.5" strokeWidth={2} />}
           label="GDPR Compliant"
-        />
-      </div>
-
-      <Divider />
-
-      <div role="listitem">
-        <TrustItem
-          icon={<FileCheck className="w-3.5 h-3.5" strokeWidth={2} />}
-          label="HMRC Gift Aid Ready"
         />
       </div>
     </div>
