@@ -55,8 +55,8 @@ export function HomeMainSkeleton() {
         </div>
       </section>
 
-      {/* Demo */}
-      <section id="demo" className="py-24 bg-[#F3F1EA] px-6 overflow-hidden">
+      {/* Tools */}
+      <section id="tools" className="py-24 bg-[#F3F1EA] px-6 overflow-hidden">
         <div className="container mx-auto">
           <div className="flex flex-col lg:flex-row gap-16 items-center">
             <div className="lg:w-1/3 space-y-8 w-full">

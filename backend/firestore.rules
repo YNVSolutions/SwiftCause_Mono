@@ -17,6 +17,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
     
+    // Subscription Magic Link Tokens - SECURE (backend only)
+    match /subscriptionMagicLinkTokens/{tokenId} {
+      // No public access - only backend functions can read/write
+      allow read, write: if false;
+    }
+    
     // Magic Link Ephemeral - PUBLIC (time-restricted, only contains plain token)
     match /magicLinkEphemeral/{tokenId} {
       // Allow reading only within 2 minutes of creation

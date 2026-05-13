@@ -88,6 +88,9 @@ const createSubscriptionDoc = async (subscriptionData) => {
   const nextPaymentAtTimestamp =
     toTimestampOrNull(nextPaymentAt) ||
     calculateNextPaymentAt(currentPeriodEnd, interval, intervalCount);
+  const donorEmail =
+    typeof metadata.donorEmail === 'string' ? metadata.donorEmail.trim() || null : null;
+  const donorEmailNormalized = donorEmail ? donorEmail.toLowerCase() : null;
 
   await subscriptionRef.set({
     stripeSubscriptionId,
@@ -99,7 +102,8 @@ const createSubscriptionDoc = async (subscriptionData) => {
     amount,
     currency,
     status,
-    donorEmail: metadata.donorEmail || null,
+    donorEmail,
+    donorEmailNormalized,
     donorName: metadata.donorName || null,
     donorPhone: metadata.donorPhone || null,
     startedAt: startedAtTimestamp,
@@ -118,7 +122,10 @@ const createSubscriptionDoc = async (subscriptionData) => {
     canceledAt: null,
     createdAt: now,
     updatedAt: now,
-    metadata: metadata,
+    metadata: {
+      ...metadata,
+      donorEmailNormalized,
+    },
   });
 
   console.log('Subscription document created:', stripeSubscriptionId);

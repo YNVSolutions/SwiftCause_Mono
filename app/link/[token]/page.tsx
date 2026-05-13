@@ -3,140 +3,110 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
-
-interface ValidationResult {
-  valid: boolean;
-  tokenId?: string;
-  donationId?: string;
-  campaignId?: string;
-  amount?: number;
-  currency?: string;
-  purpose?: string;
-  expiresAt?: string;
-  error?: string;
-}
+import { Loader2 } from 'lucide-react';
+import { FUNCTION_URLS } from '@/shared/config/functions';
 
 export default function MagicLinkPage({ params }: { params: Promise<{ token: string }> }) {
   const router = useRouter();
   const { token } = use(params);
   const [validating, setValidating] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     validateToken();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [retryCount]); // Re-run when retry count changes
+  }, []);
 
   const validateToken = async () => {
     setValidating(true);
     setError(null);
 
-    // Timeout configuration
-    const TIMEOUT_MS = 10000; // 10 seconds
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
-
     try {
-      // Call validation endpoint
-      const response = await fetch(
-        'https://us-central1-swiftcause-app.cloudfunctions.net/validateMagicLinkToken',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ token }),
-          signal: abortController.signal,
+      // Try subscription management magic link first
+      const response = await fetch(FUNCTION_URLS.verifySubscriptionMagicLink, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      );
+        body: JSON.stringify({ token }),
+      });
 
-      clearTimeout(timeoutId);
+      if (response.ok) {
+        const data = await response.json();
 
-      // Parse JSON safely
-      let data: ValidationResult;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        console.error('Failed to parse response:', parseError);
-        throw new Error('Invalid server response. Please try again.');
+        if (data.success && data.email && data.token) {
+          sessionStorage.setItem('donor_email', data.email);
+
+          const { getAuth, signInWithCustomToken } = await import('firebase/auth');
+          const auth = getAuth();
+
+          try {
+            await signInWithCustomToken(auth, data.token);
+          } catch (authError) {
+            console.error('Firebase auth error:', authError);
+            setError('Unable to start your secure session. Please request a new link.');
+            setValidating(false);
+            return;
+          }
+
+          router.push('/manage/dashboard');
+          return;
+        }
       }
 
-      if (!response.ok || !data.valid) {
-        // Handle validation errors
-        const errorMessage = getErrorMessage(data.error || 'UNKNOWN_ERROR');
-        setError(errorMessage);
+      // Only fall through to the gift-aid handler when the token is definitively
+      // not a subscription token (404). Any other non-2xx (transient 500, 401,
+      // 410 consumed/expired) means we should not attempt a second endpoint —
+      // the token has already been identified or partially consumed.
+      if (!response.ok && response.status !== 404) {
+        setError('This link is invalid or has expired.');
         setValidating(false);
         return;
       }
 
-      // Cache the validation result to prevent duplicate calls in gift-aid page
-      // This prevents race conditions when user navigates to /gift-aid
-      const cacheKey = `tokenValidation_${token}`;
-      try {
-        sessionStorage.setItem(cacheKey, JSON.stringify(data));
-        sessionStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
-      } catch {
-        // Storage unavailable — validation still proceeds without caching
-      }
+      const giftAidResponse = await fetch(FUNCTION_URLS.validateMagicLinkToken, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token }),
+      });
 
-      // Small delay for UX polish (show success state briefly)
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (giftAidResponse.ok) {
+        const giftAidData = await giftAidResponse.json();
 
-      // Redirect to Gift Aid form with the plain token
-      router.push(`/gift-aid?token=${token}`);
-    } catch (err) {
-      clearTimeout(timeoutId);
+        if (giftAidData.valid) {
+          // Cache the validation result
+          const cacheKey = `tokenValidation_${token}`;
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify(giftAidData));
+            sessionStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
+          } catch {
+            // Storage unavailable
+          }
 
-      // Handle specific error types
-      if (err instanceof Error) {
-        if (err.name === 'AbortError') {
-          console.error('Request timed out');
-          setError('The request took too long. Please check your connection and try again.');
-        } else {
-          console.error('Validation error:', err);
-          setError(err.message);
+          // Redirect to Gift Aid form
+          router.push(`/gift-aid?token=${token}`);
+          return;
         }
-      } else {
-        console.error('Unknown error:', err);
-        setError('Unable to validate link. Please try again.');
       }
 
+      // Both failed
+      setError('This link is invalid or has expired.');
+      setValidating(false);
+    } catch (err) {
+      console.error('Validation error:', err);
+      setError('Unable to validate link. Please try again.');
       setValidating(false);
     }
-  };
-
-  // Map error codes to user-friendly messages
-  const getErrorMessage = (errorCode: string): string => {
-    switch (errorCode) {
-      case 'TOKEN_NOT_FOUND':
-        return 'This link is invalid or has been removed.';
-      case 'TOKEN_EXPIRED':
-        return 'This link has expired. Please contact the charity for assistance.';
-      case 'TOKEN_CONSUMED':
-        return 'This link has already been used.';
-      case 'TOKEN_BLOCKED':
-        return 'This link has been blocked due to too many attempts.';
-      case 'INVALID_REQUEST':
-        return 'Invalid request. Please check the link and try again.';
-      case 'INTERNAL_ERROR':
-        return 'Server error. Please try again in a moment.';
-      default:
-        return 'This link is no longer valid.';
-    }
-  };
-
-  // Retry handler
-  const handleRetry = () => {
-    setRetryCount((prev) => prev + 1);
   };
 
   // Loading state
   if (validating) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-50 to-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#EEEFF3]">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
+          <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Validating your link...</h1>
           <p className="text-gray-600">Please wait a moment</p>
         </div>
@@ -147,7 +117,7 @@ export default function MagicLinkPage({ params }: { params: Promise<{ token: str
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-red-50 to-white px-4">
+      <div className="min-h-screen flex items-center justify-center bg-[#EEEFF3] px-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg
@@ -169,10 +139,10 @@ export default function MagicLinkPage({ params }: { params: Promise<{ token: str
 
           <div className="space-y-3">
             <button
-              onClick={handleRetry}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-6 rounded-xl transition-colors"
+              onClick={() => router.push('/manage')}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 px-6 rounded-xl transition-colors"
             >
-              Try Again
+              Request New Link
             </button>
             <button
               onClick={() => router.push('/campaigns')}
@@ -181,10 +151,6 @@ export default function MagicLinkPage({ params }: { params: Promise<{ token: str
               Browse Campaigns
             </button>
           </div>
-
-          {retryCount > 0 && (
-            <p className="text-sm text-gray-500 mt-4">Retry attempt: {retryCount}</p>
-          )}
         </div>
       </div>
     );

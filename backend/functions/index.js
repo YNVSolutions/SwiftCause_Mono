@@ -1,5 +1,6 @@
 const functions = require('firebase-functions');
 const { onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
@@ -29,7 +30,12 @@ const {
   createPaymentIntent,
   createExpressDashboardLink,
 } = require('./handlers/payments');
-const { exportGiftAidDeclarations, downloadGiftAidExportBatchFile } = require('./handlers/giftAid');
+const {
+  exportGiftAidDeclarations,
+  downloadGiftAidExportBatchFile,
+  exportGasdsCsv,
+  downloadGasdsExportBatchFile,
+} = require('./handlers/giftAid');
 const { exportDonations } = require('./handlers/donationsExport');
 const { exportSubscriptions } = require('./handlers/subscriptionsExport');
 const { exportKiosks } = require('./handlers/kiosksExport');
@@ -39,7 +45,15 @@ const {
   cancelRecurringSubscription,
   updateSubscriptionPaymentMethod,
 } = require('./handlers/subscriptions');
+const {
+  sendSubscriptionMagicLink,
+  verifySubscriptionMagicLink,
+  getSubscriptionsByEmail,
+  createCustomerPortalSession,
+  getPaymentHistory,
+} = require('./handlers/subscriptionManagement');
 const { createStripeAccountForNewOrg, sendWelcomeEmailForNewOrg } = require('./handlers/triggers');
+const { cleanupExpiredTokens, deleteOldTokens } = require('./utils/tokenManager');
 const { verifySignupRecaptcha } = require('./handlers/signup');
 const { kioskLogin } = require('./handlers/kiosk');
 const { completeEmailVerification } = require('./handlers/verification');
@@ -133,6 +147,8 @@ exports.createExpressDashboardLink = functions.https.onRequest(
 );
 exports.exportGiftAidDeclarations = functions.https.onRequest(exportGiftAidDeclarations);
 exports.downloadGiftAidExportBatchFile = functions.https.onRequest(downloadGiftAidExportBatchFile);
+exports.exportGasdsCsv = functions.https.onRequest(exportGasdsCsv);
+exports.downloadGasdsExportBatchFile = functions.https.onRequest(downloadGasdsExportBatchFile);
 exports.exportDonations = functions.https.onRequest(exportDonations);
 exports.exportSubscriptions = functions.https.onRequest(exportSubscriptions);
 exports.exportKiosks = functions.https.onRequest(exportKiosks);
@@ -149,12 +165,37 @@ exports.updateSubscriptionPaymentMethod = functions.https.onRequest(
   { secrets: [stripeSecretKey] },
   updateSubscriptionPaymentMethod,
 );
+exports.sendSubscriptionMagicLink = functions.https.onRequest(
+  { secrets: [sendgridApiKey, sendgridFromEmail, sendgridFromName] },
+  sendSubscriptionMagicLink,
+);
+exports.verifySubscriptionMagicLink = functions.https.onRequest(verifySubscriptionMagicLink);
+exports.getSubscriptionsByEmail = functions.https.onRequest(getSubscriptionsByEmail);
+exports.createCustomerPortalSession = functions.https.onRequest(
+  { secrets: [stripeSecretKey] },
+  createCustomerPortalSession,
+);
+exports.getPaymentHistory = functions.https.onRequest(getPaymentHistory);
 exports.createConnectionToken = functions.https.onRequest(
   { secrets: [stripeSecretKey] },
   createConnectionToken,
 );
 exports.createStripeAccountForNewOrg = createStripeAccountForNewOrg;
 exports.sendWelcomeEmailForNewOrg = sendWelcomeEmailForNewOrg;
+
+// Runs daily at 03:00 UTC.
+// Two-phase cleanup keeps the subscriptionMagicLinkTokens collection bounded:
+//   Phase 1 — cleanupExpiredTokens: marks any still-active docs whose expiresAt
+//     has passed. This catches tokens that were never verified (user abandoned the
+//     flow) and were therefore never flipped to 'expired' by verifyToken.
+//   Phase 2 — deleteOldTokens: hard-deletes docs that are already consumed or
+//     expired AND older than 30 days. Without this the collection grows by one
+//     document per magic-link request with no upper bound, increasing read costs
+//     and making the status/expiresAt indexes progressively slower.
+exports.cleanupSubscriptionTokens = onSchedule('every 24 hours', async () => {
+  await cleanupExpiredTokens();
+  await deleteOldTokens();
+});
 exports.kioskLogin = functions.https.onRequest(kioskLogin);
 exports.updateOrganizationSettings = functions.https.onRequest(updateOrganizationSettings);
 
