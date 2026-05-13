@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Megaphone,
   Smartphone,
@@ -27,14 +27,27 @@ interface HomePageProps {
   onNavigate: (screen: string) => void;
 }
 
-export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
+export function HomePage({ onSignup, onNavigate }: HomePageProps) {
   const [scrolled, setScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeDemoIndex, setActiveDemoIndex] = useState(0);
+  const [showNavCTA, setShowNavCTA] = useState(false);
+  const heroCTARef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const el = heroCTARef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(([entry]) => setShowNavCTA(!entry.isIntersecting), {
+      threshold: 0,
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   const navItems = [
@@ -124,8 +137,8 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
       icon: <PenTool className="w-5 h-5" />,
     },
     {
-      title: 'Assign to Kiosk',
-      description: 'Push any campaign to a physical collection point in one tap.',
+      title: 'Deploy Anywhere',
+      description: 'Push any campaign to a phone, tablet, or QR code in one tap.',
       icon: <Smartphone className="w-5 h-5" />,
     },
     {
@@ -174,20 +187,16 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                 {item.label}
               </a>
             ))}
-            <div className="flex items-center gap-3 ml-4 pl-4 border-l border-[#e5e7eb]">
-              <button
-                onClick={onLogin}
-                className="px-4 py-2 text-[#9ca3af] font-semibold rounded-lg transition-colors"
-              >
-                Login
-              </button>
-              <button
-                onClick={onSignup}
-                className="px-5 py-2 bg-[#f57c00] text-white font-semibold rounded-lg shadow-md hover:bg-[#e65100] transition-all"
-              >
-                Sign Up
-              </button>
-            </div>
+            {showNavCTA && (
+              <div className="flex items-center gap-3 ml-4 pl-4 border-l border-[#e5e7eb] animate-fade-in">
+                <button
+                  onClick={onSignup}
+                  className="px-5 py-2 bg-[#f57c00] text-white font-semibold rounded-lg shadow-md hover:bg-[#e65100] transition-all"
+                >
+                  Start Free Today
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Mobile Toggle */}
@@ -252,16 +261,10 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
               {/* Action Buttons */}
               <div className="p-6 border-t border-[#e5e7eb] space-y-3">
                 <button
-                  onClick={onLogin}
-                  className="w-full py-3 text-[#9ca3af] font-semibold border-2 border-[#e5e7eb] rounded-xl transition-colors"
-                >
-                  Login
-                </button>
-                <button
                   onClick={onSignup}
                   className="w-full py-3 bg-[#f57c00] text-white font-semibold rounded-xl shadow-lg hover:bg-[#e65100] transition-colors"
                 >
-                  Sign Up Free
+                  Start Free Today
                 </button>
               </div>
             </div>
@@ -280,15 +283,15 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
               </div>
 
               <h1 className="text-5xl md:text-6xl font-bold text-[#1a2332] leading-[1.1] tracking-tight">
-                Turn any device into a donation point.
+                Turn any device into a donation point. No hardware required.
               </h1>
 
               <p className="text-lg text-slate-600 leading-relaxed max-w-lg">
-                Accept contactless donations from any smartphone, tablet, or browser. Gift Aid
-                captured automatically. Start free in 60 seconds.
+                Accept donations on any device — with automatic Gift Aid and no hardware. Set up in
+                under 60 seconds.
               </p>
 
-              <div className="flex flex-col items-center gap-2">
+              <div ref={heroCTARef} className="flex flex-col items-center gap-2">
                 <button
                   onClick={onSignup}
                   className="px-8 py-4 bg-[#f57c00] text-white font-bold rounded-2xl shadow-xl hover:bg-[#e65100] transition-all flex items-center justify-center gap-2 group"
@@ -296,7 +299,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                   Start Free Today
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
-                <span className="text-sm text-slate-500">No credit card required</span>
+                <span className="text-sm text-slate-500">Set up in minutes</span>
               </div>
             </div>
 
@@ -311,10 +314,10 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
               Empowering your mission with a foundation of trust
             </p>
             <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
-              {/* HMRC compliant */}
+              {/* HMRC-ready */}
               <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
                 <FileCheck className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
-                <span className="text-[13px] font-semibold tracking-tight">HMRC compliant</span>
+                <span className="text-[13px] font-semibold tracking-tight">HMRC-ready</span>
               </div>
 
               {/* Stripe wordmark */}
@@ -376,7 +379,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
               <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
                 <ShieldCheck className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
                 <span className="text-[13px] font-semibold tracking-tight">
-                  Data protected <span className="font-normal">(GDPR)</span>
+                  Built for UK data protection
                 </span>
               </div>
             </div>
@@ -438,8 +441,8 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                 {
                   step: '02',
                   icon: <Smartphone className="w-6 h-6" />,
-                  title: 'Assign to your kiosk',
-                  body: "Pin your campaign to a kiosk and it's live instantly. Donors walk up, tap, and give  no staff needed.",
+                  title: 'Share your link',
+                  body: 'Share your campaign link, display a QR code, or tap to give in person. Works on any device, no hardware needed.',
                 },
                 {
                   step: '03',
@@ -657,7 +660,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                     </div>
                   )}
 
-                  {/* Panel 1 — Assign to Kiosk */}
+                  {/* Panel 1 — Deploy Anywhere */}
                   {activeDemoIndex === 1 && (
                     <div className="w-full self-stretch bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 animate-fadeIn flex flex-col">
                       <div className="h-9 bg-slate-50 border-b border-slate-200 flex items-center px-4 gap-2 flex-shrink-0">
@@ -689,7 +692,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                         {/* Main content matching CampaignForm distribution section */}
                         <div className="flex-1 flex flex-col min-w-0">
                           <div className="flex-1 p-4 flex flex-col gap-3 overflow-hidden">
-                            <h3 className="text-sm font-bold text-gray-800">Kiosk Distribution</h3>
+                            <h3 className="text-sm font-bold text-gray-800">Device Distribution</h3>
 
                             {/* Global Distribution toggle */}
                             <div className="p-3 rounded-lg border border-green-200 bg-green-50 flex items-center justify-between">
@@ -698,7 +701,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                                   Global Distribution
                                 </p>
                                 <p className="text-[9px] text-gray-500 mt-0.5">
-                                  Campaign is visible on all kiosks
+                                  Campaign is visible on all devices
                                 </p>
                               </div>
                               <div className="w-8 h-4 bg-green-500 rounded-full relative flex-shrink-0 ml-4">
@@ -710,7 +713,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                             <div className="flex-1 bg-white rounded-lg border border-gray-200 p-3 flex flex-col gap-2 overflow-hidden">
                               <div className="flex items-center justify-between flex-shrink-0">
                                 <span className="text-[10px] font-semibold text-gray-700">
-                                  Kiosk Assignment
+                                  Device Assignment
                                 </span>
                                 <div className="flex items-center gap-2">
                                   <span className="px-2 py-0.5 rounded-full text-[8px] font-semibold bg-blue-100 text-blue-700 border border-blue-200">
@@ -724,25 +727,25 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                               <div className="space-y-1.5 overflow-y-auto">
                                 {[
                                   {
-                                    name: 'Kiosk 01',
+                                    name: 'Device 01',
                                     location: 'Main Entrance',
                                     status: 'online',
                                     checked: true,
                                   },
                                   {
-                                    name: 'Kiosk 02',
+                                    name: 'Device 02',
                                     location: 'Coffee Station',
                                     status: 'online',
                                     checked: true,
                                   },
                                   {
-                                    name: 'Kiosk 03',
+                                    name: 'Device 03',
                                     location: 'Exit Foyer',
                                     status: 'offline',
                                     checked: false,
                                   },
                                   {
-                                    name: 'Kiosk 04',
+                                    name: 'Device 04',
                                     location: 'Garden Tent',
                                     status: 'maintenance',
                                     checked: false,
@@ -819,7 +822,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                               'Dashboard',
                               'Campaigns',
                               'Donations',
-                              'Kiosks',
+                              'Devices',
                               'Users',
                               'Gift Aid',
                             ].map((item, i) => (
@@ -1060,6 +1063,9 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                     Send Message
                     <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
+                  <p className="text-xs text-[#9ca3af] text-center">
+                    We'll use your details to respond to your enquiry only.
+                  </p>
                 </form>
               </div>
 
@@ -1081,7 +1087,7 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
               onClick={onSignup}
               className="inline-flex items-center gap-2 px-9 py-4 bg-[#f57c00] text-white font-bold rounded-[10px] hover:bg-[#e65100] transition-all group"
             >
-              Start Free Today
+              Register Your Interest
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -1135,33 +1141,11 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
                     },
                   },
                   { label: 'Contact', action: () => onNavigate('contact') },
-                  { label: 'Login', action: onLogin },
-                  { label: 'Sign Up', action: onSignup },
+                  { label: 'Register Interest', action: onSignup },
                 ].map((item) => (
                   <li key={item.label}>
                     <button
                       onClick={item.action}
-                      className="text-white/60 hover:text-white transition-colors"
-                    >
-                      {item.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Col 3 — Legal */}
-            <div className="space-y-4">
-              <h5 className="font-bold text-white/40 uppercase tracking-wider text-xs">Legal</h5>
-              <ul className="space-y-2 text-sm">
-                {[
-                  { label: 'Terms of Service', screen: 'terms' },
-                  { label: 'Privacy Policy', screen: 'terms' },
-                  { label: 'Cookie Policy', screen: 'terms' },
-                ].map((item) => (
-                  <li key={item.label}>
-                    <button
-                      onClick={() => onNavigate(item.screen)}
                       className="text-white/60 hover:text-white transition-colors"
                     >
                       {item.label}
@@ -1203,8 +1187,10 @@ export function HomePage({ onLogin, onSignup, onNavigate }: HomePageProps) {
           </div>
 
           <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-white/40">
-            <span>© 2026 SwiftCause Ltd. Registered in England &amp; Wales.</span>
-            <span className="italic">[FCA regulatory statement, per fintech lawyer]</span>
+            <span>
+              © 2026 SwiftCause Ltd. Registered in England &amp; Wales. Company No. [TBC].
+              Registered office: [TBC].
+            </span>
           </div>
         </div>
       </footer>
