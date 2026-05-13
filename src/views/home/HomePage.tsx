@@ -287,7 +287,7 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
               </h1>
 
               <p className="text-lg text-slate-600 leading-relaxed max-w-lg">
-                Accept donations on any device — with automatic Gift Aid and no hardware. Set up in
+                Accept donations on any device with automatic Gift Aid and no hardware. Set up in
                 under 60 seconds.
               </p>
 
@@ -299,7 +299,7 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
                   Start Free Today
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
-                <span className="text-sm text-slate-500">Set up in minutes</span>
+                <span className="text-sm text-slate-500">No credit card required</span>
               </div>
             </div>
 
@@ -310,12 +310,12 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
         {/* Trust strip */}
         <section className="py-14 bg-white px-6">
           <div className="container mx-auto max-w-4xl">
-            <p className="text-center text-[10px] font-semibold text-[#9ca3af] uppercase tracking-[0.2em] mb-10">
+            <p className="text-center text-[10px] font-semibold text-[#6b7280] uppercase tracking-[0.2em] mb-10">
               Empowering your mission with a foundation of trust
             </p>
             <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
               {/* HMRC-ready */}
-              <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
+              <div className="flex items-center gap-2 text-[#6b7280] hover:text-[#374151] transition-colors duration-300 cursor-default">
                 <FileCheck className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
                 <span className="text-[13px] font-semibold tracking-tight">HMRC-ready</span>
               </div>
@@ -323,7 +323,7 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
               {/* Stripe wordmark */}
               <svg
                 viewBox="0 0 360 151"
-                className="h-6 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default"
+                className="h-6 opacity-65 hover:opacity-90 transition-opacity duration-300 cursor-default"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
                 aria-label="Stripe"
@@ -368,7 +368,7 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
               </svg>
 
               {/* PCI Level 1 */}
-              <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
+              <div className="flex items-center gap-2 text-[#6b7280] hover:text-[#374151] transition-colors duration-300 cursor-default">
                 <Lock className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
                 <span className="text-[13px] font-semibold tracking-tight">
                   Secure payments <span className="font-normal">(PCI Level 1)</span>
@@ -376,7 +376,7 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
               </div>
 
               {/* GDPR */}
-              <div className="flex items-center gap-2 opacity-40 hover:opacity-70 transition-opacity duration-300 cursor-default text-[#1a2332]">
+              <div className="flex items-center gap-2 text-[#6b7280] hover:text-[#374151] transition-colors duration-300 cursor-default">
                 <ShieldCheck className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
                 <span className="text-[13px] font-semibold tracking-tight">
                   Built for UK data protection
@@ -441,8 +441,8 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
                 {
                   step: '02',
                   icon: <Smartphone className="w-6 h-6" />,
-                  title: 'Share your link',
-                  body: 'Share your campaign link, display a QR code, or tap to give in person. Works on any device, no hardware needed.',
+                  title: 'Deploy to any device',
+                  body: 'Turn any phone, tablet, or screen into a collection point. Share a link or show a QR code no hardware required.',
                 },
                 {
                   step: '03',
