@@ -22,7 +22,6 @@ import Image from 'next/image';
 import { AnimatedDashboardDemo } from './components/AnimatedDashboardDemo';
 
 interface HomePageProps {
-  onLogin: () => void;
   onSignup: () => void;
   onNavigate: (screen: string) => void;
 }
@@ -207,70 +206,62 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
             {isMenuOpen ? <X /> : <Menu />}
           </button>
         </div>
-
-        {/* Mobile Menu - Slide from Right */}
-        {isMenuOpen && (
-          <>
-            {/* Backdrop with blur */}
-            <div
-              className="md:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-40 animate-fade-in"
-              onClick={() => setIsMenuOpen(false)}
-            />
-
-            {/* Sidebar Menu */}
-            <div className="md:hidden fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right">
-              {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-[#e5e7eb]">
-                <div className="flex items-center gap-2">
-                  <Image
-                    src="/logo.png"
-                    alt="SwiftCause Logo"
-                    width={32}
-                    height={32}
-                    className="rounded-xl shadow-lg"
-                  />
-                  <span className="text-xl tracking-tight">
-                    <span className="font-extrabold text-[#1a2332]">Swift</span>
-                    <span className="font-bold text-[#0f9d58]">Cause</span>
-                  </span>
-                </div>
-                <button
-                  onClick={() => setIsMenuOpen(false)}
-                  className="p-2 hover:bg-[#f9fafb] rounded-lg transition-colors"
-                >
-                  <X className="w-6 h-6 text-[#1a2332]" />
-                </button>
-              </div>
-
-              {/* Navigation Links */}
-              <div className="flex-1 overflow-y-auto p-6">
-                <nav className="flex flex-col gap-2">
-                  {navItems.map((item) => (
-                    <a
-                      key={item.label}
-                      href={item.href}
-                      onClick={(e) => handleNavClick(e, item.href)}
-                      className="text-lg font-medium text-[#1a2332] hover:bg-[#f9fafb] px-4 py-3 rounded-xl transition-colors cursor-pointer"
-                    >
-                      {item.label}
-                    </a>
-                  ))}
-                </nav>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="p-6 border-t border-[#e5e7eb] space-y-3">
-                <button
-                  onClick={onSignup}
-                  className="w-full py-3 bg-[#f57c00] text-white font-semibold rounded-xl shadow-lg hover:bg-[#e65100] transition-colors"
-                >
-                  Register Interest
-                </button>
-              </div>
-            </div>
-          </>
-        )}
       </nav>
+
+      {/* Mobile Menu - Slide from Right (rendered outside <nav> to avoid stacking context clipping) */}
+      {isMenuOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] animate-fade-in"
+            onClick={() => setIsMenuOpen(false)}
+          />
+          <div className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-white shadow-2xl z-[70] flex flex-col animate-slide-in-right">
+            <div className="flex items-center justify-between p-6 border-b border-[#e5e7eb]">
+              <div className="flex items-center gap-2">
+                <Image
+                  src="/logo.png"
+                  alt="SwiftCause Logo"
+                  width={32}
+                  height={32}
+                  className="rounded-xl shadow-lg"
+                />
+                <span className="text-xl tracking-tight">
+                  <span className="font-extrabold text-[#1a2332]">Swift</span>
+                  <span className="font-bold text-[#0f9d58]">Cause</span>
+                </span>
+              </div>
+              <button
+                onClick={() => setIsMenuOpen(false)}
+                className="p-2 hover:bg-[#f9fafb] rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6 text-[#1a2332]" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <nav className="flex flex-col gap-2">
+                {navItems.map((item) => (
+                  <a
+                    key={item.label}
+                    href={item.href}
+                    onClick={(e) => handleNavClick(e, item.href)}
+                    className="text-lg font-medium text-[#1a2332] hover:bg-[#f9fafb] px-4 py-3 rounded-xl transition-colors cursor-pointer"
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </nav>
+            </div>
+            <div className="p-6 border-t border-[#e5e7eb]">
+              <button
+                onClick={onSignup}
+                className="w-full py-3 bg-[#f57c00] text-white font-semibold rounded-xl shadow-lg hover:bg-[#e65100] transition-colors"
+              >
+                Register Interest
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Hero Section */}
       <main className="animate-fade-in">
@@ -1097,7 +1088,7 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
       {/* Footer */}
       <footer className="bg-[#111827] pt-16 pb-8 px-6">
         <div className="container mx-auto">
-          <div className="grid md:grid-cols-4 gap-10 mb-12">
+          <div className="grid md:grid-cols-3 gap-10 mb-12">
             {/* Col 1 — Brand */}
             <div className="space-y-4">
               <button onClick={() => onNavigate('home')} className="flex items-center gap-2">
