@@ -47,10 +47,6 @@ export default function Home() {
       router.push('/docs?from=home');
       return;
     }
-    if (screen === 'terms') {
-      router.push('/terms?from=home');
-      return;
-    }
     router.push(`/${screen}`);
   };
 

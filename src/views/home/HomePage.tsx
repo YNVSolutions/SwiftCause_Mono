@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Megaphone,
   Smartphone,
@@ -17,9 +17,14 @@ import {
   Lock,
   ShieldCheck,
   FileCheck,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
 } from 'lucide-react';
 import Image from 'next/image';
 import { AnimatedDashboardDemo } from './components/AnimatedDashboardDemo';
+import { submitFeedback, queueContactConfirmationEmail } from '../../shared/api/firestoreService';
+import { useToast } from '../../shared/ui/ToastProvider';
 
 interface HomePageProps {
   onSignup: () => void;
@@ -27,11 +32,68 @@ interface HomePageProps {
 }
 
 export function HomePage({ onSignup, onNavigate }: HomePageProps) {
+  const { showToast } = useToast();
   const [scrolled, setScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeDemoIndex, setActiveDemoIndex] = useState(0);
   const [showNavCTA, setShowNavCTA] = useState(false);
   const heroCTARef = useRef<HTMLDivElement>(null);
+  const [contactForm, setContactForm] = useState({
+    fullName: '',
+    email: '',
+    message: '',
+    website: '',
+  });
+  const [contactLoading, setContactLoading] = useState(false);
+  const [contactSubmitted, setContactSubmitted] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
+
+  const handleContactChange =
+    (field: keyof typeof contactForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setContactForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  const handleContactSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setContactLoading(true);
+    setContactError(null);
+    try {
+      if (contactForm.website.trim()) {
+        setContactLoading(false);
+        setContactSubmitted(true);
+        return;
+      }
+      await submitFeedback({
+        firstName: contactForm.fullName,
+        lastName: '',
+        email: contactForm.email,
+        message: contactForm.message,
+      });
+      let confirmationEmailFailed = false;
+      try {
+        await queueContactConfirmationEmail({
+          firstName: contactForm.fullName,
+          lastName: '',
+          email: contactForm.email,
+          message: contactForm.message,
+        });
+      } catch {
+        confirmationEmailFailed = true;
+      }
+      setContactLoading(false);
+      setContactSubmitted(true);
+      if (confirmationEmailFailed) {
+        showToast('Message saved. Confirmation email may be delayed.', 'error', 4000);
+      } else {
+        showToast('Message sent! We will get back to you soon.', 'success', 3000);
+      }
+    } catch (err) {
+      console.error('Error submitting feedback:', err);
+      setContactLoading(false);
+      setContactError('Failed to send message. Please try again.');
+      showToast('Failed to send message. Please try again.', 'error', 4000);
+    }
+  };
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -1020,44 +1082,101 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
               </div>
 
               <div className="lg:w-1/2 relative z-10">
-                <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
-                  <div className="grid sm:grid-cols-2 gap-5">
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-[#4b5563] ml-1">Full Name</label>
+                {contactSubmitted ? (
+                  <div className="text-center py-10">
+                    <CheckCircle className="h-16 w-16 mx-auto text-[#0f9d58]" />
+                    <h2 className="mt-4 text-2xl font-bold text-[#1a2332]">Message Sent!</h2>
+                    <p className="mt-2 text-[#4b5563]">
+                      Thank you for reaching out. We'll get back to you as soon as possible.
+                    </p>
+                  </div>
+                ) : (
+                  <form className="space-y-5" onSubmit={handleContactSubmit}>
+                    <div className="hidden" aria-hidden="true">
                       <input
                         type="text"
-                        placeholder="Jane Doe"
-                        className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={contactForm.website}
+                        onChange={handleContactChange('website')}
                       />
+                    </div>
+
+                    {contactError && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-start gap-2">
+                        <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                        <span>{contactError}</span>
+                      </div>
+                    )}
+
+                    <div className="grid sm:grid-cols-2 gap-5">
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="hp-fullName"
+                          className="text-sm font-bold text-[#4b5563] ml-1"
+                        >
+                          Full Name
+                        </label>
+                        <input
+                          type="text"
+                          id="hp-fullName"
+                          required
+                          placeholder="Jane Doe"
+                          value={contactForm.fullName}
+                          onChange={handleContactChange('fullName')}
+                          className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="hp-email" className="text-sm font-bold text-[#4b5563] ml-1">
+                          Email Address
+                        </label>
+                        <input
+                          type="email"
+                          id="hp-email"
+                          required
+                          placeholder="jane@charity.org"
+                          value={contactForm.email}
+                          onChange={handleContactChange('email')}
+                          className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none"
+                        />
+                      </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-bold text-[#4b5563] ml-1">Email Address</label>
-                      <input
-                        type="email"
-                        placeholder="jane@charity.org"
-                        className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none"
+                      <label htmlFor="hp-message" className="text-sm font-bold text-[#4b5563] ml-1">
+                        Message
+                      </label>
+                      <textarea
+                        id="hp-message"
+                        rows={4}
+                        required
+                        placeholder="Tell us about your organisation..."
+                        value={contactForm.message}
+                        onChange={handleContactChange('message')}
+                        className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none resize-none"
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-[#4b5563] ml-1">Message</label>
-                    <textarea
-                      rows={4}
-                      placeholder="Tell us about your organisation..."
-                      className="w-full px-6 py-4 bg-[#f9fafb] border border-[#e5e7eb] focus:border-[#0f9d58] focus:bg-white focus:ring-4 focus:ring-[#0f9d58]/10 rounded-2xl transition-all outline-none resize-none"
-                    ></textarea>
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full py-4 bg-[#f57c00] text-white font-bold rounded-2xl shadow-lg hover:bg-[#e65100] transition-all flex items-center justify-center gap-2 group"
-                  >
-                    Send Message
-                    <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </button>
-                  <p className="text-xs text-[#9ca3af] text-center">
-                    We'll use your details to respond to your enquiry only.
-                  </p>
-                </form>
+                    <button
+                      type="submit"
+                      disabled={contactLoading}
+                      className="w-full py-4 bg-[#f57c00] text-white font-bold rounded-2xl shadow-lg hover:bg-[#e65100] transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
+                    >
+                      {contactLoading ? (
+                        <>
+                          <Loader2 className="h-5 w-5 animate-spin" /> Sending...
+                        </>
+                      ) : (
+                        <>
+                          Send Message{' '}
+                          <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </button>
+                    <p className="text-xs text-[#9ca3af] text-center">
+                      We'll use your details to respond to your enquiry only.
+                    </p>
+                  </form>
+                )}
               </div>
 
               <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-[#0f9d58]/5 rounded-full blur-3xl"></div>

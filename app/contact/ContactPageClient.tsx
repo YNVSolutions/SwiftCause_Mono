@@ -8,9 +8,9 @@ export default function ContactPageClient() {
   const handleNavigate = (screen: string) => {
     if (screen === 'home') {
       router.push('/');
-    } else {
-      router.push(`/${screen}`);
+      return;
     }
+    router.push(`/${screen}`);
   };
 
   return <ContactPage onNavigate={handleNavigate} />;

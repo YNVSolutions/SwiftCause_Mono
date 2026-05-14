@@ -1,7 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Send, Loader2, CheckCircle, AlertCircle, Clock, Mail, Menu, X } from 'lucide-react';
+import {
+  Send,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Mail,
+  Menu,
+  X,
+  Linkedin,
+  Github,
+} from 'lucide-react';
 import Image from 'next/image';
 import { submitFeedback, queueContactConfirmationEmail } from '../../shared/api/firestoreService';
 import { useToast } from '../../shared/ui/ToastProvider';
@@ -324,7 +335,8 @@ export function ContactPage({ onNavigate }: { onNavigate?: (screen: string) => v
       {/* Footer */}
       <footer className="bg-[#111827] pt-16 pb-8 px-6">
         <div className="container mx-auto">
-          <div className="grid md:grid-cols-4 gap-10 mb-12">
+          <div className="grid md:grid-cols-3 gap-10 mb-12">
+            {/* Col 1 — Brand */}
             <div className="space-y-4">
               <button onClick={() => onNavigate?.('home')} className="flex items-center gap-2">
                 <Image
@@ -345,6 +357,7 @@ export function ContactPage({ onNavigate }: { onNavigate?: (screen: string) => v
               </p>
             </div>
 
+            {/* Col 2 — Navigation */}
             <div className="space-y-4">
               <h5 className="font-bold text-white/40 uppercase tracking-wider text-xs">
                 Navigation
@@ -365,40 +378,14 @@ export function ContactPage({ onNavigate }: { onNavigate?: (screen: string) => v
                   </li>
                 ))}
                 <li>
-                  <button
-                    onClick={() => onNavigate?.('login')}
-                    className="text-white/60 hover:text-white transition-colors"
-                  >
-                    Login
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => onNavigate?.('signup')}
-                    className="text-white/60 hover:text-white transition-colors"
-                  >
-                    Sign Up
-                  </button>
+                  <a href="/signup" className="text-white/60 hover:text-white transition-colors">
+                    Register Interest
+                  </a>
                 </li>
               </ul>
             </div>
 
-            <div className="space-y-4">
-              <h5 className="font-bold text-white/40 uppercase tracking-wider text-xs">Legal</h5>
-              <ul className="space-y-2 text-sm">
-                {['Terms of Service', 'Privacy Policy', 'Cookie Policy'].map((label) => (
-                  <li key={label}>
-                    <button
-                      onClick={() => onNavigate?.('terms')}
-                      className="text-white/60 hover:text-white transition-colors"
-                    >
-                      {label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
+            {/* Col 3 — Connect */}
             <div className="space-y-4">
               <h5 className="font-bold text-white/40 uppercase tracking-wider text-xs">Connect</h5>
               <ul className="space-y-2 text-sm">
@@ -407,9 +394,9 @@ export function ContactPage({ onNavigate }: { onNavigate?: (screen: string) => v
                     href="https://www.linkedin.com/company/ynv-solutions"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-white/60 hover:text-white transition-colors"
+                    className="text-white/60 hover:text-white transition-colors flex items-center gap-2"
                   >
-                    LinkedIn
+                    <Linkedin className="w-4 h-4" /> LinkedIn
                   </a>
                 </li>
                 <li>
@@ -417,9 +404,9 @@ export function ContactPage({ onNavigate }: { onNavigate?: (screen: string) => v
                     href="https://github.com/YNVSolutions/SwiftCause_Web"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-white/60 hover:text-white transition-colors"
+                    className="text-white/60 hover:text-white transition-colors flex items-center gap-2"
                   >
-                    GitHub
+                    <Github className="w-4 h-4" /> GitHub
                   </a>
                 </li>
                 <li>
@@ -430,8 +417,10 @@ export function ContactPage({ onNavigate }: { onNavigate?: (screen: string) => v
           </div>
 
           <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-white/40">
-            <span>© 2026 SwiftCause Ltd. Registered in England &amp; Wales.</span>
-            <span className="italic">[FCA regulatory statement, per fintech lawyer]</span>
+            <span>
+              © 2026 SwiftCause Ltd. Registered in England &amp; Wales. Company No. [TBC].
+              Registered office: [TBC].
+            </span>
           </div>
         </div>
       </footer>
