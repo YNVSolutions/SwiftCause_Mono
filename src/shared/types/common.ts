@@ -19,6 +19,7 @@ export type Screen =
   | 'admin-bank-details'
   | 'admin-organization-settings'
   | 'admin-stripe-account'
+  | 'admin-approvals'
   | 'about'
   | 'contact'
   | 'docs'
