@@ -132,12 +132,25 @@ const createQuerySnapshot = (docs) => ({
 const firestoreInstance = {
   collection(name) {
     // Build a chainable query object that filters the in-memory store
-    const buildQuery = (collectionName, filters, limitCount) => ({
+    const buildQuery = (collectionName, filters, orderings, limitCount) => ({
       where(field, op, value) {
-        return buildQuery(collectionName, [...filters, { field, op, value }], limitCount);
+        return buildQuery(
+          collectionName,
+          [...filters, { field, op, value }],
+          orderings,
+          limitCount,
+        );
+      },
+      orderBy(field, direction = 'asc') {
+        return buildQuery(
+          collectionName,
+          filters,
+          [...orderings, { field, direction }],
+          limitCount,
+        );
       },
       limit(n) {
-        return buildQuery(collectionName, filters, n);
+        return buildQuery(collectionName, filters, orderings, n);
       },
       async get() {
         const store = getCollectionStore(collectionName);
@@ -148,6 +161,18 @@ const firestoreInstance = {
             // Support nested field paths like "metadata.donorEmail"
             return matchesFilter(getFieldValue(data, field), op, value);
           });
+        }
+
+        for (const { field, direction } of orderings) {
+          const multiplier = direction === 'desc' ? -1 : 1;
+          entries = entries
+            .filter(([, data]) => getFieldValue(data, field) !== undefined)
+            .sort(([, leftData], [, rightData]) => {
+              const left = comparableValue(getFieldValue(leftData, field));
+              const right = comparableValue(getFieldValue(rightData, field));
+              if (left === right) return 0;
+              return left > right ? multiplier : -multiplier;
+            });
         }
 
         if (limitCount != null) {
@@ -164,10 +189,13 @@ const firestoreInstance = {
         return doc(name, id);
       },
       where(field, op, value) {
-        return buildQuery(name, [{ field, op, value }], null);
+        return buildQuery(name, [{ field, op, value }], [], null);
+      },
+      orderBy(field, direction = 'asc') {
+        return buildQuery(name, [], [{ field, direction }], null);
       },
       limit(n) {
-        return buildQuery(name, [], n);
+        return buildQuery(name, [], [], n);
       },
       async get() {
         const store = getCollectionStore(name);

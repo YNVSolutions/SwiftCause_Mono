@@ -126,7 +126,7 @@ export function DeviceManagementDialog({
 
     managedDeviceApi
       .listDeviceEvents(selectedDevice.id)
-      .then((nextEvents) => setEvents(nextEvents.slice(0, 6)))
+      .then((nextEvents) => setEvents(nextEvents))
       .catch(() => setEvents([]));
   }, [initialKioskId, selectedDevice]);
 

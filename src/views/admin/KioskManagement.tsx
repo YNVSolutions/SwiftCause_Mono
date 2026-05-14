@@ -839,14 +839,16 @@ export function KioskManagement({
                         <div className="mt-4">{getStatusBadge(kiosk.status)}</div>
                         <div className="mt-3 flex items-center justify-between gap-2">
                           {getDeviceBadge(linkedDevice)}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openDeviceDialog(kiosk.id)}
-                          >
-                            <TabletSmartphone className="h-4 w-4 mr-2" />
-                            Manage
-                          </Button>
+                          {hasPermission('edit_kiosk') ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openDeviceDialog(kiosk.id)}
+                            >
+                              <TabletSmartphone className="h-4 w-4 mr-2" />
+                              Manage
+                            </Button>
+                          ) : null}
                         </div>
 
                         <div className="mt-4 border-t border-gray-100 pt-4 text-sm text-gray-600">

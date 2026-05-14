@@ -95,6 +95,7 @@ const seedDevice = async (id = 'device-1', data = {}) => {
         model: 'Medium Tablet',
       },
       lastHeartbeatAt: { __type: 'timestamp', ms: 1000 },
+      updatedAt: { __type: 'timestamp', ms: 1000 },
       lastError: null,
       ...data,
     });
@@ -220,6 +221,43 @@ describe('managed device admin APIs', () => {
         status: 'online',
       }),
     ]);
+  });
+
+  it('returns managed devices newest-first with a bounded Firestore query result', async () => {
+    await seedUser();
+    const writes = [];
+    for (let index = 0; index < 105; index += 1) {
+      writes.push(
+        seedDevice(`device-${index}`, {
+          kioskId: 'kiosk-1',
+          updatedAt: { __type: 'timestamp', ms: index },
+        }),
+      );
+    }
+    writes.push(
+      seedDevice('other-org-newest', {
+        organizationId: 'org-2',
+        kioskId: 'kiosk-1',
+        updatedAt: { __type: 'timestamp', ms: 1000 },
+      }),
+    );
+    await Promise.all(writes);
+
+    const res = await invokeHandler(
+      adminListManagedDevices,
+      request({ method: 'GET', query: { kioskId: 'kiosk-1' } }),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.devices).toHaveLength(100);
+    expect(res.body.devices[0]).toMatchObject({ id: 'device-104', organizationId: 'org-1' });
+    expect(res.body.devices[res.body.devices.length - 1]).toMatchObject({
+      id: 'device-5',
+      organizationId: 'org-1',
+    });
+    expect(res.body.devices).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'other-org-newest' })]),
+    );
   });
 
   it('updates editable placement metadata and same-org kiosk assignment', async () => {
@@ -349,23 +387,69 @@ describe('managed device admin APIs', () => {
   it('lists commands and events for caller-organization devices', async () => {
     await seedUser();
     await seedDevice();
-    await admin.firestore().collection('deviceCommands').doc('command-1').set({
-      organizationId: 'org-1',
-      deviceId: 'device-1',
-      commandType: 'sync_policy',
-      status: 'pending',
-    });
-    await admin.firestore().collection('deviceCommands').doc('command-2').set({
-      organizationId: 'org-2',
-      deviceId: 'device-1',
-      commandType: 'sync_policy',
-      status: 'pending',
-    });
-    await admin.firestore().collection('deviceEvents').doc('event-1').set({
-      organizationId: 'org-1',
-      deviceId: 'device-1',
-      type: 'HEARTBEAT',
-    });
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-1')
+      .set({
+        organizationId: 'org-1',
+        deviceId: 'device-1',
+        commandType: 'sync_policy',
+        status: 'pending',
+        queuedAt: { __type: 'timestamp', ms: 2000 },
+      });
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-2')
+      .set({
+        organizationId: 'org-2',
+        deviceId: 'device-1',
+        commandType: 'sync_policy',
+        status: 'pending',
+        queuedAt: { __type: 'timestamp', ms: 3000 },
+      });
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-3')
+      .set({
+        organizationId: 'org-1',
+        deviceId: 'device-1',
+        commandType: 'refresh_content',
+        status: 'pending',
+        queuedAt: { __type: 'timestamp', ms: 1000 },
+      });
+    await admin
+      .firestore()
+      .collection('deviceEvents')
+      .doc('event-1')
+      .set({
+        organizationId: 'org-1',
+        deviceId: 'device-1',
+        type: 'HEARTBEAT',
+        createdAt: { __type: 'timestamp', ms: 1000 },
+      });
+    await admin
+      .firestore()
+      .collection('deviceEvents')
+      .doc('event-2')
+      .set({
+        organizationId: 'org-1',
+        deviceId: 'device-1',
+        type: 'STATUS',
+        createdAt: { __type: 'timestamp', ms: 2000 },
+      });
+    await admin
+      .firestore()
+      .collection('deviceEvents')
+      .doc('event-3')
+      .set({
+        organizationId: 'org-2',
+        deviceId: 'device-1',
+        type: 'STATUS',
+        createdAt: { __type: 'timestamp', ms: 3000 },
+      });
 
     const commands = await invokeHandler(
       adminListDeviceCommands,
@@ -382,13 +466,52 @@ describe('managed device admin APIs', () => {
         id: 'command-1',
         organizationId: 'org-1',
       }),
+      expect.objectContaining({
+        id: 'command-3',
+        organizationId: 'org-1',
+      }),
     ]);
     expect(events.statusCode).toBe(200);
     expect(events.body.events).toEqual([
+      expect.objectContaining({
+        id: 'event-2',
+        type: 'STATUS',
+      }),
       expect.objectContaining({
         id: 'event-1',
         type: 'HEARTBEAT',
       }),
     ]);
+  });
+
+  it('returns recent events newest-first and limits response size', async () => {
+    await seedUser();
+    await seedDevice();
+    const writes = [];
+    for (let index = 0; index < 30; index += 1) {
+      writes.push(
+        admin
+          .firestore()
+          .collection('deviceEvents')
+          .doc(`event-${index}`)
+          .set({
+            organizationId: 'org-1',
+            deviceId: 'device-1',
+            type: 'STATUS',
+            createdAt: { __type: 'timestamp', ms: index },
+          }),
+      );
+    }
+    await Promise.all(writes);
+
+    const events = await invokeHandler(
+      adminListDeviceEvents,
+      request({ method: 'GET', query: { deviceId: 'device-1' } }),
+    );
+
+    expect(events.statusCode).toBe(200);
+    expect(events.body.events).toHaveLength(25);
+    expect(events.body.events[0]).toMatchObject({ id: 'event-29' });
+    expect(events.body.events[events.body.events.length - 1]).toMatchObject({ id: 'event-5' });
   });
 });

@@ -21,6 +21,9 @@ const ALLOWED_ADMIN_COMMANDS = new Set([
   'refresh_content',
   'clear_error',
 ]);
+const MANAGED_DEVICE_LIST_LIMIT = 100;
+const DEVICE_COMMAND_LIST_LIMIT = 50;
+const DEVICE_EVENT_LIST_LIMIT = 25;
 const PROTECTED_ADMIN_FIELDS = new Set([
   'apkId',
   'assignedKioskApkId',
@@ -208,6 +211,8 @@ const getCollectionRows = async (collectionName) => {
   const snapshot = await admin.firestore().collection(collectionName).get();
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 };
+
+const mapQueryRows = (snapshot) => snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
 const getAuthenticatedDevice = async (req, deviceId) => {
   const device = await getDevice(deviceId);
@@ -587,11 +592,18 @@ const adminListManagedDevices = (req, res) => {
 
       const caller = await getCaller(req);
       const kioskId = optionalString(req.query?.kioskId);
-      const rows = await getCollectionRows('managedDevices');
-      const devices = rows
-        .filter((device) => device.organizationId === caller.organizationId)
-        .filter((device) => !kioskId || device.kioskId === kioskId)
-        .map(serializeDevice);
+      let query = admin
+        .firestore()
+        .collection('managedDevices')
+        .where('organizationId', '==', caller.organizationId);
+      if (kioskId) {
+        query = query.where('kioskId', '==', kioskId);
+      }
+      const snapshot = await query
+        .orderBy('updatedAt', 'desc')
+        .limit(MANAGED_DEVICE_LIST_LIMIT)
+        .get();
+      const devices = mapQueryRows(snapshot).map(serializeDevice);
 
       return res.status(200).send({ success: true, devices });
     } catch (error) {
@@ -703,10 +715,15 @@ const adminListDeviceCommands = (req, res) => {
       const caller = await getCaller(req);
       const deviceId = requiredString(req.query?.deviceId, 'deviceId');
       await getDeviceForCaller(deviceId, caller.organizationId);
-      const commands = (await getCollectionRows('deviceCommands')).filter(
-        (command) =>
-          command.organizationId === caller.organizationId && command.deviceId === deviceId,
-      );
+      const snapshot = await admin
+        .firestore()
+        .collection('deviceCommands')
+        .where('organizationId', '==', caller.organizationId)
+        .where('deviceId', '==', deviceId)
+        .orderBy('queuedAt', 'desc')
+        .limit(DEVICE_COMMAND_LIST_LIMIT)
+        .get();
+      const commands = mapQueryRows(snapshot);
 
       return res.status(200).send({ success: true, commands });
     } catch (error) {
@@ -725,9 +742,15 @@ const adminListDeviceEvents = (req, res) => {
       const caller = await getCaller(req);
       const deviceId = requiredString(req.query?.deviceId, 'deviceId');
       await getDeviceForCaller(deviceId, caller.organizationId);
-      const events = (await getCollectionRows('deviceEvents')).filter(
-        (event) => event.organizationId === caller.organizationId && event.deviceId === deviceId,
-      );
+      const snapshot = await admin
+        .firestore()
+        .collection('deviceEvents')
+        .where('organizationId', '==', caller.organizationId)
+        .where('deviceId', '==', deviceId)
+        .orderBy('createdAt', 'desc')
+        .limit(DEVICE_EVENT_LIST_LIMIT)
+        .get();
+      const events = mapQueryRows(snapshot);
 
       return res.status(200).send({ success: true, events });
     } catch (error) {
