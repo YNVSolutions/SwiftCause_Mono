@@ -65,8 +65,11 @@ android/.gradle/
 android/.idea/
 android/local.properties
 android/build/
-android/app/build/
+android/*/build/
 android/app/google-services.json
 android/*.iml
 android/.externalNativeBuild/
 android/.cxx/
+
+# Local device E2E state
+.e2e/

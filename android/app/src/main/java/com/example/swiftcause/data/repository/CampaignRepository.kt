@@ -1,6 +1,7 @@
 package com.example.swiftcause.data.repository
 
 import com.example.swiftcause.domain.models.Campaign
+import com.example.swiftcause.utils.FirebaseManager
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
@@ -13,7 +14,7 @@ data class OrganizationBranding(
 )
 
 class CampaignRepository(
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseManager.firestore
 ) {
 
     /**

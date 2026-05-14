@@ -21,4 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "SwiftCause"
 include(":app")
- 
+include(":device-controller")
+include(":test-kiosk")

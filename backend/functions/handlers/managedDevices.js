@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const admin = require('firebase-admin');
+const { Timestamp } = require('firebase-admin/firestore');
 const cors = require('../middleware/cors');
 const { verifyAuth } = require('../middleware/auth');
 
@@ -23,7 +24,9 @@ const ALLOWED_ADMIN_COMMANDS = new Set([
 ]);
 const MANAGED_DEVICE_LIST_LIMIT = 100;
 const DEVICE_COMMAND_LIST_LIMIT = 50;
+const DEVICE_COMMAND_PICKUP_LIMIT = 10;
 const DEVICE_EVENT_LIST_LIMIT = 25;
+const ALLOWED_COMMAND_RESULT_STATUSES = new Set(['succeeded', 'failed', 'skipped']);
 const PROTECTED_ADMIN_FIELDS = new Set([
   'apkId',
   'assignedKioskApkId',
@@ -39,7 +42,7 @@ const PROTECTED_ADMIN_FIELDS = new Set([
   'lockTaskPolicy',
 ]);
 
-const timestamp = () => admin.firestore.Timestamp.now();
+const timestamp = () => Timestamp.now();
 
 const sendError = (res, code, message) => res.status(code).send({ error: message });
 
@@ -341,6 +344,14 @@ const kioskDeviceRegister = (req, res) => {
         .collection('managedDevices')
         .doc(deviceId)
         .set(device, { merge: true });
+      await appendDeviceEvent(
+        'REGISTERED',
+        { id: deviceId, ...device },
+        {
+          status: device.status,
+          enrollmentId: enrollmentToken,
+        },
+      );
 
       return res.status(200).send({
         success: true,
@@ -373,6 +384,14 @@ const kioskDevicePolicy = (req, res) => {
           updatedAt: timestamp(),
         },
         { merge: true },
+      );
+      await appendDeviceEvent(
+        'POLICY_FETCHED',
+        { id: deviceId, ...device },
+        {
+          status: 'policy_fetched',
+          apkId: apk?.id || null,
+        },
       );
 
       return res.status(200).send({
@@ -509,6 +528,15 @@ const kioskApkDownload = (req, res) => {
       if (apk.organizationId !== device.organizationId) {
         return sendError(res, 403, 'APK is not assigned to this organization');
       }
+      await appendDeviceEvent(
+        'APK_DOWNLOAD_METADATA',
+        { id: deviceId, ...device },
+        {
+          status: 'apk_download_metadata',
+          apkId,
+          packageName: apk.packageName,
+        },
+      );
 
       return res.status(200).send({
         success: true,
@@ -521,6 +549,88 @@ const kioskApkDownload = (req, res) => {
       });
     } catch (error) {
       return sendError(res, error.code || 500, error.message || 'Failed to resolve APK download');
+    }
+  });
+};
+
+const kioskDeviceCommands = (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== 'GET') {
+        return sendError(res, 405, 'Method not allowed');
+      }
+
+      const deviceId = requiredString(req.query?.deviceId, 'deviceId');
+      const device = await getAuthenticatedDevice(req, deviceId);
+      const snapshot = await admin
+        .firestore()
+        .collection('deviceCommands')
+        .where('organizationId', '==', device.organizationId)
+        .where('deviceId', '==', deviceId)
+        .where('status', '==', 'pending')
+        .orderBy('queuedAt', 'asc')
+        .limit(DEVICE_COMMAND_PICKUP_LIMIT)
+        .get();
+      const commands = mapQueryRows(snapshot);
+
+      return res.status(200).send({ success: true, commands });
+    } catch (error) {
+      return sendError(res, error.code || 500, error.message || 'Failed to list device commands');
+    }
+  });
+};
+
+const kioskDeviceCommandResult = (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== 'POST') {
+        return sendError(res, 405, 'Method not allowed');
+      }
+
+      const deviceId = requiredString(req.body?.deviceId, 'deviceId');
+      const commandId = requiredString(req.body?.commandId, 'commandId');
+      const status = requiredString(req.body?.status, 'status');
+      if (!ALLOWED_COMMAND_RESULT_STATUSES.has(status)) {
+        return sendError(res, 400, 'Invalid command result status');
+      }
+
+      const device = await getAuthenticatedDevice(req, deviceId);
+      const commandRef = admin.firestore().collection('deviceCommands').doc(commandId);
+      const commandDoc = await commandRef.get();
+      if (!commandDoc.exists) {
+        return sendError(res, 404, 'Device command not found');
+      }
+
+      const command = commandDoc.data();
+      if (command.organizationId !== device.organizationId || command.deviceId !== deviceId) {
+        return sendError(res, 403, 'Device command is not assigned to this device');
+      }
+
+      const update = {
+        status,
+        resultMessage: optionalString(req.body?.message),
+        resultAt: timestamp(),
+        updatedAt: timestamp(),
+      };
+      await commandRef.set(update, { merge: true });
+      await appendDeviceEvent(
+        'COMMAND_RESULT',
+        { id: deviceId, ...device },
+        {
+          status,
+          commandId,
+          commandType: command.commandType || null,
+          message: update.resultMessage,
+        },
+      );
+
+      return res.status(200).send({
+        success: true,
+        commandId,
+        status,
+      });
+    } catch (error) {
+      return sendError(res, error.code || 500, error.message || 'Failed to record command result');
     }
   });
 };
@@ -765,6 +875,8 @@ module.exports = {
   kioskDeviceStatus,
   kioskDeviceHeartbeat,
   kioskApkDownload,
+  kioskDeviceCommands,
+  kioskDeviceCommandResult,
   adminCreateDeviceProfile,
   adminListManagedDevices,
   adminUpdateManagedDeviceMetadata,

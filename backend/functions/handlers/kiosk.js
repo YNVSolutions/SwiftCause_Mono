@@ -1,5 +1,6 @@
-const admin = require("firebase-admin");
-const cors = require("../middleware/cors");
+const admin = require('firebase-admin');
+const { FieldValue } = require('firebase-admin/firestore');
+const cors = require('../middleware/cors');
 
 /**
  * Authenticate kiosk and generate custom token
@@ -9,71 +10,71 @@ const cors = require("../middleware/cors");
 const kioskLogin = (req, res) => {
   cors(req, res, async () => {
     try {
-      if (req.method !== "POST") {
-        return res.status(405).send({error: "Method not allowed"});
+      if (req.method !== 'POST') {
+        return res.status(405).send({ error: 'Method not allowed' });
       }
 
-      const {kioskId, accessCode} = req.body;
+      const { kioskId, accessCode } = req.body;
 
       // Validate input
       if (!kioskId || !accessCode) {
         return res.status(400).send({
-          error: "kioskId and accessCode are required",
+          error: 'kioskId and accessCode are required',
         });
       }
 
       // Fetch kiosk document
-      const kioskRef = admin.firestore().collection("kiosks").doc(kioskId);
+      const kioskRef = admin.firestore().collection('kiosks').doc(kioskId);
       const kioskDoc = await kioskRef.get();
 
       if (!kioskDoc.exists) {
         return res.status(401).send({
-          error: "Invalid kiosk credentials",
+          error: 'Invalid kiosk credentials',
         });
       }
 
       const kioskData = kioskDoc.data();
 
       // Verify kiosk status is online
-      if (kioskData.status !== "online") {
+      if (kioskData.status !== 'online') {
         return res.status(403).send({
-          error: "Kiosk is not online",
+          error: 'Kiosk is not online',
         });
       }
 
       // Verify access code
       if (kioskData.accessCode !== accessCode) {
         return res.status(401).send({
-          error: "Invalid kiosk credentials",
+          error: 'Invalid kiosk credentials',
         });
       }
 
       // Generate custom token with kiosk UID format
       const uid = `kiosk:${kioskId}`;
-      
+
       // Fetch organization currency if available
       let organizationCurrency = 'GBP';
       if (kioskData.organizationId) {
         const orgDoc = await admin
-            .firestore()
-            .collection('organizations')
-            .doc(kioskData.organizationId)
-            .get();
+          .firestore()
+          .collection('organizations')
+          .doc(kioskData.organizationId)
+          .get();
         if (orgDoc.exists) {
           organizationCurrency = orgDoc.data().currency || 'GBP';
         }
       }
-      
+
       // Set custom claims with all necessary kiosk data
       const customClaims = {
-        role: "kiosk",
+        role: 'kiosk',
         kioskId: kioskId,
         kioskName: kioskData.name,
         organizationId: kioskData.organizationId || null,
         organizationCurrency: organizationCurrency,
         assignedCampaigns: kioskData.assignedCampaigns || [],
         settings: kioskData.settings || {
-          displayMode: "grid",
+          displayMode: 'grid',
           showAllCampaigns: false,
           maxCampaignsDisplay: 6,
           autoRotateCampaigns: false,
@@ -85,7 +86,7 @@ const kioskLogin = (req, res) => {
 
       // Update last active timestamp
       await kioskRef.update({
-        lastActive: admin.firestore.FieldValue.serverTimestamp(),
+        lastActive: FieldValue.serverTimestamp(),
       });
 
       return res.status(200).send({
@@ -97,7 +98,7 @@ const kioskLogin = (req, res) => {
           organizationId: kioskData.organizationId,
           assignedCampaigns: kioskData.assignedCampaigns || [],
           settings: kioskData.settings || {
-            displayMode: "grid",
+            displayMode: 'grid',
             showAllCampaigns: false,
             maxCampaignsDisplay: 6,
             autoRotateCampaigns: false,
@@ -105,9 +106,9 @@ const kioskLogin = (req, res) => {
         },
       });
     } catch (error) {
-      console.error("Error in kioskLogin:", error);
+      console.error('Error in kioskLogin:', error);
       return res.status(500).send({
-        error: error.message || "Failed to authenticate kiosk",
+        error: error.message || 'Failed to authenticate kiosk',
       });
     }
   });
