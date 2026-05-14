@@ -18,6 +18,7 @@ datastorePreferences = "1.1.1"
 coil = "2.7.0"
 stripe = "20.49.0"
 stripeTerminal = "5.4.0"
+coroutines = "1.9.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -67,6 +68,7 @@ stripe-android = { group = "com.stripe", name = "stripe-android", version.ref = 
 stripe-terminal = { group = "com.stripe", name = "stripeterminal", version.ref = "stripeTerminal" }
 stripe-terminal-ktx = { group = "com.stripe", name = "stripeterminal-ktx", version.ref = "stripeTerminal" }
 stripe-terminal-taptopay = { group = "com.stripe", name = "stripeterminal-taptopay", version.ref = "stripeTerminal" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -74,4 +76,3 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-

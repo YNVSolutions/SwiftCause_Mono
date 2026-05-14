@@ -1,12 +1,12 @@
 package com.example.swiftcause.presentation.viewmodels
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.swiftcause.R
 import com.example.swiftcause.data.api.RetrofitClient
 import com.example.swiftcause.data.repository.KioskRepository
 import com.example.swiftcause.domain.models.KioskSession
+import com.example.swiftcause.domain.repositories.KioskAuthenticator
 import com.example.swiftcause.utils.FirebaseManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,12 +22,17 @@ data class KioskLoginUiState(
     val isAuthenticated: Boolean = false
 )
 
-class KioskLoginViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = KioskRepository(
-        apiService = RetrofitClient.kioskApiService,
-        firebaseAuth = FirebaseManager.auth
-    )
-    
+data class KioskLoginMessages(
+    val requiredFields: String,
+    val authFailed: String,
+    val unexpected: (String) -> String,
+)
+
+class KioskLoginViewModel(
+    private val authenticator: KioskAuthenticator,
+    private val messages: KioskLoginMessages,
+) : ViewModel() {
+
     private val _uiState = MutableStateFlow(KioskLoginUiState())
     val uiState: StateFlow<KioskLoginUiState> = _uiState.asStateFlow()
     
@@ -50,7 +55,7 @@ class KioskLoginViewModel(application: Application) : AndroidViewModel(applicati
         
         if (currentState.kioskId.isBlank() || currentState.accessCode.isBlank()) {
             _uiState.value = currentState.copy(
-                error = getApplication<Application>().getString(R.string.kiosk_login_error_required_fields)
+                error = messages.requiredFields
             )
             return
         }
@@ -59,7 +64,7 @@ class KioskLoginViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 _uiState.value = currentState.copy(isLoading = true, error = null)
                 
-                val result = repository.authenticateKiosk(
+                val result = authenticator.authenticateKiosk(
                     kioskId = currentState.kioskId.trim(),
                     accessCode = currentState.accessCode.trim()
                 )
@@ -76,17 +81,14 @@ class KioskLoginViewModel(application: Application) : AndroidViewModel(applicati
                         _uiState.value = currentState.copy(
                             isLoading = false,
                             error = exception.message
-                                ?: getApplication<Application>().getString(R.string.kiosk_login_error_auth_failed)
+                                ?: messages.authFailed
                         )
                     }
                 )
             } catch (e: Exception) {
                 _uiState.value = currentState.copy(
                     isLoading = false,
-                    error = getApplication<Application>().getString(
-                        R.string.kiosk_login_error_unexpected,
-                        e.message ?: getApplication<Application>().getString(R.string.error_generic)
-                    )
+                    error = messages.unexpected(e.message ?: messages.authFailed)
                 )
             }
         }
@@ -97,7 +99,26 @@ class KioskLoginViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     fun signOut() {
-        repository.signOut()
+        authenticator.signOut()
         _uiState.value = KioskLoginUiState()
+    }
+
+    companion object {
+        fun factory(messages: KioskLoginMessages): ViewModelProvider.Factory =
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    if (modelClass.isAssignableFrom(KioskLoginViewModel::class.java)) {
+                        return KioskLoginViewModel(
+                            authenticator = KioskRepository(
+                                apiService = RetrofitClient.kioskApiService,
+                                firebaseAuth = FirebaseManager.auth,
+                            ),
+                            messages = messages,
+                        ) as T
+                    }
+                    throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+                }
+            }
     }
 }

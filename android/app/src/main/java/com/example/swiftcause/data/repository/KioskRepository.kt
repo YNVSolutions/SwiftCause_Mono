@@ -4,14 +4,15 @@ import com.example.swiftcause.data.api.KioskApiService
 import com.example.swiftcause.data.models.KioskLoginRequest
 import com.example.swiftcause.data.models.toDomainModel
 import com.example.swiftcause.domain.models.KioskSession
+import com.example.swiftcause.domain.repositories.KioskAuthenticator
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.tasks.await
 
 class KioskRepository(
     private val apiService: KioskApiService,
     private val firebaseAuth: FirebaseAuth
-) {
-    suspend fun authenticateKiosk(kioskId: String, accessCode: String): Result<KioskSession> {
+) : KioskAuthenticator {
+    override suspend fun authenticateKiosk(kioskId: String, accessCode: String): Result<KioskSession> {
         return try {
             val response = apiService.kioskLogin(
                 KioskLoginRequest(kioskId, accessCode)
@@ -51,7 +52,7 @@ class KioskRepository(
         }
     }
     
-    fun signOut() {
+    override fun signOut() {
         firebaseAuth.signOut()
     }
 }
