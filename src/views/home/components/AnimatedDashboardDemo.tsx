@@ -32,7 +32,7 @@ const floatingFeatures: FloatingFeature[] = [
     icon: <Globe className="w-4 h-4" />,
     title: 'Multi-channel',
     value: 'Online, QR & Contactless',
-    color: 'from-white to-white',
+    color: 'from-[#1a2332] to-[#1a2332]',
     position: 'bottom-8 -left-4',
     delay: 1000,
     size: 'small',

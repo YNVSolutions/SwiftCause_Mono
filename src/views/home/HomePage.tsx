@@ -193,7 +193,7 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
                   onClick={onSignup}
                   className="px-5 py-2 bg-[#f57c00] text-white font-semibold rounded-lg shadow-md hover:bg-[#e65100] transition-all"
                 >
-                  Start Free Today
+                  Register Interest
                 </button>
               </div>
             )}
@@ -264,7 +264,7 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
                   onClick={onSignup}
                   className="w-full py-3 bg-[#f57c00] text-white font-semibold rounded-xl shadow-lg hover:bg-[#e65100] transition-colors"
                 >
-                  Start Free Today
+                  Register Interest
                 </button>
               </div>
             </div>
@@ -296,10 +296,10 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
                   onClick={onSignup}
                   className="px-8 py-4 bg-[#f57c00] text-white font-bold rounded-2xl shadow-xl hover:bg-[#e65100] transition-all flex items-center justify-center gap-2 group"
                 >
-                  Start Free Today
+                  Register Your Interest
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
-                <span className="text-sm text-slate-500">No credit card required</span>
+                <span className="text-sm text-slate-500">Launching Summer 2026</span>
               </div>
             </div>
 
@@ -441,8 +441,8 @@ export function HomePage({ onSignup, onNavigate }: HomePageProps) {
                 {
                   step: '02',
                   icon: <Smartphone className="w-6 h-6" />,
-                  title: 'Deploy to any device',
-                  body: 'Turn any phone, tablet, or screen into a collection point. Share a link or show a QR code no hardware required.',
+                  title: 'Share your link',
+                  body: 'Share your campaign link, display a QR code, or tap to give in person. Works on any device no hardware needed.',
                 },
                 {
                   step: '03',
