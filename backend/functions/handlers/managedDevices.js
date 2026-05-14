@@ -377,6 +377,7 @@ const kioskDevicePolicy = (req, res) => {
       const deviceId = requiredString(req.query?.deviceId, 'deviceId');
       const device = await getAuthenticatedDevice(req, deviceId);
       const apk = await getAssignedApk(device);
+      const resolvedKioskPackage = apk?.packageName || device.kioskPackage || KIOSK_PACKAGE;
 
       await admin.firestore().collection('managedDevices').doc(deviceId).set(
         {
@@ -400,8 +401,8 @@ const kioskDevicePolicy = (req, res) => {
         organizationId: device.organizationId,
         kioskId: device.kioskId || null,
         controllerPackage: device.controllerPackage || CONTROLLER_PACKAGE,
-        kioskPackage: device.kioskPackage || KIOSK_PACKAGE,
-        launchPackage: device.kioskPackage || KIOSK_PACKAGE,
+        kioskPackage: resolvedKioskPackage,
+        launchPackage: resolvedKioskPackage,
         heartbeatIntervalSeconds: HEARTBEAT_INTERVAL_SECONDS,
         apk: apk
           ? {
@@ -596,23 +597,39 @@ const kioskDeviceCommandResult = (req, res) => {
 
       const device = await getAuthenticatedDevice(req, deviceId);
       const commandRef = admin.firestore().collection('deviceCommands').doc(commandId);
-      const commandDoc = await commandRef.get();
-      if (!commandDoc.exists) {
-        return sendError(res, 404, 'Device command not found');
-      }
+      const { command, update } = await admin.firestore().runTransaction(async (transaction) => {
+        const commandDoc = await transaction.get(commandRef);
+        if (!commandDoc.exists) {
+          const error = new Error('Device command not found');
+          error.code = 404;
+          throw error;
+        }
 
-      const command = commandDoc.data();
-      if (command.organizationId !== device.organizationId || command.deviceId !== deviceId) {
-        return sendError(res, 403, 'Device command is not assigned to this device');
-      }
+        const commandData = commandDoc.data();
+        if (
+          commandData.organizationId !== device.organizationId ||
+          commandData.deviceId !== deviceId
+        ) {
+          const error = new Error('Device command is not assigned to this device');
+          error.code = 403;
+          throw error;
+        }
+        if (commandData.status !== 'pending') {
+          const error = new Error('Device command is already completed');
+          error.code = 409;
+          throw error;
+        }
 
-      const update = {
-        status,
-        resultMessage: optionalString(req.body?.message),
-        resultAt: timestamp(),
-        updatedAt: timestamp(),
-      };
-      await commandRef.set(update, { merge: true });
+        const commandUpdate = {
+          status,
+          resultMessage: optionalString(req.body?.message),
+          resultAt: timestamp(),
+          updatedAt: timestamp(),
+        };
+        transaction.set(commandRef, commandUpdate, { merge: true });
+
+        return { command: commandData, update: commandUpdate };
+      });
       await appendDeviceEvent(
         'COMMAND_RESULT',
         { id: deviceId, ...device },

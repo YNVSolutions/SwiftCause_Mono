@@ -37,6 +37,8 @@ Expected coverage:
 - server-pinned controller package identity
 - partial status updates preserving existing status fields
 - assigned APK enforcement, including same-org unassigned APK rejection
+- policy package fields resolving from the assigned APK package, including the real app package
+- command result idempotency so completed commands cannot be overwritten by replayed results
 - admin profile, list, metadata update, command queue, command list, and event list access control
 - E2E trace events for registration, policy fetch, APK metadata request, heartbeat, and command
   results

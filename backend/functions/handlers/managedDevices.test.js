@@ -243,6 +243,33 @@ describe('managed device APIs', () => {
     ]);
   });
 
+  it('uses the assigned APK package as the kiosk and launch package in policy', async () => {
+    await seedKiosk('kiosk-1', { assignedKioskApkId: 'real-app-apk' });
+    await seedApk('real-app-apk', {
+      packageName: 'com.example.swiftcause',
+      downloadUrl: 'https://example.test/swiftcause-mobile-debug.apk',
+    });
+    const registered = await registerDevice();
+
+    const res = await invokeHandler(
+      kioskDevicePolicy,
+      withDeviceSecret(
+        request({ method: 'GET', query: { deviceId: registered.body.deviceId } }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      kioskPackage: 'com.example.swiftcause',
+      launchPackage: 'com.example.swiftcause',
+      apk: {
+        apkId: 'real-app-apk',
+        packageName: 'com.example.swiftcause',
+      },
+    });
+  });
+
   it('rejects policy requests without the device secret', async () => {
     const registered = await registerDevice();
 
@@ -625,6 +652,44 @@ describe('managed device APIs', () => {
         }),
       }),
     ]);
+  });
+
+  it('rejects command result replay after a command has already completed', async () => {
+    const registered = await registerDevice();
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-1')
+      .set({
+        organizationId: 'org-1',
+        deviceId: registered.body.deviceId,
+        commandType: 'restart_kiosk',
+        status: 'succeeded',
+        resultMessage: 'Original result',
+        queuedAt: { __type: 'timestamp', ms: 1000 },
+      });
+
+    const res = await invokeHandler(
+      kioskDeviceCommandResult,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            commandId: 'command-1',
+            status: 'failed',
+            message: 'Replay overwrite',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(res.statusCode).toBe(409);
+    expect(admin.__getDoc('deviceCommands', 'command-1')).toMatchObject({
+      status: 'succeeded',
+      resultMessage: 'Original result',
+    });
+    expect(getDeviceEvents(registered.body.deviceId, 'COMMAND_RESULT')).toHaveLength(0);
   });
 
   it('rejects command results for commands assigned to another device or organization', async () => {
