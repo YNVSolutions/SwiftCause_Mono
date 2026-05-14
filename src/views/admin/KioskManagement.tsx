@@ -46,10 +46,18 @@ import {
   Loader2,
   Building2,
   Ghost,
+  TabletSmartphone,
 } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { KioskForm, KioskFormData } from './components/KioskForm';
+import { DeviceManagementDialog } from './components/DeviceManagementDialog';
 import { useToast } from '../../shared/ui/ToastProvider';
+import {
+  getDeviceStatusLabel,
+  getDeviceStatusTone,
+  managedDeviceApi,
+  ManagedDevice,
+} from '../../entities/device';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -167,6 +175,9 @@ export function KioskManagement({
   const [kioskToDelete, setKioskToDelete] = useState<Kiosk | null>(null);
   const [isDeletingKiosk, setIsDeletingKiosk] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [managedDevices, setManagedDevices] = useState<ManagedDevice[]>([]);
+  const [isDeviceDialogOpen, setIsDeviceDialogOpen] = useState(false);
+  const [deviceDialogKioskId, setDeviceDialogKioskId] = useState<string | null>(null);
 
   const [showAccessCodes, setShowAccessCodes] = useState<{ [key: string]: boolean }>({});
   const [copiedIds, setCopiedIds] = useState<{ [key: string]: boolean }>({});
@@ -201,6 +212,16 @@ export function KioskManagement({
     await Promise.all([refreshKiosks(), refreshCampaigns(), refetchLocations()]);
   }, [refreshCampaigns, refreshKiosks, refetchLocations]);
 
+  const refreshManagedDevices = useCallback(async () => {
+    try {
+      const devices = await managedDeviceApi.listManagedDevices();
+      setManagedDevices(devices);
+    } catch (error) {
+      console.error('Error loading managed devices:', error);
+      setManagedDevices([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!locationsError) {
       lastLocationsErrorRef.current = null;
@@ -214,6 +235,10 @@ export function KioskManagement({
     lastLocationsErrorRef.current = message;
     showToast(`Location data unavailable: ${message}`, 'error');
   }, [locationsError, showToast]);
+
+  useEffect(() => {
+    void refreshManagedDevices();
+  }, [refreshManagedDevices]);
 
   const handleAssignCampaign = (campaignId: string) => {
     if (needsOnboarding) {
@@ -504,6 +529,33 @@ export function KioskManagement({
     }
   };
 
+  const getDeviceForKiosk = (kioskId: string) =>
+    managedDevices.find((device) => device.kioskId === kioskId) || null;
+
+  const getDeviceBadge = (device: ManagedDevice | null) => {
+    if (!device) {
+      return <Badge className="bg-gray-100 text-gray-700 border-gray-200">No device</Badge>;
+    }
+
+    const label = getDeviceStatusLabel(device);
+    const tone = getDeviceStatusTone(label);
+    const className =
+      tone === 'success'
+        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+        : tone === 'warning'
+          ? 'bg-amber-50 text-amber-800 border-amber-200'
+          : tone === 'danger'
+            ? 'bg-red-50 text-red-800 border-red-200'
+            : 'bg-gray-100 text-gray-700 border-gray-200';
+
+    return <Badge className={className}>{label}</Badge>;
+  };
+
+  const openDeviceDialog = (kioskId?: string | null) => {
+    setDeviceDialogKioskId(kioskId || null);
+    setIsDeviceDialogOpen(true);
+  };
+
   if (isInitialLoading) {
     return (
       <AdminLayout
@@ -558,15 +610,25 @@ export function KioskManagement({
       }
       headerInlineActions={
         hasPermission('create_kiosk') ? (
-          <Button
-            onClick={() => {
-              setIsCreateDialogOpen(true);
-            }}
-            className="h-10 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white px-5"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add New Kiosk
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => openDeviceDialog(null)}
+              className="h-10 rounded-full border-emerald-700 text-emerald-800 px-5"
+            >
+              <TabletSmartphone className="w-4 h-4 mr-2" />
+              Devices
+            </Button>
+            <Button
+              onClick={() => {
+                setIsCreateDialogOpen(true);
+              }}
+              className="h-10 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white px-5"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add New Kiosk
+            </Button>
+          </div>
         ) : null
       }
     >
@@ -654,6 +716,7 @@ export function KioskManagement({
                     const assignedCount = campaigns.filter((c) =>
                       assignedIds.includes(c.id),
                     ).length;
+                    const linkedDevice = getDeviceForKiosk(kiosk.id);
 
                     return (
                       <div
@@ -774,6 +837,19 @@ export function KioskManagement({
                         </div>
 
                         <div className="mt-4">{getStatusBadge(kiosk.status)}</div>
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          {getDeviceBadge(linkedDevice)}
+                          {hasPermission('edit_kiosk') ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openDeviceDialog(kiosk.id)}
+                            >
+                              <TabletSmartphone className="h-4 w-4 mr-2" />
+                              Manage
+                            </Button>
+                          ) : null}
+                        </div>
 
                         <div className="mt-4 border-t border-gray-100 pt-4 text-sm text-gray-600">
                           <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">
@@ -929,7 +1005,10 @@ export function KioskManagement({
                             </div>
                           </TableCell>
                           <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(kiosk.status)}
+                            <div className="space-y-2">
+                              {getStatusBadge(kiosk.status)}
+                              {getDeviceBadge(getDeviceForKiosk(kiosk.id))}
+                            </div>
                           </TableCell>
                           <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
@@ -953,6 +1032,17 @@ export function KioskManagement({
                           </TableCell>
                           <TableCell className="px-4 lg:px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
+                              {hasPermission('edit_kiosk') ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => openDeviceDialog(kiosk.id)}
+                                  className="h-8 w-8 p-0 text-gray-400 hover:text-emerald-700"
+                                  title="Manage Device"
+                                >
+                                  <TabletSmartphone className="w-4 h-4" />
+                                </Button>
+                              ) : null}
                               {hasPermission('edit_kiosk') ? (
                                 <Button
                                   variant="ghost"
@@ -1062,6 +1152,14 @@ export function KioskManagement({
         onCreateLocation={handleCreateLocation}
         formatCurrency={formatCurrency}
         isLoading={isCreatingKiosk || locationsLoading}
+      />
+
+      <DeviceManagementDialog
+        open={isDeviceDialogOpen}
+        onOpenChange={setIsDeviceDialogOpen}
+        kiosks={kiosks}
+        initialKioskId={deviceDialogKioskId}
+        onDevicesChanged={refreshManagedDevices}
       />
 
       {/* Delete Confirmation Dialog */}
