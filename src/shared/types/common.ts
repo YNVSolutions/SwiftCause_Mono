@@ -118,17 +118,43 @@ export interface KioskSession {
   organizationCurrency?: string;
 }
 
+export type RegisteredNation = 'england_wales' | 'scotland' | 'northern_ireland';
+export type EntityType = 'registered_charity' | 'cio' | 'cic' | 'other';
+export type ContactRole = 'trustee' | 'ceo' | 'treasurer' | 'fundraising' | 'ops' | 'other';
+export type GiftAidRegistered = 'yes' | 'no' | 'dont_know';
+export type PrimarySetting =
+  | 'mosque'
+  | 'church'
+  | 'temple'
+  | 'scout'
+  | 'pta'
+  | 'charity_shop'
+  | 'events'
+  | 'other';
+export type EstimatedMonthlyVolumeBand = '0_500' | '500_2k' | '2k_10k' | '10k_plus';
+
 export interface SignupFormData {
-  firstName: string;
-  lastName: string;
   email: string;
-  organizationName: string;
-  organizationType: string;
-  organizationSize: string;
   organizationId: string;
-  website?: string;
   password: string;
   confirmPassword: string;
   currency: string;
-  agreeToTerms: boolean;
+  legal_name: string;
+  charity_number: string;
+  registered_nation: RegisteredNation | '';
+  registered_postcode: string;
+  entity_type: EntityType | '';
+  contact_full_name: string;
+  contact_role: ContactRole | '';
+  contact_work_email: string;
+  contact_phone: string;
+  authorised_signatory: boolean;
+  gift_aid_registered: GiftAidRegistered | '';
+  hmrc_charity_reference: string;
+  primary_setting: PrimarySetting | '';
+  estimated_monthly_volume_band: EstimatedMonthlyVolumeBand | '';
+  terms_accepted: boolean;
+  privacy_accepted: boolean;
+  marketing_consent: boolean;
+  recaptchaToken?: string;
 }
