@@ -15,9 +15,37 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc } from 'firebase/firestore';
 import { getFirestore } from 'firebase/firestore';
 import { isUsingFirebaseEmulators } from '@/shared/config/firebaseEmulators';
+import { FUNCTION_URLS } from '@/shared/config/functions';
 
 const auth = getAuth();
 const firestore = getFirestore();
+const TERMS_POLICY_VERSION_HASH =
+  process.env.NEXT_PUBLIC_TERMS_VERSION_HASH?.trim() || 'terms-2026-05';
+const PRIVACY_POLICY_VERSION_HASH =
+  process.env.NEXT_PUBLIC_PRIVACY_VERSION_HASH?.trim() || 'privacy-2026-05';
+const MARKETING_POLICY_VERSION_HASH =
+  process.env.NEXT_PUBLIC_MARKETING_VERSION_HASH?.trim() || 'marketing-2026-05';
+
+type NormalizedSignupProfile = Pick<
+  SignupFormData,
+  | 'legal_name'
+  | 'charity_number'
+  | 'registered_nation'
+  | 'registered_postcode'
+  | 'entity_type'
+  | 'contact_full_name'
+  | 'contact_role'
+  | 'contact_work_email'
+  | 'contact_phone'
+  | 'authorised_signatory'
+  | 'gift_aid_registered'
+  | 'hmrc_charity_reference'
+  | 'primary_setting'
+  | 'estimated_monthly_volume_band'
+  | 'terms_accepted'
+  | 'privacy_accepted'
+  | 'marketing_consent'
+>;
 
 const createVerificationToken = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -313,38 +341,88 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const handleSignup = async (signupData: SignupFormData): Promise<string> => {
     try {
       // Verify reCAPTCHA with backend first
-      const signupDataWithRecaptcha = signupData as SignupFormData & { recaptchaToken?: string };
-      if (signupDataWithRecaptcha.recaptchaToken) {
-        const verifyResponse = await fetch(
-          `https://us-central1-${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.cloudfunctions.net/verifySignupRecaptcha`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              recaptchaToken: signupDataWithRecaptcha.recaptchaToken,
-              email: signupData.email,
-            }),
+      if (signupData.recaptchaToken) {
+        const verifyResponse = await fetch(FUNCTION_URLS.verifySignupRecaptcha, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-        );
+          body: JSON.stringify({
+            recaptchaToken: signupData.recaptchaToken,
+            email: signupData.contact_work_email || signupData.email,
+          }),
+        });
 
         if (!verifyResponse.ok) {
-          const errorData = await verifyResponse.json();
+          const errorData = await verifyResponse.json().catch(() => ({}));
           throw new Error(errorData.error || 'reCAPTCHA verification failed');
         }
       }
 
+      const validationResponse = await fetch(FUNCTION_URLS.validateSignupProfile, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          legal_name: signupData.legal_name,
+          charity_number: signupData.charity_number,
+          registered_nation: signupData.registered_nation,
+          registered_postcode: signupData.registered_postcode,
+          entity_type: signupData.entity_type,
+          contact_full_name: signupData.contact_full_name,
+          contact_role: signupData.contact_role,
+          contact_work_email: signupData.contact_work_email,
+          contact_phone: signupData.contact_phone,
+          authorised_signatory: signupData.authorised_signatory,
+          gift_aid_registered: signupData.gift_aid_registered,
+          hmrc_charity_reference: signupData.hmrc_charity_reference,
+          primary_setting: signupData.primary_setting,
+          estimated_monthly_volume_band: signupData.estimated_monthly_volume_band,
+          terms_accepted: signupData.terms_accepted,
+          privacy_accepted: signupData.privacy_accepted,
+          marketing_consent: signupData.marketing_consent,
+        }),
+      });
+
+      const validationPayload = await validationResponse.json().catch(() => ({}));
+      if (!validationResponse.ok) {
+        if (
+          validationResponse.status === 422 &&
+          validationPayload &&
+          typeof validationPayload.fieldErrors === 'object'
+        ) {
+          const firstFieldError = Object.values(validationPayload.fieldErrors).find(
+            (value) => typeof value === 'string',
+          );
+          if (typeof firstFieldError === 'string' && firstFieldError.trim()) {
+            throw new Error(firstFieldError);
+          }
+        }
+
+        throw new Error(
+          validationPayload.error ||
+            validationPayload.message ||
+            'Signup data validation failed. Please check your entries and try again.',
+        );
+      }
+
+      const normalizedSignupData = validationPayload.data as NormalizedSignupProfile;
+      if (!normalizedSignupData || !normalizedSignupData.contact_work_email) {
+        throw new Error('Signup validation returned an unexpected response.');
+      }
+
       const userCredential = await createUserWithEmailAndPassword(
         auth,
-        signupData.email,
+        normalizedSignupData.contact_work_email,
         signupData.password,
       );
       const userId = userCredential.user.uid;
+      const signupTimestamp = new Date().toISOString();
 
       const userData = {
-        username: `${signupData.firstName} ${signupData.lastName}`,
-        email: signupData.email,
+        username: normalizedSignupData.contact_full_name,
+        email: normalizedSignupData.contact_work_email,
         role: 'admin' as UserRole,
         permissions: [
           'view_dashboard',
@@ -373,7 +451,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           'manage_permissions',
         ] as Permission[],
         isActive: true,
-        createdAt: new Date().toISOString(),
+        createdAt: signupTimestamp,
         organizationId: signupData.organizationId,
         emailVerified: false,
       };
@@ -381,13 +459,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await setDoc(doc(firestore, 'users', userId), userData);
 
       await setDoc(doc(firestore, 'organizations', signupData.organizationId), {
-        name: signupData.organizationName,
-        type: signupData.organizationType,
-        size: signupData.organizationSize,
-        website: signupData.website,
+        name: normalizedSignupData.legal_name,
+        organizationName: normalizedSignupData.legal_name,
+        type: normalizedSignupData.entity_type,
         currency: signupData.currency,
         tags: [],
-        createdAt: new Date().toISOString(),
+        createdAt: signupTimestamp,
+        legal_name: normalizedSignupData.legal_name,
+        charity_number: normalizedSignupData.charity_number,
+        registered_nation: normalizedSignupData.registered_nation,
+        registered_postcode: normalizedSignupData.registered_postcode,
+        entity_type: normalizedSignupData.entity_type,
+        contact_full_name: normalizedSignupData.contact_full_name,
+        contact_role: normalizedSignupData.contact_role,
+        contact_work_email: normalizedSignupData.contact_work_email,
+        contact_phone: normalizedSignupData.contact_phone,
+        authorised_signatory: normalizedSignupData.authorised_signatory,
+        authorised_signatory_at: signupTimestamp,
+        authorised_signatory_legal_name: normalizedSignupData.legal_name,
+        gift_aid_registered: normalizedSignupData.gift_aid_registered,
+        hmrc_charity_reference: normalizedSignupData.hmrc_charity_reference,
+        primary_setting: normalizedSignupData.primary_setting,
+        estimated_monthly_volume_band: normalizedSignupData.estimated_monthly_volume_band,
+        terms_accepted: normalizedSignupData.terms_accepted,
+        terms_accepted_at: signupTimestamp,
+        terms_policy_version_hash: TERMS_POLICY_VERSION_HASH,
+        privacy_accepted: normalizedSignupData.privacy_accepted,
+        privacy_accepted_at: signupTimestamp,
+        privacy_policy_version_hash: PRIVACY_POLICY_VERSION_HASH,
+        marketing_consent: normalizedSignupData.marketing_consent,
+        marketing_consent_at: normalizedSignupData.marketing_consent ? signupTimestamp : null,
+        marketing_policy_version_hash: normalizedSignupData.marketing_consent
+          ? MARKETING_POLICY_VERSION_HASH
+          : null,
       });
 
       // Send verification email
@@ -397,7 +501,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // But DON'T establish a session in our app (don't call handleLogin)
 
       // Return email for redirect
-      return signupData.email;
+      return normalizedSignupData.contact_work_email;
     } catch (error) {
       if (error instanceof Error) {
         console.error('Signup error:', error);
