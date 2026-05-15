@@ -62,6 +62,8 @@ const {
   kioskDeviceStatus,
   kioskDeviceHeartbeat,
   kioskApkDownload,
+  kioskDeviceCommands,
+  kioskDeviceCommandResult,
   adminCreateDeviceProfile,
   adminListManagedDevices,
   adminUpdateManagedDeviceMetadata,
@@ -215,6 +217,8 @@ exports.kioskDevicePolicy = functions.https.onRequest(kioskDevicePolicy);
 exports.kioskDeviceStatus = functions.https.onRequest(kioskDeviceStatus);
 exports.kioskDeviceHeartbeat = functions.https.onRequest(kioskDeviceHeartbeat);
 exports.kioskApkDownload = functions.https.onRequest(kioskApkDownload);
+exports.kioskDeviceCommands = functions.https.onRequest(kioskDeviceCommands);
+exports.kioskDeviceCommandResult = functions.https.onRequest(kioskDeviceCommandResult);
 exports.adminCreateDeviceProfile = functions.https.onRequest(adminCreateDeviceProfile);
 exports.adminListManagedDevices = functions.https.onRequest(adminListManagedDevices);
 exports.adminUpdateManagedDeviceMetadata = functions.https.onRequest(

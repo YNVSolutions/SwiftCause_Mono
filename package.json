@@ -19,6 +19,8 @@
     "test:functions": "npm --prefix backend/functions test",
     "test:watch": "vitest",
     "emulator": "cd backend && firebase emulators:start",
+    "device:e2e:seed": "node scripts/device-e2e/seed.js",
+    "device:e2e:serve": "node scripts/device-e2e/seed.js --serve",
     "deploy:functions": "cd backend && firebase deploy --only functions",
     "deploy:rules": "cd backend && firebase deploy --only firestore:rules",
     "deploy:all": "cd backend && firebase deploy",

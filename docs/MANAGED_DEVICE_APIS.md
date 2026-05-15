@@ -61,7 +61,9 @@ The first API slice uses these collections:
 - `managedDevices`: physical Android device records, linked to `organizationId` and
   optional `kioskId`.
 - `kioskApks`: uploaded or assigned kiosk APK metadata.
-- `deviceEvents`: append-only event records for status changes and heartbeats.
+- `deviceCommands`: queued safe remote commands for a registered device.
+- `deviceEvents`: append-only event records for registration, policy fetches, APK download
+  requests, status changes, heartbeats, and command results.
 
 Existing `kiosks` documents remain focused on fundraising configuration. A managed device
 links to a kiosk with `kioskId` when the tablet should run that kiosk.
@@ -182,6 +184,16 @@ Important behavior:
 - appends a `HEARTBEAT` event
 - returns the next heartbeat interval
 
+### `kioskDeviceCommands`
+
+Lists pending safe commands for a registered device. The endpoint requires a valid device
+secret and returns only commands assigned to that device.
+
+### `kioskDeviceCommandResult`
+
+Records the result of a queued device command. The endpoint requires a valid device secret,
+updates only that device's command record, and appends a `COMMAND_RESULT` event.
+
 ### `kioskApkDownload`
 
 Returns APK download metadata for a registered device.
@@ -218,13 +230,9 @@ for:
 - updating placement metadata without allowing protected policy fields
 - queueing only allowlisted remote commands
 
-React admin UI, Android controller wiring, QR provisioning, and Firebase Storage upload/signing
-are intentionally left for follow-up PRs.
+QR provisioning and Firebase Storage upload/signing are intentionally left for follow-up PRs.
 
 ## Next Integration Steps
 
-1. Add admin UI for provisioning profile creation, device listing, kiosk linking, placement
-   metadata, safe commands, and event history.
-2. Wire the Android controller to pick up queued commands and report command results.
-3. Add storage-backed APK download signing for SwiftCause-controlled rollout.
-4. Validate the full emulator path before physical QR/factory-reset provisioning.
+1. Add storage-backed APK download signing for SwiftCause-controlled rollout.
+2. Validate physical QR/factory-reset provisioning after the emulator path is stable.

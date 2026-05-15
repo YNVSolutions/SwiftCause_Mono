@@ -2,8 +2,19 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.google.services)
     alias(libs.plugins.kotlin.serialization)
+}
+
+val hasGoogleServicesConfig = listOf(
+    "google-services.json",
+    "src/debug/google-services.json",
+    "src/release/google-services.json",
+).any { layout.projectDirectory.file(it).asFile.exists() }
+
+if (hasGoogleServicesConfig) {
+    apply(plugin = "com.google.gms.google-services")
+} else {
+    logger.warn("google-services.json not found; skipping Google Services plugin for this build.")
 }
 
 android {
@@ -34,9 +45,26 @@ android {
             "MAGIC_LINK_BASE_URL",
             "\"https://swiftcause--swiftcause-app.us-east4.hosted.app\""
         )
+        buildConfigField(
+            "String",
+            "KIOSK_API_BASE_URL",
+            "\"https://us-central1-swiftcause-app.cloudfunctions.net/\""
+        )
+        buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"\"")
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
 
     buildTypes {
+        debug {
+            buildConfigField(
+                "String",
+                "KIOSK_API_BASE_URL",
+                "\"http://10.0.2.2:5001/swiftcause-app/us-central1/\""
+            )
+            buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"10.0.2.2\"")
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
+
         release {
             isMinifyEnabled = false
             proguardFiles(

@@ -8,6 +8,8 @@ const {
   kioskDeviceStatus,
   kioskDeviceHeartbeat,
   kioskApkDownload,
+  kioskDeviceCommands,
+  kioskDeviceCommandResult,
 } = require('./managedDevices');
 
 const createResponse = () => {
@@ -127,6 +129,11 @@ const registerDevice = async (overrides = {}) => {
   );
 };
 
+const getDeviceEvents = (deviceId, type) =>
+  admin
+    .__getCollection('deviceEvents')
+    .filter((event) => event.data.deviceId === deviceId && (!type || event.data.type === type));
+
 describe('managed device APIs', () => {
   beforeEach(() => {
     admin.__reset();
@@ -159,6 +166,7 @@ describe('managed device APIs', () => {
     });
     expect(device.deviceSecretHash).toEqual(expect.any(String));
     expect(device.deviceSecret).toBeUndefined();
+    expect(getDeviceEvents(res.body.deviceId, 'REGISTERED')).toHaveLength(1);
   });
 
   it('updates the same managed device when it registers again', async () => {
@@ -224,6 +232,42 @@ describe('managed device APIs', () => {
         versionCode: 7,
       },
     });
+    expect(getDeviceEvents(registered.body.deviceId, 'POLICY_FETCHED')).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payload: expect.objectContaining({
+            apkId: 'apk-1',
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('uses the assigned APK package as the kiosk and launch package in policy', async () => {
+    await seedKiosk('kiosk-1', { assignedKioskApkId: 'real-app-apk' });
+    await seedApk('real-app-apk', {
+      packageName: 'com.example.swiftcause',
+      downloadUrl: 'https://example.test/swiftcause-mobile-debug.apk',
+    });
+    const registered = await registerDevice();
+
+    const res = await invokeHandler(
+      kioskDevicePolicy,
+      withDeviceSecret(
+        request({ method: 'GET', query: { deviceId: registered.body.deviceId } }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      kioskPackage: 'com.example.swiftcause',
+      launchPackage: 'com.example.swiftcause',
+      apk: {
+        apkId: 'real-app-apk',
+        packageName: 'com.example.swiftcause',
+      },
+    });
   });
 
   it('rejects policy requests without the device secret', async () => {
@@ -261,7 +305,7 @@ describe('managed device APIs', () => {
       installStatus: 'installed',
       deviceOwner: true,
     });
-    expect(admin.__getCollection('deviceEvents')).toEqual([
+    expect(getDeviceEvents(registered.body.deviceId, 'STATUS_UPDATED')).toEqual([
       expect.objectContaining({
         data: expect.objectContaining({
           type: 'STATUS_UPDATED',
@@ -399,7 +443,7 @@ describe('managed device APIs', () => {
       batteryLevel: 82,
       networkType: 'wifi',
     });
-    expect(admin.__getCollection('deviceEvents')[0].data).toMatchObject({
+    expect(getDeviceEvents(registered.body.deviceId, 'HEARTBEAT')[0].data).toMatchObject({
       type: 'HEARTBEAT',
       deviceId: registered.body.deviceId,
     });
@@ -438,6 +482,16 @@ describe('managed device APIs', () => {
       downloadUrl: 'https://example.test/swiftcause-kiosk.apk',
       checksumSha256: 'abc123',
     });
+    expect(getDeviceEvents(registered.body.deviceId, 'APK_DOWNLOAD_METADATA')).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payload: expect.objectContaining({
+            apkId: 'apk-1',
+            packageName: 'com.swiftcause.kiosk',
+          }),
+        }),
+      }),
+    ]);
 
     await seedApk('other-apk', { organizationId: 'org-2' });
     const denied = await invokeHandler(
@@ -478,5 +532,209 @@ describe('managed device APIs', () => {
     );
 
     expect(denied.statusCode).toBe(403);
+  });
+
+  it('returns pending device commands for an authenticated device only', async () => {
+    const registered = await registerDevice();
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-1')
+      .set({
+        organizationId: 'org-1',
+        deviceId: registered.body.deviceId,
+        commandType: 'sync_policy',
+        status: 'pending',
+        queuedAt: { __type: 'timestamp', ms: 1000 },
+      });
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-2')
+      .set({
+        organizationId: 'org-1',
+        deviceId: registered.body.deviceId,
+        commandType: 'restart_kiosk',
+        status: 'succeeded',
+        queuedAt: { __type: 'timestamp', ms: 2000 },
+      });
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-3')
+      .set({
+        organizationId: 'org-2',
+        deviceId: registered.body.deviceId,
+        commandType: 'sync_policy',
+        status: 'pending',
+        queuedAt: { __type: 'timestamp', ms: 3000 },
+      });
+
+    const res = await invokeHandler(
+      kioskDeviceCommands,
+      withDeviceSecret(
+        request({ method: 'GET', query: { deviceId: registered.body.deviceId } }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.commands).toEqual([
+      expect.objectContaining({
+        id: 'command-1',
+        commandType: 'sync_policy',
+        status: 'pending',
+      }),
+    ]);
+  });
+
+  it('rejects command pickup without a valid device secret', async () => {
+    const registered = await registerDevice();
+
+    const missing = await invokeHandler(
+      kioskDeviceCommands,
+      request({ method: 'GET', query: { deviceId: registered.body.deviceId } }),
+    );
+    const invalid = await invokeHandler(
+      kioskDeviceCommands,
+      withDeviceSecret(
+        request({ method: 'GET', query: { deviceId: registered.body.deviceId } }),
+        'wrong-secret',
+      ),
+    );
+
+    expect(missing.statusCode).toBe(401);
+    expect(invalid.statusCode).toBe(401);
+  });
+
+  it('records command results and appends a command result event', async () => {
+    const registered = await registerDevice();
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-1')
+      .set({
+        organizationId: 'org-1',
+        deviceId: registered.body.deviceId,
+        commandType: 'restart_kiosk',
+        status: 'pending',
+        queuedAt: { __type: 'timestamp', ms: 1000 },
+      });
+
+    const res = await invokeHandler(
+      kioskDeviceCommandResult,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            commandId: 'command-1',
+            status: 'succeeded',
+            message: 'Kiosk relaunched',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(admin.__getDoc('deviceCommands', 'command-1')).toMatchObject({
+      status: 'succeeded',
+      resultMessage: 'Kiosk relaunched',
+    });
+    expect(getDeviceEvents(registered.body.deviceId, 'COMMAND_RESULT')).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payload: expect.objectContaining({
+            commandId: 'command-1',
+            commandType: 'restart_kiosk',
+            status: 'succeeded',
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('rejects command result replay after a command has already completed', async () => {
+    const registered = await registerDevice();
+    await admin
+      .firestore()
+      .collection('deviceCommands')
+      .doc('command-1')
+      .set({
+        organizationId: 'org-1',
+        deviceId: registered.body.deviceId,
+        commandType: 'restart_kiosk',
+        status: 'succeeded',
+        resultMessage: 'Original result',
+        queuedAt: { __type: 'timestamp', ms: 1000 },
+      });
+
+    const res = await invokeHandler(
+      kioskDeviceCommandResult,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            commandId: 'command-1',
+            status: 'failed',
+            message: 'Replay overwrite',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(res.statusCode).toBe(409);
+    expect(admin.__getDoc('deviceCommands', 'command-1')).toMatchObject({
+      status: 'succeeded',
+      resultMessage: 'Original result',
+    });
+    expect(getDeviceEvents(registered.body.deviceId, 'COMMAND_RESULT')).toHaveLength(0);
+  });
+
+  it('rejects command results for commands assigned to another device or organization', async () => {
+    const registered = await registerDevice();
+    await admin.firestore().collection('deviceCommands').doc('other-device-command').set({
+      organizationId: 'org-1',
+      deviceId: 'other-device',
+      commandType: 'sync_policy',
+      status: 'pending',
+    });
+    await admin.firestore().collection('deviceCommands').doc('other-org-command').set({
+      organizationId: 'org-2',
+      deviceId: registered.body.deviceId,
+      commandType: 'sync_policy',
+      status: 'pending',
+    });
+
+    const otherDevice = await invokeHandler(
+      kioskDeviceCommandResult,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            commandId: 'other-device-command',
+            status: 'failed',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+    const otherOrg = await invokeHandler(
+      kioskDeviceCommandResult,
+      withDeviceSecret(
+        request({
+          body: {
+            deviceId: registered.body.deviceId,
+            commandId: 'other-org-command',
+            status: 'failed',
+          },
+        }),
+        registered.body.deviceSecret,
+      ),
+    );
+
+    expect(otherDevice.statusCode).toBe(403);
+    expect(otherOrg.statusCode).toBe(403);
   });
 });

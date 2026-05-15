@@ -1,6 +1,7 @@
 package com.example.swiftcause
 
 import android.Manifest
+import android.app.admin.DevicePolicyManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -8,6 +9,7 @@ import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -95,6 +97,7 @@ class MainActivity : ComponentActivity() {
 
         // Initialize Stripe with key from local.properties (from root .env)
         StripeConfig.initialize(this)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContent {
             SwiftCauseTheme {
@@ -102,6 +105,19 @@ class MainActivity : ComponentActivity() {
                     AppEntryPoint(modifier = Modifier.padding(innerPadding))
                 }
             }
+        }
+        enterLockTaskIfAllowed()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        enterLockTaskIfAllowed()
+    }
+
+    private fun enterLockTaskIfAllowed() {
+        val dpm = getSystemService(DevicePolicyManager::class.java)
+        if (dpm.isLockTaskPermitted(packageName)) {
+            startLockTask()
         }
     }
 }
