@@ -5,12 +5,11 @@ import { Menu, X } from 'lucide-react';
 import Image from 'next/image';
 
 interface NavbarProps {
-  onLogin: () => void;
   onSignup: () => void;
   onNavigate: (screen: string) => void;
 }
 
-export function Navbar({ onLogin, onSignup, onNavigate }: NavbarProps) {
+export function Navbar({ onSignup, onNavigate }: NavbarProps) {
   const [scrolled, setScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -24,7 +23,7 @@ export function Navbar({ onLogin, onSignup, onNavigate }: NavbarProps) {
 
   const navItems = [
     { label: 'Features', href: '#features' },
-    { label: 'Tools', href: '#tools' },
+    { label: 'Tools', href: '#demo' },
     { label: 'FAQ', href: '#faq' },
     { label: 'Contact', href: '#contact' },
   ];
@@ -74,16 +73,10 @@ export function Navbar({ onLogin, onSignup, onNavigate }: NavbarProps) {
 
         <div className="hidden md:flex items-center gap-3 lg:gap-4">
           <button
-            onClick={onLogin}
-            className="px-4 lg:px-5 py-2 text-[#064e3b] font-semibold hover:bg-[#064e3b]/5 rounded-lg transition-colors text-sm lg:text-base"
-          >
-            Login
-          </button>
-          <button
             onClick={onSignup}
             className="px-5 lg:px-6 py-2 bg-[#064e3b] text-white font-semibold rounded-lg shadow-md hover:bg-[#0f5132] transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-sm lg:text-base"
           >
-            Sign Up
+            Register Interest
           </button>
         </div>
 
@@ -108,16 +101,10 @@ export function Navbar({ onLogin, onSignup, onNavigate }: NavbarProps) {
           ))}
           <div className="flex flex-col gap-3 pt-4 border-t border-[#064e3b]/10">
             <button
-              onClick={onLogin}
-              className="w-full py-3 text-[#064e3b] font-semibold border border-[#064e3b]/20 rounded-xl"
-            >
-              Login
-            </button>
-            <button
               onClick={onSignup}
               className="w-full py-3 bg-[#064e3b] text-white font-semibold rounded-xl shadow-lg"
             >
-              Sign Up Free
+              Register Interest
             </button>
           </div>
         </div>
