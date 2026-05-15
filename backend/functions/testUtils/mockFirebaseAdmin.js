@@ -1,6 +1,7 @@
 const collections = new Map();
 let transactionQueue = Promise.resolve();
 let autoIdCounter = 0;
+const authTokens = new Map();
 
 const makeTimestamp = (ms) => ({
   __type: 'timestamp',
@@ -131,12 +132,25 @@ const createQuerySnapshot = (docs) => ({
 const firestoreInstance = {
   collection(name) {
     // Build a chainable query object that filters the in-memory store
-    const buildQuery = (collectionName, filters, limitCount) => ({
+    const buildQuery = (collectionName, filters, orderings, limitCount) => ({
       where(field, op, value) {
-        return buildQuery(collectionName, [...filters, { field, op, value }], limitCount);
+        return buildQuery(
+          collectionName,
+          [...filters, { field, op, value }],
+          orderings,
+          limitCount,
+        );
+      },
+      orderBy(field, direction = 'asc') {
+        return buildQuery(
+          collectionName,
+          filters,
+          [...orderings, { field, direction }],
+          limitCount,
+        );
       },
       limit(n) {
-        return buildQuery(collectionName, filters, n);
+        return buildQuery(collectionName, filters, orderings, n);
       },
       async get() {
         const store = getCollectionStore(collectionName);
@@ -147,6 +161,18 @@ const firestoreInstance = {
             // Support nested field paths like "metadata.donorEmail"
             return matchesFilter(getFieldValue(data, field), op, value);
           });
+        }
+
+        for (const { field, direction } of orderings) {
+          const multiplier = direction === 'desc' ? -1 : 1;
+          entries = entries
+            .filter(([, data]) => getFieldValue(data, field) !== undefined)
+            .sort(([, leftData], [, rightData]) => {
+              const left = comparableValue(getFieldValue(leftData, field));
+              const right = comparableValue(getFieldValue(rightData, field));
+              if (left === right) return 0;
+              return left > right ? multiplier : -multiplier;
+            });
         }
 
         if (limitCount != null) {
@@ -163,10 +189,13 @@ const firestoreInstance = {
         return doc(name, id);
       },
       where(field, op, value) {
-        return buildQuery(name, [{ field, op, value }], null);
+        return buildQuery(name, [{ field, op, value }], [], null);
+      },
+      orderBy(field, direction = 'asc') {
+        return buildQuery(name, [], [{ field, direction }], null);
       },
       limit(n) {
-        return buildQuery(name, [], n);
+        return buildQuery(name, [], [], n);
       },
       async get() {
         const store = getCollectionStore(name);
@@ -245,6 +274,22 @@ const admin = {
   firestore() {
     return firestoreInstance;
   },
+  auth() {
+    return {
+      async verifyIdToken(token) {
+        if (authTokens.has(token)) {
+          return clone(authTokens.get(token));
+        }
+        if (typeof token === 'string' && token.startsWith('uid:')) {
+          return { uid: token.slice(4) };
+        }
+        throw new Error('Invalid token');
+      },
+      async createCustomToken(uid, claims = {}) {
+        return `custom-token:${uid}:${JSON.stringify(claims)}`;
+      },
+    };
+  },
   app() {
     const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'demo-project';
     return {
@@ -267,8 +312,13 @@ admin.firestore.FieldValue = {
 
 admin.__reset = () => {
   collections.clear();
+  authTokens.clear();
   transactionQueue = Promise.resolve();
   autoIdCounter = 0;
+};
+
+admin.__setAuthToken = (token, decoded) => {
+  authTokens.set(token, clone(decoded));
 };
 
 admin.__getDoc = (collectionName, id) => {
