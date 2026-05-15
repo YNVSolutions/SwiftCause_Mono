@@ -163,6 +163,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clearTimeout(timeout); // Clear timeout when auth state changes
 
       if (firebaseUser) {
+        setIsLoadingAuth(true);
         try {
           // Get ID token result to check custom claims
           if (!isUsingFirebaseEmulators()) {
