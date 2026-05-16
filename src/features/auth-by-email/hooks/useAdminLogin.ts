@@ -63,7 +63,7 @@ export function useAdminLogin(onLogin: OnLogin) {
           permissions: userData.permissions || [],
         };
 
-        onLogin('admin', adminSession);
+        onLogin(userData.role, adminSession);
       } catch (err: unknown) {
         setNeedsVerification(false);
         if (err && typeof err === 'object' && 'code' in err) {

@@ -44,6 +44,7 @@ import {
   EyeOff,
   SlidersHorizontal,
   ChevronsDown,
+  ClipboardCheck,
 } from 'lucide-react';
 import { auth, db } from '../../shared/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -63,6 +64,7 @@ const SCREEN_LABELS: Partial<Record<Screen, string>> = {
   'admin-bank-details': 'Bank Details',
   'admin-organization-settings': 'Organization Settings',
   'admin-stripe-account': 'Stripe account',
+  'admin-approvals': 'Approvals',
 } as Partial<Record<Screen, string>>;
 
 interface AdminLayoutProps {
@@ -618,6 +620,33 @@ function AdminSidebar({
                 {!isCollapsed && <span className="ml-3 text-base font-medium">Stripe Account</span>}
               </SidebarMenuButton>
             </SidebarMenuItem>
+
+            {/* Approvals — super_admin only */}
+            {userSession.user.role === 'super_admin' ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onNavigate('admin-approvals')}
+                  className={`relative w-full flex items-center ${isCollapsed ? 'justify-center px-4 py-4' : 'px-4 py-3.5'} rounded-xl text-left transition-all duration-200 group ${
+                    isActive('admin-approvals')
+                      ? 'bg-[#0f5132] text-white font-medium shadow-lg'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={isCollapsed ? 'Approvals' : ''}
+                  aria-current={isActive('admin-approvals') ? 'page' : undefined}
+                >
+                  {isActive('admin-approvals') && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white/30 rounded-r-full" />
+                  )}
+                  <ClipboardCheck
+                    className={`${isCollapsed ? 'h-6 w-6' : 'h-5 w-5'} shrink-0 ${
+                      isActive('admin-approvals') ? 'text-white' : ''
+                    }`}
+                    strokeWidth={1.5}
+                  />
+                  {!isCollapsed && <span className="ml-3 text-base font-medium">Approvals</span>}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
           </SidebarMenu>
         </SidebarGroup>
 
