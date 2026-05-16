@@ -569,7 +569,8 @@ const createPaymentIntent = async (req, res) => {
     );
 
     const { amount, currency, metadata } = req.body;
-    const { platform } = metadata || null;
+    const safeMetadata = metadata && typeof metadata === 'object' ? metadata : {};
+    const { platform } = safeMetadata;
 
     let paymentMethodTypes = ['card'];
     if (platform === 'android_ttp') {
@@ -580,20 +581,20 @@ const createPaymentIntent = async (req, res) => {
       return res.status(400).send({ error: 'Missing amount or currency' });
     }
 
-    const { campaignId, donorId, donorName, isGiftAid } = metadata;
+    const { campaignId, donorId, donorName, isGiftAid } = safeMetadata;
 
     const paymentIntent = await stripeClient.paymentIntents.create({
       amount,
       currency,
       customer: customerId,
       payment_method_types: paymentMethodTypes,
-      metadata: {
-        campaignId,
-        donorId,
-        donorName,
-        isGiftAid: isGiftAid.toString(),
-        platform,
-      },
+      metadata: normalizeStripeMetadata({
+        campaignId: campaignId || null,
+        donorId: donorId || null,
+        donorName: donorName || null,
+        isGiftAid: Boolean(isGiftAid),
+        platform: platform || null,
+      }),
     });
 
     if (platform === 'android_ttp') {
