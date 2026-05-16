@@ -54,7 +54,7 @@ const {
 } = require('./handlers/subscriptionManagement');
 const { createStripeAccountForNewOrg, sendWelcomeEmailForNewOrg } = require('./handlers/triggers');
 const { cleanupExpiredTokens, deleteOldTokens } = require('./utils/tokenManager');
-const { verifySignupRecaptcha } = require('./handlers/signup');
+const { verifySignupRecaptcha, validateSignupProfile } = require('./handlers/signup');
 const { kioskLogin } = require('./handlers/kiosk');
 const {
   kioskDeviceRegister,
@@ -227,6 +227,7 @@ exports.updateOrganizationSettings = functions.https.onRequest(updateOrganizatio
 
 // Export v2 function with secret
 exports.verifySignupRecaptcha = onRequest({ secrets: [recaptchaSecretKey] }, verifySignupRecaptcha);
+exports.validateSignupProfile = functions.https.onRequest(validateSignupProfile);
 
 // Magic Link Token Validation
 // Validates a magic link token and returns donation details if valid

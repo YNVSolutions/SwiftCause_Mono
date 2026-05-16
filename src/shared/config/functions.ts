@@ -13,6 +13,7 @@ export const getFunctionUrl = (functionName: string): string => {
 
 export const FUNCTION_URLS = {
   verifySignupRecaptcha: getFunctionUrl('verifySignupRecaptcha'),
+  validateSignupProfile: getFunctionUrl('validateSignupProfile'),
   createKioskPaymentIntent: getFunctionUrl('createKioskPaymentIntent'),
   createExpressDashboardLink: getFunctionUrl('createExpressDashboardLink'),
   createOnboardingLink: getFunctionUrl('createOnboardingLink'),

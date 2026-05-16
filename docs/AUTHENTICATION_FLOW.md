@@ -17,6 +17,10 @@ The admin flow also includes:
 - Forgot password request
 - Password reset confirmation
 
+For the detailed current signup implementation, see:
+
+- `docs/SIGNUP_FLOW.md`
+
 ## Main Files
 
 ### Admin auth flow

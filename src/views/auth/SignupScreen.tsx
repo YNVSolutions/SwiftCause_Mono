@@ -1,30 +1,27 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReCAPTCHA from 'react-google-recaptcha';
+import Image from 'next/image';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Input } from '../../shared/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../shared/ui/select';
 import { Checkbox } from '../../shared/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../shared/ui/select';
 import { checkEmailExists, checkOrganizationIdExists } from '../../shared/api/firestoreService';
-import Image from "next/image"
 import { useSignupDraft } from '../../shared/lib/hooks/useSignupDraft';
-import { 
-  Heart,
-  Shield,
-  CheckCircle,
-  ArrowRight,
-  ArrowLeft,
-  Users,
-  Phone,
-  Globe,
-  Eye,
-  EyeOff,
-  AlertCircle,
-  TrendingUp,
-  Lock,
-  DollarSign
-} from 'lucide-react';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { ORGANIZATION_TYPES, ORGANIZATION_SIZES } from '../../shared/config';
+import type {
+  ContactRole,
+  EntityType,
+  EstimatedMonthlyVolumeBand,
+  GiftAidRegistered,
+  PrimarySetting,
+  RegisteredNation,
+  SignupFormData,
+} from '../../shared/types';
 
 interface SignupScreenProps {
   onSignup: (data: SignupFormData) => Promise<void>;
@@ -34,49 +31,156 @@ interface SignupScreenProps {
   initialStep?: number;
 }
 
-interface SignupFormData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  
-  organizationName: string;
-  organizationType: string;
-  organizationSize: string;
-  organizationId: string; 
-  website?: string;
-  stripe?: {
-    accountId: string;
-    chargesEnabled: boolean;
-    payoutsEnabled: boolean;
-  };
-  
-  password: string;
-  confirmPassword: string;
-  
-  currency: string;
+type SignupStep = 1 | 2 | 3;
+type SignupFormErrors = Partial<Record<keyof SignupFormData, string>>;
 
-  agreeToTerms: boolean;
-}
+const registeredNationOptions: Array<{ value: RegisteredNation; label: string }> = [
+  { value: 'england_wales', label: 'England & Wales' },
+  { value: 'scotland', label: 'Scotland' },
+  { value: 'northern_ireland', label: 'Northern Ireland' },
+];
 
-interface SignupFormErrors {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  organizationName?: string;
-  organizationType?: string;
-  organizationSize?: string;
-  password?: string;
-  confirmPassword?: string;
-  agreeToTerms?: string;
-}
+const entityTypeOptions: Array<{ value: EntityType; label: string }> = [
+  { value: 'registered_charity', label: 'Registered Charity' },
+  { value: 'cio', label: 'CIO' },
+  { value: 'cic', label: 'CIC' },
+  { value: 'other', label: 'Other' },
+];
 
-const auth = getAuth();
-const firestore = getFirestore();
+const contactRoleOptions: Array<{ value: ContactRole; label: string }> = [
+  { value: 'trustee', label: 'Trustee' },
+  { value: 'ceo', label: 'CEO' },
+  { value: 'treasurer', label: 'Treasurer' },
+  { value: 'fundraising', label: 'Fundraising' },
+  { value: 'ops', label: 'Operations' },
+  { value: 'other', label: 'Other' },
+];
 
-export function SignupScreen({ onSignup, onBack, onLogin, onViewTerms, initialStep }: SignupScreenProps) {
-  const [currentStep, setCurrentStep] = useState(() => {
-    if (initialStep && initialStep >= 1 && initialStep <= 3) {
-      return initialStep;
+const giftAidRegisteredOptions: Array<{ value: GiftAidRegistered; label: string }> = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: 'dont_know', label: "Don't know" },
+];
+
+const primarySettingOptions: Array<{ value: PrimarySetting; label: string }> = [
+  { value: 'mosque', label: 'Mosque' },
+  { value: 'church', label: 'Church' },
+  { value: 'temple', label: 'Temple' },
+  { value: 'scout', label: 'Scout group' },
+  { value: 'pta', label: 'PTA' },
+  { value: 'charity_shop', label: 'Charity shop' },
+  { value: 'events', label: 'Events' },
+  { value: 'other', label: 'Other' },
+];
+
+const volumeBandOptions: Array<{ value: EstimatedMonthlyVolumeBand; label: string }> = [
+  { value: '0_500', label: 'GBP 0-500' },
+  { value: '500_2k', label: 'GBP 500-2,000' },
+  { value: '2k_10k', label: 'GBP 2,000-10,000' },
+  { value: '10k_plus', label: 'GBP 10,000+' },
+];
+
+const HMRC_REFERENCE_REGEX = /^[A-Z]{1,2}[0-9]{5}$/;
+const UK_POSTCODE_REGEX = /^[A-Z]{1,2}[0-9][A-Z0-9]?[0-9][A-Z]{2}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const E164_REGEX = /^\+[1-9][0-9]{7,14}$/;
+const UK_E164_REGEX = /^\+44[0-9]{9,10}$/;
+
+const normalizeUkPostcode = (value: string): string | null => {
+  const compact = value.trim().toUpperCase().replace(/\s+/g, '');
+  if (!compact || !UK_POSTCODE_REGEX.test(compact)) {
+    return null;
+  }
+  return `${compact.slice(0, -3)} ${compact.slice(-3)}`;
+};
+
+const normalizeUkPhoneToE164 = (value: string): string | null => {
+  const raw = value.trim();
+  if (!raw) {
+    return null;
+  }
+
+  const compact = raw.replace(/[\s().-]/g, '');
+  let normalized = '';
+
+  if (/^\+[0-9]+$/.test(compact)) {
+    normalized = compact;
+  } else if (/^00[0-9]+$/.test(compact)) {
+    normalized = `+${compact.slice(2)}`;
+  } else if (/^0[0-9]+$/.test(compact)) {
+    normalized = `+44${compact.slice(1)}`;
+  } else if (/^44[0-9]+$/.test(compact)) {
+    normalized = `+${compact}`;
+  } else if (/^[1-9][0-9]+$/.test(compact)) {
+    normalized = `+44${compact}`;
+  } else {
+    return null;
+  }
+
+  if (!E164_REGEX.test(normalized) || !UK_E164_REGEX.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+};
+
+const validateCharityNumberByNation = (
+  charityNumber: string,
+  registeredNation: string,
+): boolean => {
+  const upper = charityNumber.trim().toUpperCase();
+  if (registeredNation === 'england_wales') {
+    return /^[0-9]{6,7}(?:-[0-9]+)?$/.test(upper);
+  }
+  if (registeredNation === 'scotland') {
+    return /^SC[0-9]{6}$/.test(upper);
+  }
+  if (registeredNation === 'northern_ireland') {
+    return /^NIC[0-9]{6}$/.test(upper);
+  }
+  return false;
+};
+
+const getCharityNumberHint = (registeredNation: SignupFormData['registered_nation']): string => {
+  if (registeredNation === 'scotland') {
+    return 'Format: SC123456';
+  }
+  if (registeredNation === 'northern_ireland') {
+    return 'Format: NIC123456';
+  }
+  return 'Format: 6-7 digits, optional subsidiary suffix (e.g. 123456-1)';
+};
+
+const generateOrganizationId = (legalName: string): string => {
+  return legalName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+};
+
+const isPasswordValid = (password: string): boolean => {
+  return (
+    password.length >= 8 &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /[0-9]/.test(password) &&
+    /[!@#$%^&*(),.?":{}|<>]/.test(password)
+  );
+};
+
+export function SignupScreen({
+  onSignup,
+  onBack,
+  onLogin,
+  onViewTerms,
+  initialStep,
+}: SignupScreenProps) {
+  const [currentStep, setCurrentStep] = useState<SignupStep>(() => {
+    const parsed = Number(initialStep);
+    if (parsed === 1 || parsed === 2 || parsed === 3) {
+      return parsed;
     }
     return 1;
   });
@@ -90,43 +194,59 @@ export function SignupScreen({ onSignup, onBack, onLogin, onViewTerms, initialSt
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const recaptchaRef = useRef<ReCAPTCHA>(null);
 
+  const [formData, setFormData] = useState<SignupFormData>({
+    email: '',
+    organizationId: '',
+    password: '',
+    confirmPassword: '',
+    currency: 'GBP',
+    legal_name: '',
+    charity_number: '',
+    registered_nation: '',
+    registered_postcode: '',
+    entity_type: '',
+    contact_full_name: '',
+    contact_role: '',
+    contact_work_email: '',
+    contact_phone: '',
+    authorised_signatory: false,
+    gift_aid_registered: '',
+    hmrc_charity_reference: '',
+    primary_setting: '',
+    estimated_monthly_volume_band: '',
+    terms_accepted: false,
+    privacy_accepted: false,
+    marketing_consent: false,
+    recaptchaToken: undefined,
+  });
+
   const { draft, saveDraft, clearDraft, isHydrated } = useSignupDraft<{
     formData: SignupFormData;
-    currentStep: number;
+    currentStep: SignupStep;
   }>('signupDraft', 5 * 60 * 1000);
 
   useEffect(() => {
-    if (initialStep && initialStep >= 1 && initialStep <= 3) {
-      setCurrentStep(initialStep);
+    const parsed = Number(initialStep);
+    if (parsed === 1 || parsed === 2 || parsed === 3) {
+      setCurrentStep(parsed);
     }
   }, [initialStep]);
-  
-  const [formData, setFormData] = useState<SignupFormData>({
-    firstName: '',
-    lastName: '',
-    email: '',
-    organizationName: '',
-    organizationType: '',
-    organizationSize: '',
-    organizationId: '', 
-    website: '',
-    password: '',
-    confirmPassword: '',
-    currency: 'GBP', 
-    agreeToTerms: false
-  });
 
   useEffect(() => {
-    if (draft?.formData) {
-      setFormData(prev => {
-        const prevJson = JSON.stringify(prev);
-        const nextJson = JSON.stringify(draft.formData);
-        return prevJson === nextJson ? prev : draft.formData;
-      });
+    if (!draft?.formData) return;
+
+    setFormData((prev) => {
+      const next = draft.formData;
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+
+    if (
+      !initialStep &&
+      (draft.currentStep === 1 || draft.currentStep === 2 || draft.currentStep === 3)
+    ) {
+      setCurrentStep(draft.currentStep);
     }
-    if (!initialStep && draft?.currentStep) {
-      setCurrentStep(prev => (prev === draft.currentStep ? prev : draft.currentStep));
-    }
+
     setRecaptchaToken(null);
   }, [draft, initialStep]);
 
@@ -135,77 +255,49 @@ export function SignupScreen({ onSignup, onBack, onLogin, onViewTerms, initialSt
     saveDraft({ formData, currentStep });
   }, [formData, currentStep, saveDraft, isHydrated]);
 
-  const organizationTypes = ORGANIZATION_TYPES;
-  const organizationSizes = ORGANIZATION_SIZES;
-
-  const featureOptions = [
-    { id: 'kiosks', label: 'Donation Kiosks', description: 'Touch-friendly donation interfaces' },
-    { id: 'analytics', label: 'Advanced Analytics', description: 'Real-time insights and reporting' },
-    { id: 'campaigns', label: 'Campaign Management', description: 'Flexible campaign configuration' },
-    { id: 'security', label: 'Enterprise Security', description: 'Bank-level security features' },
-    { id: 'mobile', label: 'Mobile Optimization', description: 'Mobile-first design approach' },
-    { id: 'integrations', label: 'API Integrations', description: 'Connect with existing systems' }
-  ];
-
-  const hearAboutUsOptions = [
-    'Search Engine (Google, Bing)',
-    'Social Media',
-    'Referral from colleague',
-    'Conference/Event',
-    'Industry publication',
-    'Partner recommendation',
-    'Other'
-  ];
-
-  const updateFormData = (field: keyof SignupFormData, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-    
-    if (field in errors && errors[field as keyof SignupFormErrors]) {
-      setErrors(prev => ({
+  const updateFormData = (
+    field: keyof SignupFormData,
+    value: SignupFormData[keyof SignupFormData],
+  ) => {
+    setFormData((prev) => {
+      const next = {
         ...prev,
-        [field]: undefined
+        [field]: value,
+      };
+
+      if (field === 'contact_work_email' && typeof value === 'string') {
+        next.email = value;
+      }
+
+      if (field === 'legal_name' && typeof value === 'string') {
+        next.organizationId = generateOrganizationId(value);
+      }
+
+      return next;
+    });
+
+    if (errors[field]) {
+      setErrors((prev) => ({
+        ...prev,
+        [field]: undefined,
       }));
     }
-  };
-
-  const isPasswordValid = (password: string): boolean => {
-    const hasMinLength = password.length >= 8;
-    const hasUpperCase = /[A-Z]/.test(password);
-    const hasLowerCase = /[a-z]/.test(password);
-    const hasNumber = /[0-9]/.test(password);
-    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-    
-    return hasMinLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar;
   };
 
   const handleEmailBlur = async () => {
-    if (!formData.email.trim()) {
-      return;
-    }
-    
-    if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      setErrors(prev => ({
-        ...prev,
-        email: 'Please enter a valid email address'
-      }));
+    const email = formData.contact_work_email.trim().toLowerCase();
+    if (!email || !EMAIL_REGEX.test(email)) {
       return;
     }
 
     setIsCheckingEmail(true);
     try {
-      const exists = await checkEmailExists(formData.email);
+      const exists = await checkEmailExists(email);
       if (exists) {
-        setErrors(prev => ({
+        setErrors((prev) => ({
           ...prev,
-          email: 'This email is already registered. Please use a different email or sign in.'
-        }));
-      } else {
-        setErrors(prev => ({
-          ...prev,
-          email: undefined
+          contact_work_email:
+            'This email is already registered. Please sign in or use a different work email.',
         }));
       }
     } catch (error) {
@@ -215,29 +307,21 @@ export function SignupScreen({ onSignup, onBack, onLogin, onViewTerms, initialSt
     }
   };
 
-  const generateOrganizationId = (name: string): string => {
-    return name.replace(/\s+/g, '-').toLowerCase();
-  };
-
-  const handleOrganizationNameBlur = async () => {
-    if (!formData.organizationName.trim()) {
+  const handleLegalNameBlur = async () => {
+    const legalName = formData.legal_name.trim();
+    if (!legalName) {
       return;
     }
 
-    const organizationId = generateOrganizationId(formData.organizationName);
-    
     setIsCheckingOrganization(true);
     try {
+      const organizationId = generateOrganizationId(legalName);
       const exists = await checkOrganizationIdExists(organizationId);
       if (exists) {
-        setErrors(prev => ({
+        setErrors((prev) => ({
           ...prev,
-          organizationName: 'An organization with this name already exists. Please choose a different name.'
-        }));
-      } else {
-        setErrors(prev => ({
-          ...prev,
-          organizationName: undefined
+          legal_name:
+            'An organization with this legal name already exists. Please use the registered legal entity name.',
         }));
       }
     } catch (error) {
@@ -247,72 +331,152 @@ export function SignupScreen({ onSignup, onBack, onLogin, onViewTerms, initialSt
     }
   };
 
-  const validateStep = async (step: number): Promise<boolean> => {
-    const newErrors: SignupFormErrors = {};
+  const validateStep = async (step: SignupStep): Promise<boolean> => {
+    const nextErrors: SignupFormErrors = {};
 
     if (step === 1) {
-      if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-      if (!formData.email.trim()) {
-        newErrors.email = 'Email is required';
-      } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-        newErrors.email = 'Email is invalid';
+      if (!formData.legal_name.trim()) {
+        nextErrors.legal_name = 'Legal name is required';
+      }
+
+      if (!formData.registered_nation) {
+        nextErrors.registered_nation = 'Registered nation is required';
+      }
+
+      if (!formData.charity_number.trim()) {
+        nextErrors.charity_number = 'Charity number is required';
+      } else if (
+        formData.registered_nation &&
+        !validateCharityNumberByNation(formData.charity_number, formData.registered_nation)
+      ) {
+        nextErrors.charity_number = 'Charity number format is invalid for the selected nation';
+      }
+
+      if (!formData.registered_postcode.trim()) {
+        nextErrors.registered_postcode = 'Registered postcode is required';
+      } else if (!normalizeUkPostcode(formData.registered_postcode)) {
+        nextErrors.registered_postcode = 'Please enter a valid UK postcode';
+      }
+
+      if (!formData.entity_type) {
+        nextErrors.entity_type = 'Entity type is required';
+      }
+
+      if (!formData.contact_full_name.trim()) {
+        nextErrors.contact_full_name = 'Primary contact full name is required';
+      }
+
+      if (!formData.contact_role) {
+        nextErrors.contact_role = 'Primary contact role is required';
+      }
+
+      const contactEmail = formData.contact_work_email.trim().toLowerCase();
+      if (!contactEmail) {
+        nextErrors.contact_work_email = 'Primary contact work email is required';
+      } else if (!EMAIL_REGEX.test(contactEmail)) {
+        nextErrors.contact_work_email = 'Please enter a valid work email address';
       } else {
         try {
-          const exists = await checkEmailExists(formData.email);
+          const exists = await checkEmailExists(contactEmail);
           if (exists) {
-            newErrors.email = 'This email is already registered. Please use a different email or sign in.';
+            nextErrors.contact_work_email =
+              'This email is already registered. Please sign in or use a different work email.';
           }
         } catch (error) {
           console.error('Error checking email:', error);
         }
       }
-    } else if (step === 2) {
-      if (!formData.organizationName.trim()) {
-        newErrors.organizationName = 'Organization name is required';
-      } else {
-        // Check if organization ID already exists
-        const organizationId = generateOrganizationId(formData.organizationName);
-        try {
-          const exists = await checkOrganizationIdExists(organizationId);
-          if (exists) {
-            newErrors.organizationName = 'An organization with this name already exists. Please choose a different name.';
+
+      if (!formData.contact_phone.trim()) {
+        nextErrors.contact_phone = 'Primary contact phone is required';
+      } else if (!normalizeUkPhoneToE164(formData.contact_phone)) {
+        nextErrors.contact_phone = 'Please enter a valid UK phone number';
+      }
+
+      if (formData.legal_name.trim()) {
+        const organizationId = generateOrganizationId(formData.legal_name);
+        if (!organizationId) {
+          nextErrors.legal_name = 'Please enter a valid legal name';
+        } else {
+          try {
+            const exists = await checkOrganizationIdExists(organizationId);
+            if (exists) {
+              nextErrors.legal_name =
+                'An organization with this legal name already exists. Please use the registered legal entity name.';
+            }
+          } catch (error) {
+            console.error('Error checking organization name:', error);
           }
-        } catch (error) {
-          console.error('Error checking organization name:', error);
         }
       }
-      if (!formData.organizationType) newErrors.organizationType = 'Organization type is required';
-    } else if (step === 3) {
-      if (!formData.password) {
-        newErrors.password = 'Password is required';
-      } else {
-        if (formData.password.length < 8) {
-          newErrors.password = 'Password must be at least 8 characters';
-        } else if (!/[A-Z]/.test(formData.password)) {
-          newErrors.password = 'Password must contain at least one uppercase letter';
-        } else if (!/[a-z]/.test(formData.password)) {
-          newErrors.password = 'Password must contain at least one lowercase letter';
-        } else if (!/[0-9]/.test(formData.password)) {
-          newErrors.password = 'Password must contain at least one number';
-        } else if (!/[!@#$%^&*(),.?":{}|<>]/.test(formData.password)) {
-          newErrors.password = 'Password must contain at least one special character';
-        }
-      }
-      
-      if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
-      
-      if (!formData.agreeToTerms) newErrors.agreeToTerms = 'You must agree to the Terms of Service';
     }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    if (step === 2) {
+      if (!formData.gift_aid_registered) {
+        nextErrors.gift_aid_registered = 'Gift Aid registration status is required';
+      }
+
+      if (formData.gift_aid_registered === 'yes') {
+        const hmrcRef = formData.hmrc_charity_reference.trim().toUpperCase();
+        if (!hmrcRef) {
+          nextErrors.hmrc_charity_reference =
+            'HMRC charity reference is required when Gift Aid registration is yes';
+        } else if (!HMRC_REFERENCE_REGEX.test(hmrcRef)) {
+          nextErrors.hmrc_charity_reference =
+            'HMRC charity reference must be 1-2 letters followed by 5 digits';
+        }
+      }
+
+      if (!formData.primary_setting) {
+        nextErrors.primary_setting = 'Primary setting is required';
+      }
+
+      if (!formData.estimated_monthly_volume_band) {
+        nextErrors.estimated_monthly_volume_band = 'Estimated monthly volume band is required';
+      }
+
+      if (!formData.authorised_signatory) {
+        nextErrors.authorised_signatory = 'You must confirm authorised-signatory status';
+      }
+
+      if (!formData.terms_accepted) {
+        nextErrors.terms_accepted = 'You must accept the Terms of Service';
+      }
+
+      if (!formData.privacy_accepted) {
+        nextErrors.privacy_accepted = 'You must accept the Privacy Policy';
+      }
+    }
+
+    if (step === 3) {
+      if (!formData.password) {
+        nextErrors.password = 'Password is required';
+      } else if (!isPasswordValid(formData.password)) {
+        nextErrors.password =
+          'Password must be 8+ chars and include uppercase, lowercase, number, and special character';
+      }
+
+      if (!formData.confirmPassword) {
+        nextErrors.confirmPassword = 'Please confirm your password';
+      } else if (formData.password !== formData.confirmPassword) {
+        nextErrors.confirmPassword = 'Passwords do not match';
+      }
+
+      if (!recaptchaToken) {
+        nextErrors.recaptchaToken = 'Please complete the reCAPTCHA verification';
+      }
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
   const handleNext = async () => {
     setIsValidating(true);
     try {
-      const isValid = await validateStep(currentStep);
-      if (isValid) {
-        setCurrentStep(prev => Math.min(prev + 1, 3));
+      const valid = await validateStep(currentStep);
+      if (valid) {
+        setCurrentStep((prev) => (prev === 1 ? 2 : 3));
       }
     } finally {
       setIsValidating(false);
@@ -320,103 +484,51 @@ export function SignupScreen({ onSignup, onBack, onLogin, onViewTerms, initialSt
   };
 
   const handlePrevious = () => {
-    setCurrentStep(prev => Math.max(prev - 1, 1));
+    setCurrentStep((prev) => (prev === 3 ? 2 : 1));
   };
 
   const handleSubmit = async () => {
-    const isValid = await validateStep(currentStep);
-    
-    if (!recaptchaToken) {
-      setErrors(prev => ({
-        ...prev,
-        agreeToTerms: 'Please complete the reCAPTCHA verification'
-      }));
+    const valid = await validateStep(3);
+    if (!valid || isSubmitting) {
       return;
     }
-    
-    if (isValid && !isSubmitting) {
-      setIsSubmitting(true)
-      try {
-        await onSignup({
-          ...formData,
-          organizationId: generateOrganizationId(formData.organizationName),
-          stripe: {
-            accountId: '',
-            chargesEnabled: false,
-            payoutsEnabled: false,
-          },
-          recaptchaToken, // Include the token for backend verification
-        } as any)
-        clearDraft();
-      } catch (error) {
-        setIsSubmitting(false)
-        // Reset reCAPTCHA on error
-        if (recaptchaRef.current) {
-          recaptchaRef.current.reset();
-          setRecaptchaToken(null);
-        }
+
+    setIsSubmitting(true);
+    try {
+      const normalizedPostcode =
+        normalizeUkPostcode(formData.registered_postcode) || formData.registered_postcode;
+      const normalizedHmrcRef = formData.hmrc_charity_reference.trim().toUpperCase();
+      const signupPayload: SignupFormData = {
+        ...formData,
+        email: formData.contact_work_email.trim().toLowerCase(),
+        contact_work_email: formData.contact_work_email.trim().toLowerCase(),
+        charity_number: formData.charity_number.trim().toUpperCase(),
+        registered_postcode: normalizedPostcode,
+        contact_phone: formData.contact_phone.trim(),
+        hmrc_charity_reference: formData.gift_aid_registered === 'yes' ? normalizedHmrcRef : '',
+        organizationId: generateOrganizationId(formData.legal_name),
+        recaptchaToken: recaptchaToken || undefined,
+      };
+
+      await onSignup(signupPayload);
+      clearDraft();
+    } catch (error) {
+      setIsSubmitting(false);
+      if (recaptchaRef.current) {
+        recaptchaRef.current.reset();
       }
+      setRecaptchaToken(null);
+      throw error;
     }
   };
 
-  const platformStats = [
-    {
-      icon: <DollarSign className="w-6 h-6 text-green-600" />,
-      value: '£15.8M+',
-      label: 'Total Raised',
-      description: 'Funds raised through our platform'
-    },
-    {
-      icon: <Users className="w-6 h-6 text-blue-600" />,
-      value: '500+',
-      label: 'Organizations',
-      description: 'Trusted by organizations globally'
-    },
-    {
-      icon: <Heart className="w-6 h-6 text-red-600" />,
-      value: '47K+',
-      label: 'Donors',
-      description: 'People making a difference'
-    },
-    {
-      icon: <TrendingUp className="w-6 h-6 text-purple-600" />,
-      value: '98.5%',
-      label: 'Success Rate',
-      description: 'Payment processing reliability'
-    }
-  ];
-
-  if (isSubmitting) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="mx-auto h-16 w-16 animate-spin rounded-full border-4 border-gray-200 border-t-indigo-600"></div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-semibold text-gray-900">Creating Your Organization...</h3>
-            <p className="text-sm text-gray-600">Setting up your account and workspace</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const signatoryName = formData.legal_name.trim() || 'this charity';
+  const progress = Math.round((currentStep / 3) * 100);
 
   return (
     <div className="min-h-screen bg-[#F3F1EA] font-lexend">
-      {isSubmitting && (
-        <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="mx-auto h-16 w-16 animate-spin rounded-full border-4 border-gray-200 border-t-[#064e3b]"></div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-semibold text-gray-900">Creating Your Organization...</h3>
-              <p className="text-sm text-gray-600">Setting up your account and workspace</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <main className="min-h-screen lg:grid lg:grid-cols-[0.75fr_1fr]">
-        {/* Left side - Green section */}
-        <div className="relative hidden flex-col justify-between overflow-hidden bg-linear-to-b from-[#0f5132] to-[#064e3b] px-10 py-12 text-white lg:flex">
+      <main className="min-h-screen lg:grid lg:grid-cols-[0.78fr_1fr]">
+        <div className="relative hidden overflow-hidden bg-gradient-to-b from-[#0f5132] to-[#064e3b] px-10 py-12 text-white lg:flex lg:flex-col lg:justify-between">
           <button
             onClick={() => {
               clearDraft();
@@ -425,713 +537,674 @@ export function SignupScreen({ onSignup, onBack, onLogin, onViewTerms, initialSt
             className="group relative z-10 flex items-center gap-2 text-left text-white/90 transition hover:text-white"
           >
             <span className="flex h-12 w-12 items-center justify-center">
-              <Image src="/logo.png" alt="SwiftCause logo" width={40} height={40} className="rounded-xl transition-transform duration-300 group-hover:scale-105" />
+              <Image
+                src="/logo.png"
+                alt="SwiftCause logo"
+                width={40}
+                height={40}
+                className="rounded-xl transition-transform duration-300 group-hover:scale-105"
+              />
             </span>
             <span className="font-lexend text-2xl font-bold tracking-tight text-stone-50">
               SwiftCause
             </span>
           </button>
 
-          <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-400/10 rounded-full blur-3xl -ml-10 -mb-10"></div>
-
-          {/* Step 1 Content */}
-          {currentStep === 1 && (
-            <>
-              <div className="relative z-10 flex-1 flex flex-col justify-center">
-
-                {/* Hero Content */}
-                <div className="max-w-lg w-full">
-                  <h2 className="text-5xl font-bold text-white leading-tight mb-4">
-                    Empower change globally.
-                  </h2>
-                  <p className="text-emerald-100/70 text-lg mb-6">
-                  Create an account to set up your organization and start managing fundraising campaigns and donations.
-                  </p>
-
-                  <div className="bg-[#fcf9f1]/10 backdrop-blur-md border border-white/20 rounded-3xl p-6 text-white shadow-2xl">
-
-                    <div className="flex justify-between items-start mb-6">
-                      <div>
-                        <p className="text-xs font-bold text-emerald-200/60 uppercase tracking-widest mb-1">
-                          Donation Impact
-                        </p>
-                        <h3 className="text-3xl font-bold">Global Outreach</h3>
-                      </div>
-                      <div className="bg-emerald-400/20 px-3 py-1 rounded-full text-xs font-bold text-emerald-300 flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3" />
-                        Trending
-                      </div>
-                    </div>
-
-
-                    <div className="flex items-end gap-3 h-32 mb-6">
-                      <div className="flex-1 bg-white/10 h-[30%] rounded-t-lg transition-all hover:bg-white/30"></div>
-                      <div className="flex-1 bg-white/10 h-[45%] rounded-t-lg transition-all hover:bg-white/30"></div>
-                      <div className="flex-1 bg-white/10 h-[40%] rounded-t-lg transition-all hover:bg-white/30"></div>
-                      <div className="flex-1 bg-white/10 h-[60%] rounded-t-lg transition-all hover:bg-white/30"></div>
-                      <div className="flex-1 bg-white/10 h-[55%] rounded-t-lg transition-all hover:bg-white/30"></div>
-                      <div className="flex-1 bg-white/10 h-[85%] rounded-t-lg transition-all hover:bg-white/30"></div>
-                      <div className="flex-1 bg-white h-full rounded-t-lg"></div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-white/5 rounded-2xl p-4 transition-all duration-300 hover:bg-white/10 hover:scale-105 cursor-pointer">
-                        <p className="text-[10px] text-emerald-200/50 uppercase font-bold mb-1 text-center">
-                          CAMPAIGNS
-                        </p>
-                        <p className="text-lg font-bold text-center text-white">Multiple Active</p>
-                      </div>
-                      <div className="bg-white/5 rounded-2xl p-4 transition-all duration-300 hover:bg-white/10 hover:scale-105 cursor-pointer">
-                        <p className="text-[10px] text-emerald-200/50 uppercase font-bold mb-1 text-center">
-                          KIOSKS
-                        </p>
-                        <p className="text-lg font-bold text-center text-white">Network Ready</p>
-                      </div>
-                      <div className="bg-white/5 rounded-2xl p-4 transition-all duration-300 hover:bg-white/10 hover:scale-105 cursor-pointer">
-                        <p className="text-[10px] text-emerald-200/50 uppercase font-bold mb-1 text-center">
-                          Status
-                        </p>
-                        <p className="text-lg font-bold text-center text-white">    High <br/> Impact</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              
-            </>
-          )}
-
-          {currentStep === 2 && (
-            <>
-              <div className="relative z-10 flex flex-col items-center justify-center text-center flex-1 max-w-lg w-full mx-auto">
-                <div className="w-32 h-32 bg-[#11d452]/20 rounded-full flex items-center justify-center mb-8 border border-[#11d452]/30">
-                  <Globe className="text-[#11d452] w-16 h-16" />
-                </div>
-                <h2 className="text-3xl font-bold mb-4 text-white">Global Community</h2>
-                <p className="text-white/80 text-lg leading-relaxed max-w-sm w-full">
-                  Join a worldwide network of change-makers and organizations dedicated to making a lasting impact.
-                </p>
-                <div className="mt-12 flex gap-2">
-                  <div className="h-1 w-8 rounded-full bg-[#11d452]/30"></div>
-                  <div className="h-1 w-12 rounded-full bg-[#11d452]"></div>
-                  <div className="h-1 w-8 rounded-full bg-[#11d452]/30"></div>
-                  <div className="h-1 w-8 rounded-full bg-[#11d452]/30"></div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {currentStep === 3 && (
-            <>
-              <div className="relative z-10 flex flex-col items-center justify-center flex-1 max-w-lg mx-auto w-full">
-                {/* Security Icon */}
-                <div className="relative w-48 h-48 mb-12">
-                  <div className="absolute inset-0 bg-[#11d452]/10 rounded-[40px] blur-3xl"></div>
-                  <div className="relative bg-white/5 backdrop-blur-md border border-white/10 w-full h-full rounded-[40px] flex items-center justify-center shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]">
-                    <Shield className="text-[#11d452] w-24 h-24" strokeWidth={0.5} />
-                  </div>
-                  <div className="absolute -inset-4 border border-white/5 rounded-[48px]"></div>
-                  <div className="absolute -inset-8 border border-white/5 rounded-[56px]"></div>
-                </div>
-
-                {/* Heading */}
-                <div className="text-center mb-8">
-                  <h1 className="text-white text-3xl font-bold mb-3">Your security is our priority</h1>
-                  <p className="text-emerald-100/70 text-lg">
-                    We employ bank-grade security measures to ensure your data and impact remain protected at all times.
-                  </p>
-                </div>
-                
-                <div className="w-full space-y-4">
-                  <div className="flex items-start gap-3 p-3 rounded-xl border border-white/5 bg-white/5">
-                    <div className="bg-[#11d452]/20 p-2 rounded-lg shrink-0">
-                      <Lock className="text-[#11d452] w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-white font-semibold text-sm">Secure Access</h4>
-                      <p className="text-[#a8c3ad] text-xs mt-1">
-                       Protect your organization’s dashboard and data.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4 p-4 rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10 transition-all">
-                    <div className="bg-[#11d452]/20 p-3 rounded-lg shrink-0">
-                      <Users className="text-[#11d452] w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="text-white font-semibold text-base mb-1">Controlled Permissions</h4>
-                      <p className="text-emerald-100/60 text-sm">
-                        Only authorized users can manage campaigns and donations.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4 p-4 rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10 transition-all">
-                    <div className="bg-[#11d452]/20 p-3 rounded-lg shrink-0">
-                      <CheckCircle className="text-[#11d452] w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="text-white font-semibold text-base mb-1">Trusted Infrastructure</h4>
-                      <p className="text-emerald-100/60 text-sm">
-                        Payments and access are handled securely on our platform.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <footer className="relative z-10 pt-8 mt-6 border-t border-white/10">
-                <p className="text-emerald-100/40 text-sm">
-                  Trust and transparency are at the core of our platform architecture.
-                </p>
-              </footer>
-            </>
-          )}
-        </div>
-
-        {/* Right side - Form */}
-        <div className="flex items-start justify-center bg-[#F3F1EA] px-4 py-10 sm:items-center sm:px-6 sm:py-12">
-          <div className="w-full max-w-2xl">
-          <div className="mb-8 flex items-center justify-start bg-[#F3F1EA] py-3 lg:hidden sticky top-0 z-10 -mx-4 px-4 sm:static sm:mx-0 sm:px-0 sm:py-0">
-            <button
-              onClick={() => {
-                clearDraft();
-                onBack();
-              }}
-              className="flex items-center gap-2 text-left text-slate-800 transition hover:text-slate-900"
-            >
-              <span className="flex h-9 w-9 items-center justify-center sm:h-10 sm:w-10">
-                <img src="/logo.png" alt="SwiftCause Logo" className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg" />
-              </span>
-              <span className="text-lg font-semibold tracking-tight text-[#064e3b] sm:text-2xl">
-                SwiftCause
-              </span>
-            </button>
+          <div className="relative z-10 space-y-6">
+            <h2 className="text-4xl font-bold leading-tight">
+              Charity onboarding with compliance-ready signup.
+            </h2>
+            <p className="max-w-md text-base text-emerald-100/80">
+              Complete identity, contact, HMRC readiness, and consent details so your organization
+              can move into review and onboarding without follow-up data requests.
+            </p>
+            <div className="rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur-sm">
+              <p className="text-sm font-semibold uppercase tracking-wider text-emerald-200">
+                Progress
+              </p>
+              <p className="mt-2 text-3xl font-bold">Step {currentStep} of 3</p>
+              <p className="mt-1 text-sm text-emerald-100/80">{progress}% complete</p>
+            </div>
           </div>
 
-            <div className="mb-8 text-center">
-              <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400/70 sm:text-xs sm:tracking-[0.35em]">
-                Secure access
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-800 sm:mt-3 sm:text-3xl">
-                Create your SwiftCause account
-              </h2>
+          <div className="relative z-10 rounded-2xl border border-white/20 bg-white/10 p-5 text-sm text-emerald-100/85">
+            Tip: use your official register details exactly as recorded to avoid manual corrections
+            later.
+          </div>
+        </div>
+
+        <div className="flex items-center px-5 py-10 sm:px-8 lg:px-12">
+          <div className="mx-auto w-full max-w-3xl">
+            <div className="mb-8 text-center lg:text-left">
+              <h1 className="text-3xl font-bold text-slate-900">Create your SwiftCause account</h1>
               <p className="mt-2 text-sm text-slate-500">
-                Complete the steps below to start fundraising.
+                All required fields support super admin review, Stripe onboarding, and Gift Aid
+                export readiness.
               </p>
             </div>
 
-            {/* Form Container */}
-            <div className="max-w-md w-full mx-auto flex-1 flex flex-col justify-center overflow-y-auto">
-              {/* White background card for the form */}
-              <div className="bg-white rounded-2xl shadow-lg p-8">
-                {/* Progress indicator */}
+            <div className="rounded-2xl bg-white p-6 shadow-lg sm:p-8">
               <div className="mb-6">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-sm font-bold text-[#064e3b] uppercase tracking-wider">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="font-bold uppercase tracking-wide text-[#064e3b]">
                     Step {currentStep} of 3
                   </span>
-                  <span className="text-sm font-semibold text-slate-400">
-                    {Math.round((currentStep / 3) * 100)}% Complete
-                  </span>
+                  <span className="font-semibold text-slate-400">{progress}%</span>
                 </div>
-                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className="h-full bg-[#064e3b] rounded-full transition-all duration-300"
-                    style={{ width: `${Math.round((currentStep / 3) * 100)}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Form title */}
-              <div className="mb-6 text-left">
-                <h1 className="text-3xl font-bold text-slate-900 mb-2">
-                  {currentStep === 1 && 'Start with your contact details'}
-                  {currentStep === 2 && 'Organization Details'}
-                  {currentStep === 3 && 'Account Security'}
-                </h1>
-                <p className="text-base text-slate-500">
-                  {currentStep === 1 && 'Tell us who you are so we can set up your admin access.'}
-                  {currentStep === 2 && 'Tell us about your organization'}
-                  {currentStep === 3 && 'Secure your account'}
-                </p>
-              </div>
-            {/* Step 1: Personal Information */}
-            {currentStep === 1 && (
-              <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleNext(); }}>
-                {/* Email field */}
-                <div>
-                  <label className="block text-base font-semibold text-slate-700 mb-2" htmlFor="email">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData('email', e.target.value)}
-                      onBlur={handleEmailBlur}
-                      className={`w-full px-5 py-5 rounded-xl border bg-white! text-base focus:ring-0 focus:border-[#064e3b] transition-all outline-none h-14 ${
-                        errors.email ? 'border-red-500' : 'border-slate-300'
-                      } ${isCheckingEmail ? 'opacity-50' : ''}`}
-                      placeholder="name@example.com"
-                      disabled={isCheckingEmail}
-                    />
-                    {isCheckingEmail && (
-                      <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
-                        <div className="w-4 h-4 border-2 border-[#064e3b] border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                  </div>
-                  {errors.email && (
-                    <p className="text-xs text-red-600 flex items-center mt-2">
-                      <AlertCircle className="w-3 h-3 mr-1" />
-                      {errors.email}
-                    </p>
-                  )}
-                  {isCheckingEmail && (
-                    <p className="text-xs text-slate-500 flex items-center mt-2">
-                      Checking email availability...
-                    </p>
-                  )}
-                </div>
-
-                {/* Name fields */}
-                <div className="grid grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-base font-semibold text-slate-700 mb-2" htmlFor="firstName">
-                      First Name
-                    </label>
-                    <Input
-                      id="firstName"
-                      type="text"
-                      value={formData.firstName}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData('firstName', e.target.value)}
-                      className={`w-full px-5 py-5 rounded-xl border bg-white! text-base focus:ring-0 focus:border-[#064e3b] transition-all outline-none h-14 ${
-                        errors.firstName ? 'border-red-500' : 'border-slate-300'
-                      }`}
-                      placeholder="First name"
-                    />
-                    {errors.firstName && (
-                      <p className="text-xs text-red-600 flex items-center mt-1">
-                        <AlertCircle className="w-3 h-3 mr-1" />
-                        {errors.firstName}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-base font-semibold text-slate-700 mb-2" htmlFor="lastName">
-                      Last Name
-                    </label>
-                    <Input
-                      id="lastName"
-                      type="text"
-                      value={formData.lastName}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData('lastName', e.target.value)}
-                      className={`w-full px-5 py-5 rounded-xl border bg-white! text-base focus:ring-0 focus:border-[#064e3b]b] transition-all outline-none h-14 ${
-                        errors.lastName ? 'border-red-500' : 'border-slate-300'
-                      }`}
-                      placeholder="Last name"
-                    />
-                    {errors.lastName && (
-                      <p className="text-xs text-red-600 flex items-center mt-2">
-                        <AlertCircle className="w-3 h-3 mr-1" />
-                        {errors.lastName}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Continue button */}
-                <button
-                  type="submit"
-                  disabled={isCheckingEmail || isValidating}
-                  className="w-full bg-[#064e3b] text-white font-bold text-lg py-5 rounded-xl hover:bg-emerald-900 transition-all flex items-center justify-center gap-2 mt-8 disabled:opacity-50 disabled:cursor-not-allowed h-14"
-                >
-                  {isValidating ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Checking...</span>
-                    </>
-                  ) : (
-                    <>
-                      Continue
-                      <ArrowRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-
-            
-
-            {/* Step 2: Organization Information */}
-            {currentStep === 2 && (
-              <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleNext(); }}>
-                {/* Organization Name */}
-                <div className="flex flex-col gap-2">
-                  <label className="text-[#0a2e16] text-base font-medium" htmlFor="organizationName">
-                    Organization Name
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id="organizationName"
-                      value={formData.organizationName}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData('organizationName', e.target.value)}
-                      onBlur={handleOrganizationNameBlur}
-                      className={`w-full rounded-lg border bg-white! text-[#0a2e16] h-14 px-4 text-base placeholder:text-gray-400 focus:border-[#11d452] focus:ring-0 ${
-                        errors.organizationName ? 'border-red-500' : 'border-gray-200'
-                      } ${isCheckingOrganization ? 'opacity-50' : ''}`}
-                      placeholder="Enter your organization's legal name"
-                      disabled={isCheckingOrganization}
-                    />
-                    {isCheckingOrganization && (
-                      <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
-                        <div className="w-4 h-4 border-2 border-[#064e3b] border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                  </div>
-                  {errors.organizationName && (
-                    <p className="text-xs text-red-600 flex items-center">
-                      <AlertCircle className="w-3 h-3 mr-1" />
-                      {errors.organizationName}
-                    </p>
-                  )}
-                  {isCheckingOrganization && (
-                    <p className="text-xs text-slate-500 flex items-center">
-                      Checking organization name availability...
-                    </p>
-                  )}
-                </div>
-
-                {/* Organization Type */}
-                <div className="flex flex-col gap-2">
-                  <label className="text-[#0a2e16] text-base font-medium" htmlFor="organizationType">
-                    Organization Type
-                  </label>
-                  <Select 
-                    value={formData.organizationType} 
-                    onValueChange={(value: string) => updateFormData('organizationType', value)}
-                  >
-                    <SelectTrigger className={`w-full rounded-lg border bg-white! text-[#0a2e16] h-14 px-4 text-base focus:border-[#11d452] focus:ring-0 ${
-                      errors.organizationType ? 'border-red-500' : 'border-gray-200'
-                    }`}>
-                      <SelectValue placeholder="Select organization type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {organizationTypes.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.organizationType && (
-                    <p className="text-xs text-red-600 flex items-center">
-                      <AlertCircle className="w-3 h-3 mr-1" />
-                      {errors.organizationType}
-                    </p>
-                  )}
-                </div>
-
-                {/* Website */}
-                <div className="flex flex-col gap-2">
-                  <label className="text-[#0a2e16] text-base font-medium" htmlFor="website">
-                    Website
-                  </label>
-                  <Input
-                    id="website"
-                    type="url"
-                    value={formData.website}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData('website', e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 bg-white! text-[#0a2e16] h-14 px-4 text-base placeholder:text-gray-400 focus:border-[#11d452] focus:ring-0"
-                    placeholder="https://example.com"
+                    className="h-full rounded-full bg-[#064e3b] transition-all"
+                    style={{ width: `${progress}%` }}
                   />
                 </div>
+              </div>
 
-                {/* Navigation Buttons */}
-                <div className="flex items-center justify-between pt-8">
-                  <button
-                    type="button"
-                    onClick={handlePrevious}
-                    className="flex items-center gap-2 px-6 py-3 rounded-lg border border-gray-200 text-[#0a2e16] font-bold text-sm hover:bg-gray-50 transition-colors"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isValidating || isCheckingOrganization}
-                    className="flex items-center justify-center min-w-[140px] px-8 py-3 bg-[#064e3b] text-white font-bold text-sm rounded-lg hover:shadow-lg hover:shadow-[#11d452]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isValidating ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                        <span>Loading...</span>
-                      </>
-                    ) : (
-                      <>
-                        Next Step
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            )}
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {currentStep === 1 && 'Charity identity and contact'}
+                  {currentStep === 2 && 'HMRC readiness and consents'}
+                  {currentStep === 3 && 'Account security'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {currentStep === 1 &&
+                    'Capture legal registration details and your primary contact data.'}
+                  {currentStep === 2 &&
+                    'Confirm Gift Aid status, use case, and legal/privacy consent statements.'}
+                  {currentStep === 3 && 'Set password and complete reCAPTCHA to finish signup.'}
+                </p>
+              </div>
 
-            {/* Step 3: Password Setup */}
-                  {currentStep === 3 && (
-                    <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-                      {/* Password Field */}
-                      <div className="flex flex-col gap-2">
-                        <label className="text-[#0d1b10] text-sm font-semibold" htmlFor="password">
-                          New Password
-                        </label>
-                        <div className="relative">
-                          <Input
-                            id="password"
-                            type={showPassword ? 'text' : 'password'}
-                            value={formData.password}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData('password', e.target.value)}
-                            className={`w-full px-4 py-3 rounded-lg border bg-white! text-[#0d1b10] focus:ring-2 focus:ring-[#11d452] focus:border-transparent outline-none transition-all ${
-                              errors.password ? 'border-red-500' : 'border-[#cfe7d3]'
-                            }`}
-                            placeholder="Enter your password"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4c9a59] hover:text-[#11d452] transition-colors"
+              {currentStep === 1 && (
+                <form
+                  className="space-y-5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleNext();
+                  }}
+                >
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div className="md:col-span-2">
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="legal_name"
+                      >
+                        Legal Name <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="legal_name"
+                        value={formData.legal_name}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateFormData('legal_name', e.target.value)
+                        }
+                        onBlur={handleLegalNameBlur}
+                        placeholder="Enter registered legal name"
+                        disabled={isCheckingOrganization}
+                        className={`h-11 ${errors.legal_name ? 'border-red-500' : ''}`}
+                      />
+                      {errors.legal_name && (
+                        <p className="mt-1 text-xs text-red-600">{errors.legal_name}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Registered Nation <span className="text-red-500">*</span>
+                      </label>
+                      <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                        {registeredNationOptions.map((option) => (
+                          <label
+                            key={option.value}
+                            className="flex items-center gap-2 text-sm text-slate-700"
                           >
-                            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
-                        </div>
-                        {errors.password && (
-                          <p className="text-xs text-red-600 flex items-center">
-                            <AlertCircle className="w-3 h-3 mr-1" />
-                            {errors.password}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Confirm Password Field */}
-                      <div className="flex flex-col gap-2">
-                        <label className="text-[#0d1b10] text-sm font-semibold" htmlFor="confirmPassword">
-                          Confirm Password
-                        </label>
-                        <div className="relative">
-                          <Input
-                            id="confirmPassword"
-                            type={showConfirmPassword ? 'text' : 'password'}
-                            value={formData.confirmPassword}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData('confirmPassword', e.target.value)}
-                            className={`w-full px-4 py-3 rounded-lg border bg-white! text-[#0d1b10] focus:ring-2 focus:ring-[#11d452] focus:border-transparent outline-none transition-all ${
-                              errors.confirmPassword ? 'border-red-500' : 'border-[#cfe7d3]'
-                            }`}
-                            placeholder="Confirm your password"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4c9a59] hover:text-[#11d452] transition-colors"
-                          >
-                            {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
-                        </div>
-                        {errors.confirmPassword && (
-                          <p className="text-xs text-red-600 flex items-center">
-                            <AlertCircle className="w-3 h-3 mr-1" />
-                            {errors.confirmPassword}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Password Strength Indicator */}
-                      <div className="flex flex-col gap-2">
-                        <div className="flex justify-between items-center">
-                          <p className="text-[#4c9a59] text-xs font-medium">Password strength</p>
-                          <p className="text-[#11d452] text-xs font-bold">
-                            {(() => {
-                              const checks = [
-                                formData.password.length >= 8,
-                                /[A-Z]/.test(formData.password),
-                                /[a-z]/.test(formData.password),
-                                /[0-9]/.test(formData.password),
-                                /[!@#$%^&*(),.?":{}|<>]/.test(formData.password)
-                              ];
-                              const passedChecks = checks.filter(Boolean).length;
-                              if (passedChecks === 0) return 'Weak';
-                              if (passedChecks <= 2) return 'Fair';
-                              if (passedChecks === 3) return 'Good';
-                              return 'Strong';
-                            })()}
-                          </p>
-                        </div>
-                        <div className="flex gap-1 h-1.5">
-                          {(() => {
-                              const checks = [
-                                formData.password.length >= 8,
-                                /[A-Z]/.test(formData.password),
-                                /[a-z]/.test(formData.password),
-                                /[0-9]/.test(formData.password),
-                                /[!@#$%^&*(),.?":{}|<>]/.test(formData.password)
-                              ];
-                              const passedCount = checks.filter(Boolean).length;
-                              
-                              return [0, 1, 2, 3, 4].map((index) => (
-                                <div 
-                                  key={index}
-                                  className={`flex-1 rounded-full ${index < passedCount ? 'bg-[#11d452]' : 'bg-[#cfe7d3]'}`}
-                              ></div>
-                            ));
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* Password Requirements */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 py-2">
-                        <div className="flex items-center gap-2">
-                          {formData.password.length >= 8 ? (
-                            <CheckCircle className="text-[#11d452] w-[18px] h-[18px]" />
-                          ) : (
-                            <div className="w-[18px] h-[18px] rounded-full border-2 border-[#cfe7d3]"></div>
-                          )}
-                          <span className={`text-xs font-medium ${formData.password.length >= 8 ? 'text-[#0d1b10]' : formData.password.length > 0 ? 'text-red-600' : 'text-[#4c9a59]'}`}>
-                            At least 8 characters
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {/[A-Z]/.test(formData.password) ? (
-                            <CheckCircle className="text-[#11d452] w-[18px] h-[18px]" />
-                          ) : (
-                            <div className="w-[18px] h-[18px] rounded-full border-2 border-[#cfe7d3]"></div>
-                          )}
-                          <span className={`text-xs font-medium ${/[A-Z]/.test(formData.password) ? 'text-[#0d1b10]' : formData.password.length > 0 ? 'text-red-600' : 'text-[#4c9a59]'}`}>
-                            One uppercase letter
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {/[a-z]/.test(formData.password) ? (
-                            <CheckCircle className="text-[#11d452] w-[18px] h-[18px]" />
-                          ) : (
-                            <div className="w-[18px] h-[18px] rounded-full border-2 border-[#cfe7d3]"></div>
-                          )}
-                          <span className={`text-xs font-medium ${/[a-z]/.test(formData.password) ? 'text-[#0d1b10]' : formData.password.length > 0 ? 'text-red-600' : 'text-[#4c9a59]'}`}>
-                            One lowercase letter
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {/[0-9]/.test(formData.password) ? (
-                            <CheckCircle className="text-[#11d452] w-[18px] h-[18px]" />
-                          ) : (
-                            <div className="w-[18px] h-[18px] rounded-full border-2 border-[#cfe7d3]"></div>
-                          )}
-                          <span className={`text-xs font-medium ${/[0-9]/.test(formData.password) ? 'text-[#0d1b10]' : formData.password.length > 0 ? 'text-red-600' : 'text-[#4c9a59]'}`}>
-                            One number
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? (
-                            <CheckCircle className="text-[#11d452] w-[18px] h-[18px]" />
-                          ) : (
-                            <div className="w-[18px] h-[18px] rounded-full border-2 border-[#cfe7d3]"></div>
-                          )}
-                          <span className={`text-xs font-medium ${/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? 'text-[#0d1b10]' : formData.password.length > 0 ? 'text-red-600' : 'text-[#4c9a59]'}`}>
-                            One special symbol
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Terms Checkbox */}
-                      <div className="flex items-start space-x-3 pt-2">
-                        <Checkbox
-                          id="agreeToTerms"
-                          checked={formData.agreeToTerms}
-                          onCheckedChange={(checked: boolean) => updateFormData('agreeToTerms', checked)}
-                          className="mt-0.5"
-                        />
-                        <div className="text-sm">
-                          <label htmlFor="agreeToTerms" className="cursor-pointer text-[#0d1b10]">
-                            I agree to the{' '}
-                            <button type="button" className="text-[#4c9a59] hover:underline font-medium" onClick={() => onViewTerms(currentStep)}>
-                              Terms of Service
-                            </button>
+                            <input
+                              type="radio"
+                              name="registered_nation"
+                              checked={formData.registered_nation === option.value}
+                              onChange={() => updateFormData('registered_nation', option.value)}
+                            />
+                            {option.label}
                           </label>
-                          {errors.agreeToTerms && (
-                            <p className="text-xs text-red-600 flex items-center mt-1">
-                              <AlertCircle className="w-3 h-3 mr-1" />
-                              {errors.agreeToTerms}
-                            </p>
-                          )}
-                        </div>
+                        ))}
                       </div>
+                      {errors.registered_nation && (
+                        <p className="mt-1 text-xs text-red-600">{errors.registered_nation}</p>
+                      )}
+                    </div>
 
-                      {/* reCAPTCHA */}
-                      <div className="flex justify-center pt-4">
-                        <ReCAPTCHA
-                          ref={recaptchaRef}
-                          sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || ''}
-                          onChange={(token: string | null) => {
-                            setRecaptchaToken(token);
-                            // Clear any previous captcha errors
-                            if (errors.agreeToTerms?.includes('reCAPTCHA')) {
-                              setErrors(prev => ({
-                                ...prev,
-                                agreeToTerms: undefined
-                              }));
-                            }
-                          }}
-                          onExpired={() => setRecaptchaToken(null)}
-                          onErrored={() => setRecaptchaToken(null)}
+                    <div>
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="charity_number"
+                      >
+                        Charity Number <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="charity_number"
+                        value={formData.charity_number}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateFormData('charity_number', e.target.value)
+                        }
+                        placeholder="Enter charity number"
+                        className={`h-11 ${errors.charity_number ? 'border-red-500' : ''}`}
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        {getCharityNumberHint(formData.registered_nation)}
+                      </p>
+                      {errors.charity_number && (
+                        <p className="mt-1 text-xs text-red-600">{errors.charity_number}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="registered_postcode"
+                      >
+                        Registered Postcode <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="registered_postcode"
+                        value={formData.registered_postcode}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateFormData('registered_postcode', e.target.value.toUpperCase())
+                        }
+                        placeholder="SW1A 1AA"
+                        className={`h-11 uppercase ${errors.registered_postcode ? 'border-red-500' : ''}`}
+                      />
+                      {errors.registered_postcode && (
+                        <p className="mt-1 text-xs text-red-600">{errors.registered_postcode}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Entity Type <span className="text-red-500">*</span>
+                      </label>
+                      <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                        {entityTypeOptions.map((option) => (
+                          <label
+                            key={option.value}
+                            className="flex items-center gap-2 text-sm text-slate-700"
+                          >
+                            <input
+                              type="radio"
+                              name="entity_type"
+                              checked={formData.entity_type === option.value}
+                              onChange={() => updateFormData('entity_type', option.value)}
+                            />
+                            {option.label}
+                          </label>
+                        ))}
+                      </div>
+                      {errors.entity_type && (
+                        <p className="mt-1 text-xs text-red-600">{errors.entity_type}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="contact_full_name"
+                      >
+                        Primary Contact Full Name <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="contact_full_name"
+                        value={formData.contact_full_name}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateFormData('contact_full_name', e.target.value)
+                        }
+                        placeholder="Enter full name"
+                        className={`h-11 ${errors.contact_full_name ? 'border-red-500' : ''}`}
+                      />
+                      {errors.contact_full_name && (
+                        <p className="mt-1 text-xs text-red-600">{errors.contact_full_name}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Primary Contact Role <span className="text-red-500">*</span>
+                      </label>
+                      <Select
+                        value={formData.contact_role}
+                        onValueChange={(value) =>
+                          updateFormData('contact_role', value as ContactRole)
+                        }
+                      >
+                        <SelectTrigger
+                          className={`h-11 ${errors.contact_role ? 'border-red-500' : ''}`}
+                        >
+                          <SelectValue placeholder="Select contact role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {contactRoleOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.contact_role && (
+                        <p className="mt-1 text-xs text-red-600">{errors.contact_role}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="contact_work_email"
+                      >
+                        Primary Contact Work Email <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="contact_work_email"
+                        type="email"
+                        value={formData.contact_work_email}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateFormData('contact_work_email', e.target.value)
+                        }
+                        onBlur={handleEmailBlur}
+                        placeholder="admin@charity.org.uk"
+                        disabled={isCheckingEmail}
+                        className={`h-11 ${errors.contact_work_email ? 'border-red-500' : ''}`}
+                      />
+                      {errors.contact_work_email && (
+                        <p className="mt-1 text-xs text-red-600">{errors.contact_work_email}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="contact_phone"
+                      >
+                        Primary Contact Phone <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="contact_phone"
+                        value={formData.contact_phone}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateFormData('contact_phone', e.target.value)
+                        }
+                        placeholder="07xxxxxxxxx"
+                        className={`h-11 ${errors.contact_phone ? 'border-red-500' : ''}`}
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        Saved in E.164 format with UK default (for example +447911123456).
+                      </p>
+                      {errors.contact_phone && (
+                        <p className="mt-1 text-xs text-red-600">{errors.contact_phone}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={isValidating || isCheckingEmail || isCheckingOrganization}
+                      className="inline-flex h-11 items-center justify-center rounded-lg bg-[#064e3b] px-6 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isValidating ? 'Validating...' : 'Continue'}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {currentStep === 2 && (
+                <form
+                  className="space-y-5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleNext();
+                  }}
+                >
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Gift Aid Registered <span className="text-red-500">*</span>
+                      </label>
+                      <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                        {giftAidRegisteredOptions.map((option) => (
+                          <label
+                            key={option.value}
+                            className="flex items-center gap-2 text-sm text-slate-700"
+                          >
+                            <input
+                              type="radio"
+                              name="gift_aid_registered"
+                              checked={formData.gift_aid_registered === option.value}
+                              onChange={() => updateFormData('gift_aid_registered', option.value)}
+                            />
+                            {option.label}
+                          </label>
+                        ))}
+                      </div>
+                      {errors.gift_aid_registered && (
+                        <p className="mt-1 text-xs text-red-600">{errors.gift_aid_registered}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="hmrc_charity_reference"
+                      >
+                        HMRC Charity Reference{' '}
+                        {formData.gift_aid_registered === 'yes' ? (
+                          <span className="text-red-500">*</span>
+                        ) : (
+                          <span className="text-slate-400">
+                            (optional unless Gift Aid registered = yes)
+                          </span>
+                        )}
+                      </label>
+                      <Input
+                        id="hmrc_charity_reference"
+                        value={formData.hmrc_charity_reference}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateFormData('hmrc_charity_reference', e.target.value.toUpperCase())
+                        }
+                        placeholder="AB12345"
+                        className={`h-11 uppercase ${errors.hmrc_charity_reference ? 'border-red-500' : ''}`}
+                      />
+                      {errors.hmrc_charity_reference && (
+                        <p className="mt-1 text-xs text-red-600">{errors.hmrc_charity_reference}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Primary Setting <span className="text-red-500">*</span>
+                      </label>
+                      <Select
+                        value={formData.primary_setting}
+                        onValueChange={(value) =>
+                          updateFormData('primary_setting', value as PrimarySetting)
+                        }
+                      >
+                        <SelectTrigger
+                          className={`h-11 ${errors.primary_setting ? 'border-red-500' : ''}`}
+                        >
+                          <SelectValue placeholder="Select primary setting" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {primarySettingOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.primary_setting && (
+                        <p className="mt-1 text-xs text-red-600">{errors.primary_setting}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Estimated Monthly Volume <span className="text-red-500">*</span>
+                      </label>
+                      <Select
+                        value={formData.estimated_monthly_volume_band}
+                        onValueChange={(value) =>
+                          updateFormData(
+                            'estimated_monthly_volume_band',
+                            value as EstimatedMonthlyVolumeBand,
+                          )
+                        }
+                      >
+                        <SelectTrigger
+                          className={`h-11 ${errors.estimated_monthly_volume_band ? 'border-red-500' : ''}`}
+                        >
+                          <SelectValue placeholder="Select expected monthly volume" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {volumeBandOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.estimated_monthly_volume_band && (
+                        <p className="mt-1 text-xs text-red-600">
+                          {errors.estimated_monthly_volume_band}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-4 rounded-lg border border-slate-200 p-4 md:col-span-2">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="authorised_signatory"
+                          checked={formData.authorised_signatory}
+                          onCheckedChange={(checked) =>
+                            updateFormData('authorised_signatory', checked === true)
+                          }
                         />
+                        <label htmlFor="authorised_signatory" className="text-sm text-slate-700">
+                          I confirm I am authorised by the trustees to enter into this agreement on
+                          behalf of {signatoryName}.
+                        </label>
                       </div>
+                      {errors.authorised_signatory && (
+                        <p className="text-xs text-red-600">{errors.authorised_signatory}</p>
+                      )}
 
-                      {/* Action Buttons */}
-                      <div className="flex items-center justify-between pt-8 gap-5">
-                       
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="terms_accepted"
+                          checked={formData.terms_accepted}
+                          onCheckedChange={(checked) =>
+                            updateFormData('terms_accepted', checked === true)
+                          }
+                        />
+                        <label htmlFor="terms_accepted" className="text-sm text-slate-700">
+                          I accept the{' '}
+                          <button
+                            type="button"
+                            className="font-semibold text-[#064e3b] hover:underline"
+                            onClick={() => onViewTerms(currentStep)}
+                          >
+                            Terms of Service
+                          </button>
+                          .
+                        </label>
+                      </div>
+                      {errors.terms_accepted && (
+                        <p className="text-xs text-red-600">{errors.terms_accepted}</p>
+                      )}
+
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="privacy_accepted"
+                          checked={formData.privacy_accepted}
+                          onCheckedChange={(checked) =>
+                            updateFormData('privacy_accepted', checked === true)
+                          }
+                        />
+                        <label htmlFor="privacy_accepted" className="text-sm text-slate-700">
+                          I accept the Privacy Policy.
+                        </label>
+                      </div>
+                      {errors.privacy_accepted && (
+                        <p className="text-xs text-red-600">{errors.privacy_accepted}</p>
+                      )}
+
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="marketing_consent"
+                          checked={formData.marketing_consent}
+                          onCheckedChange={(checked) =>
+                            updateFormData('marketing_consent', checked === true)
+                          }
+                        />
+                        <label htmlFor="marketing_consent" className="text-sm text-slate-700">
+                          I would like to receive marketing updates (optional).
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={handlePrevious}
+                      className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isValidating}
+                      className="inline-flex h-11 items-center justify-center rounded-lg bg-[#064e3b] px-6 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isValidating ? 'Validating...' : 'Continue'}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {currentStep === 3 && (
+                <form
+                  className="space-y-6"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSubmit();
+                  }}
+                >
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="password"
+                      >
+                        Password <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showPassword ? 'text' : 'password'}
+                          value={formData.password}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            updateFormData('password', e.target.value)
+                          }
+                          placeholder="Enter password"
+                          className={`h-11 pr-10 ${errors.password ? 'border-red-500' : ''}`}
+                        />
                         <button
                           type="button"
-                          onClick={handlePrevious}
-                          className="flex items-center gap-2 px-6 py-3 rounded-lg border border-gray-200 text-[#0a2e16] font-bold text-sm hover:bg-gray-50 transition-colors"
+                          onClick={() => setShowPassword((prev) => !prev)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500"
                         >
-
-                           <ArrowLeft className="w-4 h-4" />
-                           
-                          Back
-                        </button>
-
-                         <button
-                          type="submit"
-                          disabled={isSubmitting || !formData.agreeToTerms || !isPasswordValid(formData.password) || formData.password !== formData.confirmPassword || !recaptchaToken}
-                          className="flex items-center justify-center min-w-[140px] px-8 py-3 bg-[#064e3b] text-white font-bold text-sm rounded-lg hover:shadow-lg hover:shadow-[#11d452]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
-                        >
-                          <span>{isSubmitting ? 'Creating Account...' : 'Create Account'}</span>
-                          <ArrowRight className="w-5 h-5" />
+                          {showPassword ? 'Hide' : 'Show'}
                         </button>
                       </div>
-                    </form>
+                      {errors.password && (
+                        <p className="mt-1 text-xs text-red-600">{errors.password}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        htmlFor="confirmPassword"
+                      >
+                        Confirm Password <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Input
+                          id="confirmPassword"
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          value={formData.confirmPassword}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            updateFormData('confirmPassword', e.target.value)
+                          }
+                          placeholder="Confirm password"
+                          className={`h-11 pr-10 ${errors.confirmPassword ? 'border-red-500' : ''}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword((prev) => !prev)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500"
+                        >
+                          {showConfirmPassword ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
+                      {errors.confirmPassword && (
+                        <p className="mt-1 text-xs text-red-600">{errors.confirmPassword}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                    Password must contain at least 8 characters, one uppercase letter, one lowercase
+                    letter, one number, and one special character.
+                  </div>
+
+                  <div className="flex justify-center">
+                    <ReCAPTCHA
+                      ref={recaptchaRef}
+                      sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || ''}
+                      onChange={(token: string | null) => {
+                        setRecaptchaToken(token);
+                        if (errors.recaptchaToken) {
+                          setErrors((prev) => ({ ...prev, recaptchaToken: undefined }));
+                        }
+                      }}
+                      onExpired={() => setRecaptchaToken(null)}
+                      onErrored={() => setRecaptchaToken(null)}
+                    />
+                  </div>
+                  {errors.recaptchaToken && (
+                    <p className="text-center text-xs text-red-600">{errors.recaptchaToken}</p>
                   )}
+
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={handlePrevious}
+                      className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        isSubmitting ||
+                        !isPasswordValid(formData.password) ||
+                        formData.password !== formData.confirmPassword ||
+                        !recaptchaToken
+                      }
+                      className="inline-flex h-11 items-center justify-center rounded-lg bg-[#064e3b] px-6 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isSubmitting ? 'Creating account...' : 'Create account'}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
-            {/* End of white background card */}
-            <div className="mt-6 text-center text-sm text-slate-500">
-              <span>Already have an account? </span>
+
+            <div className="mt-5 text-center text-sm text-slate-500">
+              Already have an account?{' '}
               <button
                 onClick={() => {
                   clearDraft();
                   onLogin();
                 }}
-                className="text-[#064e3b] font-semibold hover:underline"
+                className="font-semibold text-[#064e3b] hover:underline"
               >
                 Log in
               </button>
             </div>
           </div>
         </div>
-      </div>
       </main>
     </div>
   );

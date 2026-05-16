@@ -107,6 +107,7 @@ Note:
 For contributor-facing product behavior, start with these docs:
 
 - [Authentication Flow](./docs/AUTHENTICATION_FLOW.md)
+- [Signup Flow](./docs/SIGNUP_FLOW.md)
 - [Donation Flow](./docs/DONATION_FLOW.md)
 - [Admin Flow](./docs/ADMIN_FLOW.md)
 - [Gift Aid Flow](./docs/GIFTAID_FLOW.md)
